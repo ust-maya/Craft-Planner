@@ -1,6 +1,7 @@
 package com.craftplanner.client.screen;
 
 import com.craftplanner.client.PlannerState;
+import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -18,33 +19,52 @@ import org.lwjgl.glfw.GLFW;
  * <p>{@code Esc} cancels, {@code Enter} confirms, mouse wheel over the panel
  * steps the amount by 1 (with shift — by 10).</p>
  *
- * <p>Stage 12: the panel is laid out densely (176×110, 14 px controls) with the
- * vertical offsets named as constants, so the layout stays readable. The font is
- * the vanilla 9 px — the controls are vanilla widgets that draw their own labels.</p>
+ * <p>Layout (2026-09-25): the panel is measured from the font instead of being a
+ * fixed 176×110 box. The hint is the widest text of the window — 334 px in
+ * Russian against a 176 px panel — and it used to be drawn centred and
+ * untrimmed, so it ran ~80 px past the border on both sides (the English one
+ * overflowed as well). It is now wrapped onto at most two lines, the panel
+ * widens until that fits, and the extra line grows the panel and pushes the
+ * button row down, so nothing overlaps and nothing leaves the frame. The
+ * controls keep their density (14 px rows) and every offset stays named in
+ * {@link Layout}.</p>
  */
 public class QuantityPopupScreen extends Screen {
 
-    private static final int PANEL_WIDTH = 176;
-    private static final int PANEL_HEIGHT = 110;
-    private static final int FIELD_WIDTH = 76;
-    private static final int FIELD_HEIGHT = 14;
-    private static final int BUTTON_WIDTH = 72;
-    private static final int BUTTON_HEIGHT = 14;
-    private static final int STEP_HEIGHT = 14;
-    private static final int STEP_WIDTH = 38;
-    private static final int STEP_GAP = 3;
+    private static final String KEY_TITLE = "screen.craftplanner.quantity.title";
+    private static final String KEY_FIELD = "screen.craftplanner.quantity.field";
+    private static final String KEY_ADD = "screen.craftplanner.quantity.add";
+    private static final String KEY_CANCEL = "screen.craftplanner.quantity.cancel";
+    private static final String KEY_HINT = "screen.craftplanner.quantity.hint";
+
+    /** Preferred panel size; the real one is measured in {@link Layout}. */
+    static final int PANEL_WIDTH = 176;
+    static final int PANEL_HEIGHT = 110;
+    /** Inner padding of the panel, used on both sides. */
+    static final int PAD = 6;
+
+    static final int FIELD_WIDTH = 76;
+    static final int FIELD_HEIGHT = 14;
+    static final int BUTTON_WIDTH = 72;
+    static final int BUTTON_HEIGHT = 14;
+    static final int STEP_HEIGHT = 14;
+    static final int STEP_WIDTH = 38;
+    static final int STEP_GAP = 3;
     private static final long MAX_AMOUNT = 99_999L;
 
     // Vertical offsets inside the panel, top-down. Named so the layout stays
     // readable after the density pass that shrank every element.
-    private static final int TITLE_Y = 4;
-    private static final int HEADER_Y = 16;
-    private static final int FIELD_Y = 36;
-    private static final int STEP_Y = 54;
-    private static final int HINT_Y = 72;
-    private static final int BUTTON_Y = 90;
+    static final int TITLE_Y = 4;
+    static final int HEADER_Y = 16;
+    static final int FIELD_Y = 36;
+    static final int STEP_Y = 54;
+    static final int HINT_Y = 72;
+    static final int BUTTON_Y = 90;
+    /** Horizontal offsets of the header row, measured from the panel's centre. */
+    static final int ICON_DX = -30;
+    static final int NAME_DX = -10;
     /** Side margin of the Add / Cancel pair. */
-    private static final int BUTTON_MARGIN = 10;
+    static final int BUTTON_MARGIN = 10;
 
     private static final int TEXT = 0xFFE0E0E0;
     private static final int MUTED = 0xFFA0A0A0;
@@ -56,9 +76,13 @@ public class QuantityPopupScreen extends Screen {
     private final String itemName;
     private EditBox amountField;
     private long amount;
+    /** Measured geometry of the current panel; rebuilt by {@link #computeLayout()}. */
+    private Layout layout;
+    /** {@code font::width}, refreshed in {@link #init()} — the layout's only input. */
+    private TextMetrics metrics;
 
     public QuantityPopupScreen(ItemStack stack) {
-        super(Component.translatable("screen.craftplanner.quantity.title"));
+        super(Component.translatable(KEY_TITLE));
         this.stack = stack.copy();
         this.itemName = stack.getHoverName().getString();
         this.amount = 1;
@@ -66,13 +90,16 @@ public class QuantityPopupScreen extends Screen {
 
     @Override
     protected void init() {
-        int left = (this.width - PANEL_WIDTH) / 2;
-        int top = (this.height - PANEL_HEIGHT) / 2;
-        int centerX = left + PANEL_WIDTH / 2;
+        this.metrics = this.font::width;
+        computeLayout();
+        Layout l = this.layout;
+        int left = panelLeft();
+        int top = panelTop();
+        int centerX = left + l.panelWidth / 2;
 
         this.amountField = new EditBox(this.font,
                 centerX - FIELD_WIDTH / 2, top + FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT,
-                Component.translatable("screen.craftplanner.quantity.field"));
+                Component.translatable(KEY_FIELD));
         this.amountField.setValue(Long.toString(this.amount));
         this.amountField.setMaxLength(6);
         this.amountField.setFilter(text -> text.isEmpty() || text.matches("\\d+"));
@@ -82,21 +109,31 @@ public class QuantityPopupScreen extends Screen {
 
         // One tidy row of steppers beneath the field: -10, -1, +1, +10.
         int stepY = top + STEP_Y;
-        int stepX = left + (PANEL_WIDTH - (4 * STEP_WIDTH + 3 * STEP_GAP)) / 2;
+        int stepX = left + (l.panelWidth - (4 * STEP_WIDTH + 3 * STEP_GAP)) / 2;
         addRenderableWidget(stepper("-10", stepX, stepY, -10));
         addRenderableWidget(stepper("-1", stepX + (STEP_WIDTH + STEP_GAP), stepY, -1));
         addRenderableWidget(stepper("+1", stepX + 2 * (STEP_WIDTH + STEP_GAP), stepY, 1));
         addRenderableWidget(stepper("+10", stepX + 3 * (STEP_WIDTH + STEP_GAP), stepY, 10));
 
-        int buttonsY = top + BUTTON_Y;
-        addRenderableWidget(Button.builder(Component.translatable("screen.craftplanner.quantity.add"),
+        int buttonsY = top + l.buttonY;
+        addRenderableWidget(Button.builder(Component.translatable(KEY_ADD),
                 button -> confirm())
-                .bounds(left + BUTTON_MARGIN, buttonsY, BUTTON_WIDTH, BUTTON_HEIGHT)
+                .bounds(left + BUTTON_MARGIN, buttonsY, l.buttonWidth, BUTTON_HEIGHT)
                 .build());
-        addRenderableWidget(Button.builder(Component.translatable("screen.craftplanner.quantity.cancel"),
+        addRenderableWidget(Button.builder(Component.translatable(KEY_CANCEL),
                 button -> onClose())
-                .bounds(left + PANEL_WIDTH - BUTTON_WIDTH - BUTTON_MARGIN, buttonsY, BUTTON_WIDTH, BUTTON_HEIGHT)
+                .bounds(left + l.panelWidth - l.buttonWidth - BUTTON_MARGIN, buttonsY, l.buttonWidth, BUTTON_HEIGHT)
                 .build());
+    }
+
+    /** Measures the panel for the current texts. */
+    private void computeLayout() {
+        this.layout = new Layout(this.metrics, this.width, this.title.getString(), this.itemName,
+                tr(KEY_ADD), tr(KEY_CANCEL), tr(KEY_HINT));
+    }
+
+    private static String tr(String key) {
+        return Component.translatable(key).getString();
     }
 
     private Button stepper(String label, int x, int y, long delta) {
@@ -141,45 +178,48 @@ public class QuantityPopupScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        int left = (this.width - PANEL_WIDTH) / 2;
-        int top = (this.height - PANEL_HEIGHT) / 2;
-        int centerX = left + PANEL_WIDTH / 2;
+        if (this.layout == null) {
+            // Defensive: init() always measures first, but render must never
+            // depend on that order.
+            if (this.metrics == null) {
+                this.metrics = this.font::width;
+            }
+            computeLayout();
+        }
+        Layout l = this.layout;
+        TextMetrics m = this.metrics;
+        int left = panelLeft();
+        int top = panelTop();
+        int centerX = left + l.panelWidth / 2;
+        int innerW = l.panelWidth - 2 * PAD;
         Font font = this.font;
 
         // Background first, widgets afterwards — the panel would otherwise be
         // painted over the steppers and the buttons.
         graphics.fill(0, 0, this.width, this.height, DIM);
-        graphics.fill(left, top, left + PANEL_WIDTH, top + PANEL_HEIGHT, PANEL_BG);
-        graphics.fill(left, top, left + PANEL_WIDTH, top + 1, PANEL_BORDER);
-        graphics.fill(left, top + PANEL_HEIGHT - 1, left + PANEL_WIDTH, top + PANEL_HEIGHT, PANEL_BORDER);
-        graphics.fill(left, top, left + 1, top + PANEL_HEIGHT, PANEL_BORDER);
-        graphics.fill(left + PANEL_WIDTH - 1, top, left + PANEL_WIDTH, top + PANEL_HEIGHT, PANEL_BORDER);
+        graphics.fill(left, top, left + l.panelWidth, top + l.panelHeight, PANEL_BG);
+        graphics.fill(left, top, left + l.panelWidth, top + 1, PANEL_BORDER);
+        graphics.fill(left, top + l.panelHeight - 1, left + l.panelWidth, top + l.panelHeight, PANEL_BORDER);
+        graphics.fill(left, top, left + 1, top + l.panelHeight, PANEL_BORDER);
+        graphics.fill(left + l.panelWidth - 1, top, left + l.panelWidth, top + l.panelHeight, PANEL_BORDER);
 
-        // Icon + item name (truncated so it never runs into the panel edge).
-        graphics.renderItem(this.stack, centerX - 30, top + HEADER_Y);
-        String name = trimToWidth(font, this.itemName, PANEL_WIDTH / 2 - 14);
-        graphics.drawString(font, name, centerX - 10, top + HEADER_Y + 4, TEXT, false);
-        graphics.drawCenteredString(font, this.title, centerX, top + TITLE_Y, TEXT);
+        // Icon + item name, the name cut to the room the measured panel gives it.
+        graphics.renderItem(this.stack, centerX + ICON_DX, top + HEADER_Y);
+        graphics.drawString(font, RecipeListLayout.trimToWidth(m, this.itemName, l.nameWidth),
+                centerX + NAME_DX, top + HEADER_Y + 4, TEXT, false);
+        graphics.drawCenteredString(font,
+                RecipeListLayout.trimToWidth(m, this.title.getString(), innerW),
+                centerX, top + TITLE_Y, TEXT);
 
         super.render(graphics, mouseX, mouseY, partialTick);
 
         this.amountField.render(graphics, mouseX, mouseY, partialTick);
 
-        graphics.drawCenteredString(font,
-                Component.translatable("screen.craftplanner.quantity.hint"),
-                centerX, top + HINT_Y, MUTED);
-    }
-
-    /** Cuts the item name with an ellipsis so it fits the given pixel width. */
-    private static String trimToWidth(Font font, String text, int maxWidth) {
-        if (font.width(text) <= maxWidth) {
-            return text;
+        for (int i = 0; i < l.hintLines.size(); i++) {
+            graphics.drawCenteredString(font,
+                    RecipeListLayout.trimToWidth(m, l.hintLines.get(i), innerW),
+                    centerX, top + HINT_Y + i * RecipeListLayout.LINE_H, MUTED);
         }
-        StringBuilder sb = new StringBuilder(text);
-        while (sb.length() > 1 && font.width(sb.toString() + "…") > maxWidth) {
-            sb.setLength(sb.length() - 1);
-        }
-        return sb + "…";
     }
 
     @Override
@@ -218,9 +258,73 @@ public class QuantityPopupScreen extends Screen {
     }
 
     private boolean isMouseOverPanel(int mouseX, int mouseY) {
-        int left = (this.width - PANEL_WIDTH) / 2;
-        int top = (this.height - PANEL_HEIGHT) / 2;
-        return mouseX >= left && mouseX <= left + PANEL_WIDTH
-                && mouseY >= top && mouseY <= top + PANEL_HEIGHT;
+        Layout l = this.layout;
+        int left = panelLeft();
+        int top = panelTop();
+        return mouseX >= left && mouseX <= left + l.panelWidth
+                && mouseY >= top && mouseY <= top + l.panelHeight;
+    }
+
+    private int panelLeft() {
+        return (this.width - this.layout.panelWidth) / 2;
+    }
+
+    private int panelTop() {
+        return (this.height - this.layout.panelHeight) / 2;
+    }
+
+    /**
+     * Measured geometry of the popup — the same idea as
+     * {@link RecipeListLayout}: a {@link TextMetrics} is the only input, so the
+     * arithmetic can be checked without a running client.
+     */
+    static final class Layout {
+
+        /** Lines the hint may occupy before the panel stops growing. */
+        private static final int MAX_HINT_LINES = 2;
+        /** Free space kept between the panel and the window edges. */
+        private static final int SCREEN_MARGIN = 16;
+        /** Room a button label needs inside its button. */
+        private static final int BUTTON_PAD = 8;
+
+        final int panelWidth;
+        final int panelHeight;
+        /** Width of the Add / Cancel buttons; grown so their labels fit. */
+        final int buttonWidth;
+        /** Top of the button row; drops when the hint wraps onto a second line. */
+        final int buttonY;
+        /** Room for the item name in the header row. */
+        final int nameWidth;
+        final List<String> hintLines;
+
+        Layout(TextMetrics m, int screenWidth, String title, String itemName, String addLabel,
+                String cancelLabel, String hint) {
+            // The fixed rows set a lower bound on the width: the stepper row is
+            // the widest of them, then the button pair, then the title.
+            int buttonWidth = Math.max(BUTTON_WIDTH,
+                    Math.max(m.width(addLabel), m.width(cancelLabel)) + BUTTON_PAD);
+            int minWidth = Math.max(PANEL_WIDTH, Math.max(
+                    Math.max(m.width(title), FIELD_WIDTH) + 2 * PAD,
+                    Math.max(4 * STEP_WIDTH + 3 * STEP_GAP, 2 * buttonWidth + 2 * BUTTON_MARGIN) + 2 * PAD));
+            int maxWidth = Math.max(PANEL_WIDTH, screenWidth - SCREEN_MARGIN);
+
+            // The hint is the widest text in every shipped language; widen the
+            // panel until it fits in MAX_HINT_LINES lines (or the window runs
+            // out, in which case the last line is cut with an ellipsis).
+            int width = Math.min(minWidth, maxWidth);
+            List<String> lines = RecipeListLayout.wrapText(m, hint, width - 2 * PAD, MAX_HINT_LINES);
+            while (width < maxWidth && !String.join(" ", lines).equals(hint.trim())) {
+                width = Math.min(maxWidth, width + 8);
+                lines = RecipeListLayout.wrapText(m, hint, width - 2 * PAD, MAX_HINT_LINES);
+            }
+
+            this.panelWidth = width;
+            this.hintLines = lines;
+            this.buttonWidth = buttonWidth;
+            this.nameWidth = width / 2 - PAD - NAME_DX;
+            int extraLines = Math.max(0, lines.size() - 1);
+            this.buttonY = BUTTON_Y + extraLines * RecipeListLayout.LINE_H;
+            this.panelHeight = PANEL_HEIGHT + extraLines * RecipeListLayout.LINE_H;
+        }
     }
 }
