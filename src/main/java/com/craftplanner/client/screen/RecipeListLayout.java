@@ -16,8 +16,7 @@ import java.util.List;
  * text to a single ellipsis.</p>
  *
  * <p>Whatever still does not fit is wrapped or cut <em>inside its own
- * rectangle</em>: the hint wraps onto up to {@link #MAX_HINT_LINES} lines, the
- * summary and the deficit move onto two rows instead of overlapping, every
+ * rectangle</em>: the hint wraps onto up to {@link #MAX_HINT_LINES} lines, every
  * header is trimmed to its column and every button trims its own label.</p>
  *
  * <p>The class holds no widgets and never touches the renderer — the only thing
@@ -64,8 +63,6 @@ final class RecipeListLayout {
     static final int MAX_HINT_LINES = 3;
     /** Preferred width of the footer buttons. */
     private static final int MIN_FOOTER_BUTTON_W = 64;
-    /** Below this the summary yields the row to the deficit instead of shrinking further. */
-    private static final int MIN_SUMMARY_W = 60;
 
     // --- result ------------------------------------------------------------
     final int panelWidth;
@@ -94,8 +91,6 @@ final class RecipeListLayout {
     final int hintY;
     final int buttonsY;
     final int footerH;
-    /** True when the deficit is wide enough to have earned a footer row of its own. */
-    final boolean deficitRow;
     final List<String> hintLines;
 
     /**
@@ -104,11 +99,10 @@ final class RecipeListLayout {
      * @param itemNames     names of all planned items, in row order (empty = empty list)
      * @param maxAmount     largest requested amount, used to size the amount column
      * @param maxOptions    largest number of recipes behind one row, sizes the "N/M" button
-     * @param hasDeficit    whether a deficit line has to be placed in the footer
      */
     RecipeListLayout(TextMetrics metrics, int screenWidth, List<String> itemNames, long maxAmount, int maxOptions,
             String headerRecipe, String headerAmount, String headerRemove,
-            String clearLabel, String closeLabel, String oresLabel, String hint, boolean hasDeficit) {
+            String clearLabel, String closeLabel, String oresLabel, String hint) {
         // A column is as wide as the wider of its header and its content. The
         // header drives the width on purpose: it is a legend, and a legend cut
         // to two characters ("Уд…") is worse than a wider column.
@@ -200,12 +194,10 @@ final class RecipeListLayout {
         }
         int oresX = clearX + clearW + Math.max(GAP, (free - oresW) / 2);
 
-        // Footer rows: summary, an optional deficit row, the wrapped hint, then
-        // the buttons. With a single hint line this reproduces the previous
-        // 3 / 15 / 27 offsets exactly.
-        this.deficitRow = hasDeficit;
+        // Footer rows: the wrapped hint, then the buttons. With a single hint
+        // line this reproduces the previous 15 / 27 offsets exactly.
         this.hintLines = wrapText(metrics, hint, panelWidth - 2 * PAD, MAX_HINT_LINES);
-        this.hintY = FOOTER_TEXT_Y + (hasDeficit ? LINE_H : 0) + LINE_H + 3;
+        this.hintY = FOOTER_TEXT_Y + LINE_H + 3;
         this.buttonsY = this.hintY + Math.max(1, this.hintLines.size()) * LINE_H + 3;
         this.footerH = this.buttonsY + BUTTON_H + FOOTER_BOTTOM_PAD;
 
@@ -306,14 +298,5 @@ final class RecipeListLayout {
     /** Total height of the panel: header, rows and footer. */
     static int panelHeight(int rows, int footerH) {
         return HEADER + rows * ROW_HEIGHT + footerH;
-    }
-
-    /** Width available for the summary when the deficit shares its row. */
-    static int summaryRoom(int panelWidth, int deficitWidth) {
-        return panelWidth - 2 * PAD - deficitWidth - 2 * GAP;
-    }
-
-    static boolean summarySharesRow(int panelWidth, int deficitWidth) {
-        return summaryRoom(panelWidth, deficitWidth) >= MIN_SUMMARY_W;
     }
 }

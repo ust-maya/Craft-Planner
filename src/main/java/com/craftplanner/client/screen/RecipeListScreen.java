@@ -1,13 +1,9 @@
 package com.craftplanner.client.screen;
 
 import com.craftplanner.client.PlannerState;
-import com.craftplanner.client.resource.Availability;
-import com.craftplanner.client.resource.ResourceCheck;
-import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.RecipeNode;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -25,8 +21,10 @@ import net.minecraft.world.item.crafting.RecipeHolder;
  * and re-expands the trees, so the overlay and the shopping list stay in
  * sync.</p>
  *
- * <p>Stage 9: the footer compares the aggregated shopping list against the
- * player's inventory and prints how much is still missing.</p>
+ * <p>The footer deliberately shows no raw-material summary and no deficit line:
+ * whatever the list holds, the bottom of the window carries only the hint and
+ * the buttons. The inventory comparison of Stage 9 itself is untouched — it
+ * still feeds the overlay's shopping list and node colours.</p>
  *
  * <p>Stage 11: the footer also carries the ore switch — a button that flips
  * {@code filters.hideOres} at runtime, so ore blocks and raw ore materials can
@@ -46,8 +44,6 @@ public class RecipeListScreen extends Screen {
     private static final String KEY_CLEAR = "screen.craftplanner.list.clear";
     private static final String KEY_CLOSE = "screen.craftplanner.list.close";
     private static final String KEY_EMPTY = "screen.craftplanner.list.empty";
-    private static final String KEY_SUMMARY = "screen.craftplanner.list.summary";
-    private static final String KEY_MISSING = "screen.craftplanner.list.missing";
     private static final String KEY_HINT = "screen.craftplanner.list.hint";
     private static final String KEY_HEADER_ITEM = "screen.craftplanner.list.header.item";
     private static final String KEY_HEADER_RECIPE = "screen.craftplanner.list.header.recipe";
@@ -58,7 +54,6 @@ public class RecipeListScreen extends Screen {
 
     private static final int TEXT = 0xFFE0E0E0;
     private static final int MUTED = 0xFFA0A0A0;
-    private static final int MISSING = 0xFFE06060;
     private static final int DIM = 0x80000000;
     private static final int PANEL_BG = 0xF0101010;
     private static final int PANEL_BORDER = 0xFF404040;
@@ -100,8 +95,7 @@ public class RecipeListScreen extends Screen {
         }
         this.layout = new RecipeListLayout(this.metrics, this.width, names, maxAmount, maxOptions,
                 tr(KEY_HEADER_RECIPE), tr(KEY_HEADER_AMOUNT), tr(KEY_HEADER_REMOVE),
-                tr(KEY_CLEAR), tr(KEY_CLOSE), oresLabel().getString(), tr(KEY_HINT),
-                ResourceCheck.totalMissing(PlannerState.availability()) > 0);
+                tr(KEY_CLEAR), tr(KEY_CLOSE), oresLabel().getString(), tr(KEY_HINT));
     }
 
     private void buildWidgets() {
@@ -267,7 +261,7 @@ public class RecipeListScreen extends Screen {
             graphics.drawString(font, amount, right + l.amountRight - m.width(amount), y + 5, TEXT, false);
         }
 
-        renderFooter(graphics, font, m, left, right);
+        renderFooter(graphics, font, m, left);
 
         if (maxScroll() > 0) {
             int trackTop = top + RecipeListLayout.HEADER;
@@ -279,50 +273,20 @@ public class RecipeListScreen extends Screen {
     }
 
     /**
-     * Footer: the raw-material summary, the deficit, the wrapped hint and the
-     * button row (the buttons themselves are widgets and are drawn by
-     * {@code super.render}). The summary and the deficit share a row when they
-     * fit; otherwise the deficit drops to the row reserved for it in
-     * {@link RecipeListLayout} instead of squeezing the summary to nothing.
+     * Footer: the empty-list message (only when there is nothing to plan) and
+     * the wrapped hint. The button row is made of widgets and is drawn by
+     * {@code super.render}.
+     *
+     * <p>No raw-material summary and no deficit line are drawn here — by design,
+     * in every state of the list. {@link RecipeListLayout} therefore reserves no
+     * row for them, so the footer is exactly as tall as the hint needs.</p>
      */
-    private void renderFooter(GuiGraphics graphics, Font font, TextMetrics m, int left, int right) {
+    private void renderFooter(GuiGraphics graphics, Font font, TextMetrics m, int left) {
         RecipeListLayout l = this.layout;
         int innerW = l.panelWidth - 2 * RecipeListLayout.PAD;
-        int line = footerTop() + 3;
 
         if (this.roots.isEmpty()) {
-            drawCentered(font, m, graphics, tr(KEY_EMPTY), left + l.panelWidth / 2, line, innerW, MUTED);
-        } else {
-            Map<ItemKey, Availability> availability = PlannerState.availability();
-            long missing = ResourceCheck.totalMissing(availability);
-            String summary = RecipeListLayout.trimToWidth(m,
-                    Component.translatable(KEY_SUMMARY, rawTypes(), rawTotal()).getString(), innerW);
-            String deficit = missing > 0
-                    ? RecipeListLayout.trimToWidth(m,
-                            Component.translatable(KEY_MISSING, missing,
-                                    ResourceCheck.deficitTypes(availability)).getString(), innerW)
-                    : null;
-
-            if (deficit == null) {
-                graphics.drawString(font, summary, left + RecipeListLayout.PAD, line, MUTED, false);
-            } else {
-                int deficitW = m.width(deficit);
-                if (RecipeListLayout.summarySharesRow(l.panelWidth, deficitW)) {
-                    graphics.drawString(font, RecipeListLayout.trimToWidth(m, summary,
-                            RecipeListLayout.summaryRoom(l.panelWidth, deficitW)),
-                            left + RecipeListLayout.PAD, line, MUTED, false);
-                    graphics.drawString(font, deficit, right - RecipeListLayout.PAD - deficitW, line, MISSING, false);
-                } else if (l.deficitRow) {
-                    graphics.drawString(font, summary, left + RecipeListLayout.PAD, line, MUTED, false);
-                    graphics.drawString(font, deficit, left + RecipeListLayout.PAD, line + RecipeListLayout.LINE_H,
-                            MISSING, false);
-                } else {
-                    // The deficit appeared after the last rebuild (the inventory
-                    // changed under an open window): give it the row, the
-                    // summary yields.
-                    graphics.drawString(font, deficit, right - RecipeListLayout.PAD - deficitW, line, MISSING, false);
-                }
-            }
+            drawCentered(font, m, graphics, tr(KEY_EMPTY), left + l.panelWidth / 2, footerTop() + 3, innerW, MUTED);
         }
 
         int hintY = footerTop() + l.hintY;
@@ -407,22 +371,6 @@ public class RecipeListScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return false;
-    }
-
-    private long rawTypes() {
-        return requirements().size();
-    }
-
-    private long rawTotal() {
-        long total = 0;
-        for (Long amount : requirements().values()) {
-            total += amount;
-        }
-        return total;
-    }
-
-    private Map<ItemKey, Long> requirements() {
-        return PlannerState.graph().aggregateRequirements();
     }
 
     /**

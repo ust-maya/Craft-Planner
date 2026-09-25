@@ -12,8 +12,6 @@
   "screen.craftplanner.list.clear": "Очистить всё",
   "screen.craftplanner.list.close": "Закрыть",
   "screen.craftplanner.list.empty": "Рецепты пока не добавлены",
-  "screen.craftplanner.list.summary": "Сырьё: %1$s видов / %2$s шт.",
-  "screen.craftplanner.list.missing": "Нужно ещё: %1$s (%2$s видов)",
   "overlay.craftplanner.title": "Craft Planner",
   "overlay.craftplanner.keys": "V — скрыть/показать · K — список рецептов",
   "overlay.craftplanner.keys.short": "V — скрыть · K — список",
