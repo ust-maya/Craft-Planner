@@ -8,7 +8,7 @@ modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
 authors="Igor"
-description='''Craft Planner — визуализатор дерева крафта. Добавляй рецепты из EMI/JEI или инвентаря хоткеем и смотри дерево крафта с подсветкой дефицита ресурсов.'''
+description='''Craft Planner — визуализатор дерева крафта. Добавляйте рецепты из EMI/JEI или инвентаря горячей клавишей и смотрите дерево с подсветкой дефицита ресурсов.'''
 
 [[dependencies.${mod_id}]]
 modId="minecraft"
