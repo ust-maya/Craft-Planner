@@ -72,6 +72,19 @@ public final class RecipeNode {
         }
     }
 
+    /**
+     * Forgets the recipe picked by an earlier expansion.
+     *
+     * <p>The graph keeps its nodes across rebuilds and the engine re-expands
+     * them in place, so a recipe that no longer applies has to be dropped
+     * explicitly — otherwise the list screen keeps offering a choice for a
+     * branch that is not there any more.</p>
+     */
+    public void clearRecipe() {
+        this.recipe = null;
+        this.producedPerCraft = 1;
+    }
+
     public NodeKind kind() {
         return kind;
     }
@@ -108,6 +121,15 @@ public final class RecipeNode {
 
     public void addAlternative(RecipeHolder<?> holder) {
         alternatives.add(holder);
+    }
+
+    /**
+     * Forgets the alternatives of an earlier expansion. Same reason as
+     * {@link #clearRecipe()}: without it every rebuild appends the same
+     * recipes again and the "N/M" button counts duplicates.
+     */
+    public void clearAlternatives() {
+        alternatives.clear();
     }
 
     /**
