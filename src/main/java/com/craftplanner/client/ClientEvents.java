@@ -3,6 +3,7 @@ package com.craftplanner.client;
 import com.craftplanner.Constants;
 import com.craftplanner.client.screen.QuantityPopupScreen;
 import com.craftplanner.client.screen.RecipeListScreen;
+import com.craftplanner.engine.RecipeIndex;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -12,6 +13,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
+import net.neoforged.neoforge.client.event.RecipesUpdatedEvent;
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -45,6 +47,9 @@ public class ClientEvents {
             PlannerState.refreshAvailability();
         }
 
+        // Runs recipe-change rebuilds deferred by the selectRecipe debounce.
+        PlannerState.tick();
+
         // Only fires with no screen open — see the class javadoc.
         while (Keybinds.ADD_RECIPE.consumeClick()) {
             openQuantityPopup(mc);
@@ -57,6 +62,17 @@ public class ClientEvents {
         while (Keybinds.OPEN_RECIPES.consumeClick()) {
             mc.setScreen(new RecipeListScreen());
         }
+    }
+
+    /**
+     * Recipes synced/reloaded (world join, datapack reload): the cached index
+     * points at stale holders, so drop it and re-expand the current plan
+     * against the new recipe set.
+     */
+    @SubscribeEvent
+    public static void onRecipesUpdated(RecipesUpdatedEvent event) {
+        RecipeIndex.invalidateCache();
+        PlannerState.rebuild();
     }
 
     /** Same actions as above, but for presses made while a GUI is open. */
