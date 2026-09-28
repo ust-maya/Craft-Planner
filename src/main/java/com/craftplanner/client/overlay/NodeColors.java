@@ -25,7 +25,6 @@ public final class NodeColors {
     public static final int HAVE = 0xFF7BE08A;
     public static final int PARTIAL = 0xFFE0C040;
     public static final int MISSING = 0xFFE06060;
-    public static final int EDGE = 0x60FFFFFF;
     public static final int TEXT = 0xFFE0E0E0;
 
     /**
@@ -33,10 +32,11 @@ public final class NodeColors {
      * from a big pack nests five levels deep and shares its sub-assemblies with
      * the next goal; one grey web of lines then makes it unreadable, while
      * cycling a handful of hues lets the eye follow a single branch through the
-     * whole panel. The alpha keeps them behind the item icons.
+     * whole panel. Fully opaque and saturated: the lines sit on the dark panel
+     * behind the icons, and a translucent grey one simply disappears there.
      */
     private static final int[] BRANCH = {
-        0xB05CB8FF, 0xB07BE08A, 0xB0E0C040, 0xB0FF8A5C, 0xB0C77DFF, 0xB04ECDC4
+        0xFF5AA9FF, 0xFF66E07A, 0xFFFFC83D, 0xFFFF7A5C, 0xFFC77DFF, 0xFF3FD8CE
     };
 
     /** Connector colour of the {@code rootIndex}-th planned item. */

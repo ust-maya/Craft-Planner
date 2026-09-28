@@ -33,8 +33,8 @@ public final class TreeLayout {
     public static TreeLayout of(List<RecipeNode> roots) {
         TreeLayout layout = new TreeLayout();
         layout.cursor = 0;
-        for (RecipeNode root : roots) {
-            layout.place(root, 0);
+        for (int branch = 0; branch < roots.size(); branch++) {
+            layout.place(roots.get(branch), 0, branch);
             layout.cursor += SLOT_WIDTH / 2; // gap between independent trees
         }
         for (PlacedNode placed : layout.nodes) {
@@ -44,7 +44,7 @@ public final class TreeLayout {
         return layout;
     }
 
-    private int place(RecipeNode node, int depth) {
+    private int place(RecipeNode node, int depth, int branch) {
         int y = depth * ROW_HEIGHT;
         int x;
         if (node.isLeaf()) {
@@ -54,12 +54,12 @@ public final class TreeLayout {
             int sum = 0;
             int count = 0;
             for (RecipeEdge edge : node.children()) {
-                sum += place(edge.child(), depth + 1);
+                sum += place(edge.child(), depth + 1, branch);
                 count++;
             }
             x = sum / Math.max(1, count);
         }
-        PlacedNode placed = new PlacedNode(node, x, y);
+        PlacedNode placed = new PlacedNode(node, x, y, branch);
         nodes.add(placed);
         byNode.put(node, placed);
         return x;

@@ -70,10 +70,13 @@ import net.neoforged.neoforge.client.event.RenderGuiEvent;
  * player's, not the mod's: {@code O} ({@link Keybinds#EDIT_LAYOUT}) opens a
  * layout editor — {@code OverlayLayoutScreen}, a transparent screen that frees
  * the mouse from the game — in which the panel is dragged, its bottom-right
- * corner resized and the mouse wheel rescaled, and the result is committed to
- * {@link OverlayPlacement} and the client config. A pinned panel then keeps the
- * text size it was given and clips its content, because the player has already
- * answered "it does not fit" by making the window larger.</p>
+ * corner resized, its text grown or shrunk with the {@code +} and {@code -}
+ * keys, and the result is committed to {@link OverlayPlacement} and the client
+ * config. The wheel keeps scrolling the plan in that mode, as it does in the
+ * HUD: a panel is arranged against the rows the player can actually see. A
+ * pinned panel then keeps the text size it was given and clips its content,
+ * because the player has already answered "it does not fit" by making the window
+ * larger.</p>
  *
  * <p>A machine pack's tree can be a hundred rows deep, so every row that has
  * children carries a − / + marker that folds its branch away
@@ -180,6 +183,16 @@ public final class TreeOverlayRenderer {
             }
         }
         return null;
+    }
+
+    /**
+     * Scrolls the tree by {@code rows} rows; the exact clamp is applied when it
+     * is drawn. Exposed for the screens that own the mouse wheel — while one is
+     * open the HUD no longer receives it, and the layout editor needs the
+     * scroll to see the part of the plan it is sizing.
+     */
+    public static void scroll(int rows) {
+        treeScroll += rows;
     }
 
     private TreeOverlayRenderer() {
@@ -1092,8 +1105,10 @@ public final class TreeOverlayRenderer {
         }
     }
 
+    /** Edges of the node-link view, in the colour of the goal they belong to. */
     private static void drawEdges(GuiGraphics graphics, TreeLayout layout) {
         for (PlacedNode parent : layout.nodes()) {
+            int line = NodeColors.branch(parent.branch());
             for (RecipeEdge edge : parent.node().children()) {
                 PlacedNode child = layout.of(edge.child());
                 if (child == null) {
@@ -1105,9 +1120,9 @@ public final class TreeOverlayRenderer {
                 int endY = child.y();
                 int midY = startY + (endY - startY) / 2;
 
-                graphics.vLine(startX, startY, midY, NodeColors.EDGE);
-                graphics.hLine(Math.min(startX, endX), Math.max(startX, endX), midY, NodeColors.EDGE);
-                graphics.vLine(endX, midY, endY, NodeColors.EDGE);
+                graphics.vLine(startX, startY, midY, line);
+                graphics.hLine(Math.min(startX, endX), Math.max(startX, endX), midY, line);
+                graphics.vLine(endX, midY, endY, line);
             }
         }
     }

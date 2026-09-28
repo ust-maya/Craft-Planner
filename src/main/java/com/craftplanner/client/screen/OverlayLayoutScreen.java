@@ -24,9 +24,10 @@ import org.lwjgl.glfw.GLFW;
  * has to keep its own background undimmed for it to stay readable.</p>
  *
  * <p>Drag inside the panel to move it, its bottom-right corner to resize it,
- * use the wheel for the text size. A click outside or {@code Esc} keeps the
- * result — {@link #removed()} commits it whichever way the screen is left —
- * and right click restores the automatic layout.</p>
+ * press {@code +} or {@code -} for the text size and use the wheel to scroll the
+ * plan. A click outside or {@code Esc} keeps the result — {@link #removed()}
+ * commits it whichever way the screen is left — and right click restores the
+ * automatic layout.</p>
  */
 public final class OverlayLayoutScreen extends Screen {
 
@@ -92,18 +93,31 @@ public final class OverlayLayoutScreen extends Screen {
         return true;
     }
 
+    /** The wheel scrolls the plan, exactly as it does in the HUD. */
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-        OverlayPlacement.zoom(scrollY > 0 ? 1 : -1);
+        TreeOverlayRenderer.scroll(scrollY > 0 ? -1 : 1);
         return true;
     }
 
     /**
-     * Vanilla stops polling key mappings once a screen is open, so the key that
-     * started the editor has to be answered here for it to work as a toggle.
+     * {@code +} and {@code -} grow or shrink the text — the wheel is busy
+     * scrolling, and resizing a panel against rows the player cannot see yet is
+     * guesswork. The numpad works too, and a held key repeats, so the density
+     * can be walked through quickly.
      */
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_EQUAL || keyCode == GLFW.GLFW_KEY_KP_ADD) {
+            OverlayPlacement.zoom(1);
+            return true;
+        }
+        if (keyCode == GLFW.GLFW_KEY_MINUS || keyCode == GLFW.GLFW_KEY_KP_SUBTRACT) {
+            OverlayPlacement.zoom(-1);
+            return true;
+        }
+        // Vanilla stops polling key mappings once a screen is open, so the key
+        // that started the editor has to be answered here for it to be a toggle.
         if (Keybinds.EDIT_LAYOUT.matches(keyCode, scanCode)) {
             this.minecraft.setScreen(null);
             return true;
