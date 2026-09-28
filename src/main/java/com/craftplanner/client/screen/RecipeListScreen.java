@@ -65,6 +65,8 @@ public class RecipeListScreen extends Screen {
     private RecipeListLayout layout;
     /** {@code font::width}, refreshed in {@link #init()} — the layout's only input. */
     private TextMetrics metrics;
+    /** Graph generation the widgets were last built from (see {@link #tick()}). */
+    private long seenGraphVersion;
 
     public RecipeListScreen() {
         super(Component.translatable(KEY_TITLE));
@@ -75,9 +77,22 @@ public class RecipeListScreen extends Screen {
         this.metrics = this.font::width;
         this.roots.clear();
         this.roots.addAll(PlannerState.graph().roots());
+        this.seenGraphVersion = PlannerState.graphVersion();
         computeLayout();
         this.scroll = Math.min(this.scroll, maxScroll());
         buildWidgets();
+    }
+
+    /**
+     * A recipe switch is applied after the {@code selectRecipe} debounce, so
+     * the window cannot refresh from the click alone: when the tree was
+     * rebuilt while this screen was open, re-read the roots and widgets.
+     */
+    @Override
+    public void tick() {
+        if (PlannerState.graphVersion() != this.seenGraphVersion) {
+            refresh();
+        }
     }
 
     /**
@@ -93,9 +108,18 @@ public class RecipeListScreen extends Screen {
             maxAmount = Math.max(maxAmount, node.required());
             maxOptions = Math.max(maxOptions, node.options().size());
         }
+        // The hint teaches the add-a-recipe gesture once; after the player has
+        // opened and closed this window at least once it only adds noise.
         this.layout = new RecipeListLayout(this.metrics, this.width, names, maxAmount, maxOptions,
                 tr(KEY_HEADER_RECIPE), tr(KEY_HEADER_AMOUNT), tr(KEY_HEADER_REMOVE),
-                tr(KEY_CLEAR), tr(KEY_CLOSE), oresLabel().getString(), tr(KEY_HINT));
+                tr(KEY_CLEAR), tr(KEY_CLOSE), oresLabel().getString(),
+                PlannerState.listHintSeen() ? "" : tr(KEY_HINT));
+    }
+
+    @Override
+    public void onClose() {
+        PlannerState.markListHintSeen();
+        super.onClose();
     }
 
     private void buildWidgets() {
@@ -146,24 +170,33 @@ public class RecipeListScreen extends Screen {
                 Component.translatable("screen.craftplanner.list.ores.tooltip")));
     }
 
-    /** Label of the ore switch, showing the state the tree is currently in. */
+    /**
+     * Label of the ore switch. The leading mark is the state indicator the
+     * plain text lacked: ✓ when ores are shown in the tree, ✗ when the filter
+     * keeps them out.
+     */
     private static Component oresLabel() {
-        return Component.translatable(PlannerState.hideOres() ? KEY_ORES_HIDDEN : KEY_ORES_SHOWN);
+        boolean hidden = PlannerState.hideOres();
+        return Component.literal(hidden ? "✗ " : "✓ ")
+                .append(Component.translatable(hidden ? KEY_ORES_HIDDEN : KEY_ORES_SHOWN));
     }
 
     /**
-     * "2/3" button (Stage 6): cycles the recipes that produce the row's item.
-     * Inactive when the item has a single recipe; the tooltip only reports the
-     * position in that list, so the recipe itself is identified by its effect
-     * on the tree rather than by name.
+     * "2/3 ▾" button (Stage 6): cycles the recipes that produce the row's item.
+     * Inactive when the item has a single recipe; the chevron marks the rows
+     * where clicking actually does something, so the clickable area is visible
+     * before the first click. The tooltip only reports the position in that
+     * list, so the recipe itself is identified by its effect on the tree
+     * rather than by name.
      */
     private Button recipeButton(RecipeNode node, int x, int y) {
         List<RecipeHolder<?>> options = node.options();
         int total = options.size();
         int index = total == 0 ? 0 : Math.min(node.selectedRecipeIndex(), total - 1);
+        String counter = total > 0 ? (index + 1) + "/" + total : "-";
 
         FitButton button = fitButton(x, y, this.layout.recipeW, RecipeListLayout.BUTTON_H,
-                Component.literal(total > 0 ? (index + 1) + "/" + total : "-"),
+                Component.literal(total > 1 ? counter + " ▾" : counter),
                 pressed -> cycleRecipe(node),
                 Component.translatable("screen.craftplanner.list.recipe.tooltip", index + 1, total));
         button.active = total > 1;
