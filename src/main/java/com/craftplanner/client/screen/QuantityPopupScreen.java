@@ -1,5 +1,6 @@
 package com.craftplanner.client.screen;
 
+import com.craftplanner.Config;
 import com.craftplanner.client.PlannerState;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -50,7 +51,9 @@ public class QuantityPopupScreen extends Screen {
     static final int STEP_HEIGHT = 14;
     static final int STEP_WIDTH = 38;
     static final int STEP_GAP = 3;
-    private static final long MAX_AMOUNT = 99_999L;
+    private static final int FLASH_PERIOD_MS = 120;
+    private static final int FLASH_DURATION_MS = 800;
+    private static final int CLAMP_FLASH = 0xFFFF5555;
 
     // Vertical offsets inside the panel, top-down. Named so the layout stays
     // readable after the density pass that shrank every element.
@@ -80,6 +83,8 @@ public class QuantityPopupScreen extends Screen {
     private Layout layout;
     /** {@code font::width}, refreshed in {@link #init()} — the layout's only input. */
     private TextMetrics metrics;
+    /** Deadline of the "value was clamped" border flash (see {@link #render}). */
+    private long clampFlashUntil;
 
     public QuantityPopupScreen(ItemStack stack) {
         super(Component.translatable(KEY_TITLE));
@@ -101,7 +106,9 @@ public class QuantityPopupScreen extends Screen {
                 centerX - FIELD_WIDTH / 2, top + FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT,
                 Component.translatable(KEY_FIELD));
         this.amountField.setValue(Long.toString(this.amount));
-        this.amountField.setMaxLength(6);
+        // The field must accept exactly the digits of the configured ceiling,
+        // so input is never cut before the clamping logic gets to react.
+        this.amountField.setMaxLength(Long.toString(Config.maxAmount()).length());
         this.amountField.setFilter(text -> text.isEmpty() || text.matches("\\d+"));
         this.amountField.setResponder(this::onFieldChanged);
         addWidget(this.amountField);
@@ -137,7 +144,10 @@ public class QuantityPopupScreen extends Screen {
     }
 
     private Button stepper(String label, int x, int y, long delta) {
-        return Button.builder(Component.literal(label), button -> step(delta))
+        // Shift multiplies the step by 10, matching the wheel behaviour the
+        // hint promises (±1, Shift — ±10).
+        return Button.builder(Component.literal(label),
+                button -> step(hasShiftDown() ? delta * 10 : delta))
                 .bounds(x, y, STEP_WIDTH, STEP_HEIGHT)
                 .build();
     }
@@ -147,7 +157,8 @@ public class QuantityPopupScreen extends Screen {
             return;
         }
         try {
-            this.amount = Math.max(1, Math.min(MAX_AMOUNT, Long.parseLong(value)));
+            long parsed = Long.parseLong(value);
+            this.amount = clamp(parsed);
         } catch (NumberFormatException ignored) {
             // filter allows digits only; keep the previous value
         }
@@ -158,14 +169,24 @@ public class QuantityPopupScreen extends Screen {
     }
 
     private void setAmount(long value) {
-        this.amount = Math.max(1, Math.min(MAX_AMOUNT, value));
+        this.amount = clamp(value);
         if (this.amountField != null) {
             this.amountField.setValue(Long.toString(this.amount));
         }
     }
 
+    /** Clamps to {@code [1, quantity.maxAmount]} and flashes the field when the ceiling was hit. */
+    private long clamp(long value) {
+        long max = Config.maxAmount();
+        if (value > max) {
+            this.clampFlashUntil = System.currentTimeMillis() + FLASH_DURATION_MS;
+            return max;
+        }
+        return Math.max(1, value);
+    }
+
     private void confirm() {
-        long requested = Math.max(1, Math.min(MAX_AMOUNT, this.amount));
+        long requested = clamp(this.amount);
         PlannerState.add(this.stack, requested);
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
@@ -214,12 +235,36 @@ public class QuantityPopupScreen extends Screen {
         super.render(graphics, mouseX, mouseY, partialTick);
 
         this.amountField.render(graphics, mouseX, mouseY, partialTick);
+        drawClampFlash(graphics);
 
         for (int i = 0; i < l.hintLines.size(); i++) {
             graphics.drawCenteredString(font,
                     RecipeListLayout.trimToWidth(m, l.hintLines.get(i), innerW),
                     centerX, top + HINT_Y + i * RecipeListLayout.LINE_H, MUTED);
         }
+    }
+
+    /**
+     * Blinking border around the amount field after a value was clamped to
+     * {@code quantity.maxAmount}, so the ceiling is visible instead of the
+     * number silently "bouncing back".
+     */
+    private void drawClampFlash(GuiGraphics graphics) {
+        long now = System.currentTimeMillis();
+        if (now >= this.clampFlashUntil) {
+            return;
+        }
+        if ((now / FLASH_PERIOD_MS) % 2 != 0) {
+            return; // blink: alternate between lit and dark frames
+        }
+        int x1 = this.amountField.getX() - 1;
+        int y1 = this.amountField.getY() - 1;
+        int x2 = this.amountField.getX() + this.amountField.getWidth() + 1;
+        int y2 = this.amountField.getY() + this.amountField.getHeight() + 1;
+        graphics.fill(x1, y1, x2, y1 + 1, CLAMP_FLASH);
+        graphics.fill(x1, y2 - 1, x2, y2, CLAMP_FLASH);
+        graphics.fill(x1, y1, x1 + 1, y2, CLAMP_FLASH);
+        graphics.fill(x2 - 1, y1, x2, y2, CLAMP_FLASH);
     }
 
     @Override

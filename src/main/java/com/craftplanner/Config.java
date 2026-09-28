@@ -53,6 +53,12 @@ public final class Config {
                     "too wide for the screen is scaled down further instead of being clipped.")
             .defineInRange("overlay.scale", 0.23, 0.1, 1.0);
 
+    private static final ModConfigSpec.IntValue MAX_AMOUNT = BUILDER
+            .comment("Maximum amount a single planned recipe can request. The quantity popup",
+                    "clamps input to this value and flashes the field when the limit is hit.",
+                    "Large automation packs may need more than the default 1 000 000.")
+            .defineInRange("quantity.maxAmount", 1_000_000, 1, Integer.MAX_VALUE);
+
     private static final ModConfigSpec.IntValue PARTIAL_THRESHOLD = BUILDER
             .comment("How much of a required item must be in the inventory for it to count as 'partly there' (yellow).",
                     "Below this percentage the item is painted red. 0 keeps the old rule: anything above zero is yellow.")
@@ -95,6 +101,11 @@ public final class Config {
      */
     public static double overlayScale() {
         return OVERLAY_SCALE.get();
+    }
+
+    /** Upper bound for a single planned quantity (quantity popup, steppers). */
+    public static long maxAmount() {
+        return MAX_AMOUNT.get().longValue();
     }
 
     /** Percent of the required amount that still counts as "partly available". */
