@@ -4,6 +4,9 @@ import com.craftplanner.client.OverlayState;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.overlay.OverlayPlacement;
 import com.craftplanner.engine.CraftTreeBuilder;
+import com.craftplanner.engine.RecipeIndex;
+import java.util.Arrays;
+import java.util.List;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -34,6 +37,16 @@ public final class Config {
     private static final double OVERLAY_SCALE_MAX = 1.0;
     /** Unset marker of the geometry keys; must match {@code OverlayPlacement.AUTO}. */
     private static final int GEOMETRY_AUTO = -1;
+
+    /**
+     * The ranks {@code recipes.moddedPriority} accepts; must match RecipeIndex's switch.
+     * A mutable list on purpose: while correcting an old config file that lacks the
+     * key, NeoForge calls {@code allowedValues.contains(null)}, and {@code List.of}
+     * throws NPE on that instead of returning false, crashing the whole mod load.
+     */
+    private static final String MODDED_PRIORITY_DEFAULT = "after_vanilla";
+    private static final List<String> MODDED_PRIORITIES =
+            Arrays.asList("after_vanilla", "before_smelting", "first");
 
     private static final ModConfigSpec.IntValue MAX_DEPTH = BUILDER
             .comment("Maximum craft-tree depth. Deeper branches are cut off and their items are treated as raw materials.")
@@ -81,6 +94,30 @@ public final class Config {
     private static final ModConfigSpec.IntValue OVERLAY_HEIGHT = BUILDER
             .defineInRange("overlay.height", GEOMETRY_AUTO, GEOMETRY_AUTO, 32_000);
 
+    private static final ModConfigSpec.BooleanValue OVERLAY_BADGES = BUILDER
+            .comment("Mark the rows of the tree that can be crafted in more than one way with a",
+                    "'used / total' badge, and let the player click it (in the layout editor or the",
+                    "K window) to choose. Switching this off leaves the tree as it was: the engine",
+                    "still picks the preferred recipe, there is just no affordance to change it.")
+            .define("overlay.badges", true);
+
+    private static final ModConfigSpec.BooleanValue INDEX_MODDED = BUILDER
+            .comment("Plan recipes of modded machines, not only the vanilla crafting table,",
+                    "furnace, stonecutter and smithing table. A modded recipe enters the plan when",
+                    "it has an item output and readable item inputs; types that keep their inputs",
+                    "in private fields produce nothing and stay out, so their items remain raw",
+                    "materials. Only item inputs are counted: energy, fluids and processing time of",
+                    "a machine are not part of the plan.")
+            .define("recipes.indexModded", true);
+
+    private static final ModConfigSpec.ConfigValue<String> MODDED_PRIORITY = BUILDER
+            .comment("Where a machine recipe ranks against the vanilla ones for the same item:",
+                    "'after_vanilla' (default) keeps the hand crafting table first and shows the",
+                    "machine as an alternative; 'before_smelting' puts machines ahead of the",
+                    "furnace group; 'first' lets a machine recipe outrank everything. Changing this",
+                    "rebuilds the recipe index, so the tree re-expands on the next tick.")
+            .defineInList("recipes.moddedPriority", MODDED_PRIORITY_DEFAULT, MODDED_PRIORITIES);
+
     private static final ModConfigSpec.IntValue MAX_AMOUNT = BUILDER
             .comment("Maximum amount a single planned recipe can request. The quantity popup",
                     "clamps input to this value and flashes the field when the limit is hit.",
@@ -121,6 +158,21 @@ public final class Config {
     /** Layout of the overlay: {@code "tree"} (nested list) or {@code "graph"} (node-link). */
     public static String overlayMode() {
         return OVERLAY_MODE.get();
+    }
+
+    /** Whether the tree marks items that have more than one recipe. */
+    public static boolean badgesEnabled() {
+        return OVERLAY_BADGES.get();
+    }
+
+    /** Whether recipes of modded machine types are planned at all. */
+    public static boolean indexModdedRecipes() {
+        return INDEX_MODDED.get();
+    }
+
+    /** Rank of a machine recipe against the vanilla ones: see {@code MODDED_PRIORITIES}. */
+    public static String moddedPriority() {
+        return MODDED_PRIORITY.get();
     }
 
     /**
@@ -197,6 +249,10 @@ public final class Config {
         // The file carries the panel geometry: re-read it so an external edit
         // wins over what the player dragged in the layout editor.
         OverlayPlacement.reloadFromConfig();
+        // Which recipe types are indexable, and in what order, is decided while
+        // the index is built — the cached one has to go, or the change would
+        // only apply on the next world load.
+        RecipeIndex.invalidateCache();
         // An edited file wins over whatever the player toggled in the K window.
         PlannerState.resetHideOresOverride();
         // Depth/node limits changed: the existing tree may have been cut off.

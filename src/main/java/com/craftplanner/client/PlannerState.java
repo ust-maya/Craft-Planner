@@ -37,6 +37,13 @@ public final class PlannerState {
      */
     private static final Map<ItemKey, ResourceLocation> PREFERENCES = new HashMap<>();
     /**
+     * Whether {@link RecipeChoices} has been merged into {@link #PREFERENCES}.
+     * Loaded on the first rebuild rather than at mod construction: at that point
+     * the item registry still does not know about the items of the other mods,
+     * and every saved choice would read as "item no longer exists".
+     */
+    private static boolean choicesLoaded;
+    /**
      * Runtime switch for {@code filters.hideOres}. {@code null} means "follow
      * the config"; the K window sets it so the player can flip the filter
      * without restarting the game.
@@ -107,8 +114,10 @@ public final class PlannerState {
     public static void remove(ItemKey key) {
         LOCK.lock();
         try {
+            ensureChoicesLoaded();
             GRAPH.removeRoot(key);
             PREFERENCES.remove(key);
+            RecipeChoices.write(PREFERENCES);
             rebuild();
         } finally {
             LOCK.unlock();
@@ -118,8 +127,10 @@ public final class PlannerState {
     public static void clear() {
         LOCK.lock();
         try {
+            ensureChoicesLoaded();
             GRAPH.clear();
             PREFERENCES.clear();
+            RecipeChoices.write(PREFERENCES);
             rebuild();
         } finally {
             LOCK.unlock();
@@ -142,11 +153,15 @@ public final class PlannerState {
     public static void selectRecipe(ItemKey key, RecipeHolder<?> recipe) {
         LOCK.lock();
         try {
+            ensureChoicesLoaded();
             if (recipe == null) {
                 PREFERENCES.remove(key);
             } else {
                 PREFERENCES.put(key, recipe.id());
             }
+            // The choice is the one piece of the plan the player expects to still
+            // be there after a restart, so it is written down as it is made.
+            RecipeChoices.write(PREFERENCES);
             pendingRebuildAt = System.currentTimeMillis() + REBUILD_DEBOUNCE_MS;
         } finally {
             LOCK.unlock();
@@ -210,6 +225,7 @@ public final class PlannerState {
         LOCK.lock();
         try {
             pendingRebuildAt = 0L;
+            ensureChoicesLoaded();
             Minecraft mc = Minecraft.getInstance();
             CraftTreeBuilder.rebuild(GRAPH, mc.level, PREFERENCES, hideOres());
             graphVersion++;
@@ -217,6 +233,18 @@ public final class PlannerState {
         } finally {
             LOCK.unlock();
         }
+    }
+
+    /**
+     * Merges the saved recipe choices once, before a tree is ever expanded
+     * against them.
+     */
+    private static void ensureChoicesLoaded() {
+        if (choicesLoaded) {
+            return;
+        }
+        choicesLoaded = true;
+        PREFERENCES.putAll(RecipeChoices.read());
     }
 
     /**

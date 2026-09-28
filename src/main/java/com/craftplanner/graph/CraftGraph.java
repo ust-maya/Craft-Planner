@@ -62,6 +62,38 @@ public final class CraftGraph {
         }
     }
 
+    /**
+     * The first node of the plan producing {@code item}, or {@code null}.
+     *
+     * <p>Recipe choices are keyed by item, so every node carrying this item
+     * offers the same alternatives and any one of them answers the question. A
+     * caller that has to keep asking after a rebuild — the recipe picker does —
+     * looks the node up again instead of holding a reference: the engine
+     * re-expands the tree in place and recreates the child nodes.</p>
+     */
+    public RecipeNode nodeFor(ItemKey item) {
+        for (RecipeNode root : roots) {
+            RecipeNode found = find(root, item);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    private static RecipeNode find(RecipeNode node, ItemKey item) {
+        if (node.item().equals(item)) {
+            return node;
+        }
+        for (RecipeEdge edge : node.children()) {
+            RecipeNode found = find(edge.child(), item);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
+    }
+
     private void visit(RecipeNode node, Consumer<RecipeNode> action) {
         action.accept(node);
         for (RecipeEdge edge : node.children()) {

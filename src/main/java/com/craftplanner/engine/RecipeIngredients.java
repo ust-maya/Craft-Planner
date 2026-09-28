@@ -32,10 +32,12 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The class is a registry, not a per-instance object: providers are keyed by
  * {@link RecipeType} and the resolver is stateless, so it needs no injection.
- * {@link #register} is the extension point for modded recipe types — a type
- * with a registered provider also counts as supported by
- * {@link RecipeIndex#isSupported}, which keeps "the planner indexes this type"
- * and "the planner knows how to read its inputs" from drifting apart.</p>
+ * {@link #register} is the extension point for a recipe type whose inputs are
+ * <em>not</em> reachable through {@link Recipe#getIngredients()} — the vanilla
+ * smithing table being the example. While {@code recipes.indexModded} is on
+ * (the default) a modded type does not need a provider to be planned: it is
+ * indexed whenever its inputs read as non-empty, and this class is what reads
+ * them.</p>
  */
 public final class RecipeIngredients {
 
@@ -66,17 +68,13 @@ public final class RecipeIngredients {
     }
 
     /**
-     * Registers how the inputs of {@code type} are read. Registering a type also
-     * makes {@link RecipeIndex#isSupported} accept it, so a modded recipe type
-     * becomes plannable with this single call.
+     * Registers how the inputs of {@code type} are read. Without a provider the
+     * type is read through {@link Recipe#getIngredients()}, which is enough for
+     * most machine recipes; this is the escape hatch for the ones that keep
+     * their slots in their own fields.
      */
     public static void register(RecipeType<?> type, Provider provider) {
         PROVIDERS.put(type, provider);
-    }
-
-    /** True when the inputs of {@code type} need a provider to be readable. */
-    public static boolean hasProvider(RecipeType<?> type) {
-        return PROVIDERS.containsKey(type);
     }
 
     /**

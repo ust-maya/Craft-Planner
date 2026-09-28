@@ -137,20 +137,20 @@ public class RecipeListScreen extends Screen {
             int y = top + RecipeListLayout.HEADER + i * RecipeListLayout.ROW_HEIGHT + 2;
 
             addRenderableWidget(recipeButton(node, right + l.recipeX, y));
-            addRenderableWidget(fitButton(right + l.minusX, y, l.minusW, RecipeListLayout.BUTTON_H,
+            addRenderableWidget(FitButton.create(right + l.minusX, y, l.minusW, RecipeListLayout.BUTTON_H,
                     Component.literal("-"), button -> change(node, -1),
                     Component.translatable("screen.craftplanner.list.decrease")));
-            addRenderableWidget(fitButton(right + l.plusX, y, l.plusW, RecipeListLayout.BUTTON_H,
+            addRenderableWidget(FitButton.create(right + l.plusX, y, l.plusW, RecipeListLayout.BUTTON_H,
                     Component.literal("+"), button -> change(node, 1),
                     Component.translatable("screen.craftplanner.list.increase")));
-            addRenderableWidget(fitButton(right + l.removeX, y, l.removeW, RecipeListLayout.BUTTON_H,
+            addRenderableWidget(FitButton.create(right + l.removeX, y, l.removeW, RecipeListLayout.BUTTON_H,
                     Component.literal("x"), button -> remove(node),
                     Component.translatable("screen.craftplanner.list.remove.tooltip")));
         }
 
         int footerY = footerTop() + l.buttonsY;
         if (!this.roots.isEmpty()) {
-            addRenderableWidget(fitButton(left + l.clearX, footerY, l.clearW, RecipeListLayout.BUTTON_H,
+            addRenderableWidget(FitButton.create(left + l.clearX, footerY, l.clearW, RecipeListLayout.BUTTON_H,
                     Component.translatable(KEY_CLEAR),
                     button -> {
                         PlannerState.clear();
@@ -158,13 +158,13 @@ public class RecipeListScreen extends Screen {
                     },
                     Component.translatable("screen.craftplanner.list.clear.tooltip")));
         }
-        addRenderableWidget(fitButton(left + l.closeX, footerY, l.closeW, RecipeListLayout.BUTTON_H,
+        addRenderableWidget(FitButton.create(left + l.closeX, footerY, l.closeW, RecipeListLayout.BUTTON_H,
                 Component.translatable(KEY_CLOSE),
                 button -> onClose(), null));
 
         // Ore filter switch: sits between the two buttons and stays available
         // even with an empty list, because it changes the tree, not the list.
-        addRenderableWidget(fitButton(left + l.oresX, footerY, l.oresW, RecipeListLayout.BUTTON_H,
+        addRenderableWidget(FitButton.create(left + l.oresX, footerY, l.oresW, RecipeListLayout.BUTTON_H,
                 oresLabel(),
                 button -> {
                     PlannerState.toggleHideOres();
@@ -185,12 +185,11 @@ public class RecipeListScreen extends Screen {
     }
 
     /**
-     * "2/3 ▾" button (Stage 6): cycles the recipes that produce the row's item.
-     * Inactive when the item has a single recipe; the chevron marks the rows
-     * where clicking actually does something, so the clickable area is visible
-     * before the first click. The tooltip only reports the position in that
-     * list, so the recipe itself is identified by its effect on the tree
-     * rather than by name.
+     * "2/3 ▾" button (Stage 6): the row's item is produced by {@code 3} recipes
+     * and {@code 2} of them is in use. Inactive when there is only one way, and
+     * the chevron says the rest. Clicking opens {@link RecipePickerScreen}, which
+     * names every option — cycling them blindly left the player choosing an index
+     * without ever seeing what the index was.
      */
     private Button recipeButton(RecipeNode node, int x, int y) {
         List<RecipeHolder<?>> options = node.options();
@@ -198,22 +197,13 @@ public class RecipeListScreen extends Screen {
         int index = total == 0 ? 0 : Math.min(node.selectedRecipeIndex(), total - 1);
         String counter = total > 0 ? (index + 1) + "/" + total : "-";
 
-        FitButton button = fitButton(x, y, this.layout.recipeW, RecipeListLayout.BUTTON_H,
+        Button button = FitButton.create(x, y, this.layout.recipeW, RecipeListLayout.BUTTON_H,
                 Component.literal(total > 1 ? counter + " ▾" : counter),
-                pressed -> cycleRecipe(node),
-                Component.translatable("screen.craftplanner.list.recipe.tooltip", index + 1, total));
+                pressed -> this.minecraft.setScreen(new RecipePickerScreen(node.item(), this)),
+                Component.translatable("screen.craftplanner.list.recipe.tooltip",
+                        index + 1, total));
         button.active = total > 1;
         return button;
-    }
-
-    private void cycleRecipe(RecipeNode node) {
-        List<RecipeHolder<?>> options = node.options();
-        if (options.size() < 2) {
-            return;
-        }
-        int current = Math.min(node.selectedRecipeIndex(), options.size() - 1);
-        PlannerState.selectRecipe(node.item(), options.get((current + 1) % options.size()));
-        refresh();
     }
 
     private void change(RecipeNode node, int direction) {
@@ -348,39 +338,6 @@ public class RecipeListScreen extends Screen {
         return Component.translatable(key).getString();
     }
 
-    private static FitButton fitButton(int x, int y, int width, int height, Component label,
-            Button.OnPress onPress, Component tooltip) {
-        FitButton button = new FitButton(x, y, width, height, label, onPress);
-        if (tooltip != null) {
-            button.setTooltip(Tooltip.create(tooltip));
-        }
-        return button;
-    }
-
-    /**
-     * Vanilla button that trims its own label instead of scrolling it.
-     *
-     * <p>{@code AbstractButton} keeps an over-long label inside the widget with
-     * a scissor and animates it back and forth, which on a dense panel reads as
-     * "the text does not fit". Cutting the label with an ellipsis first makes
-     * the guarantee explicit: whatever width the layout ends up handing out, no
-     * label can leave its button.</p>
-     */
-    private static final class FitButton extends Button {
-
-        private FitButton(int x, int y, int width, int height, Component label, Button.OnPress onPress) {
-            super(x, y, width, height, label, onPress, DEFAULT_NARRATION);
-        }
-
-        @Override
-        public void renderString(GuiGraphics graphics, Font font, int color) {
-            String label = RecipeListLayout.trimToWidth(font::width, this.getMessage().getString(),
-                    this.getWidth() - 4);
-            graphics.drawCenteredString(font, label, this.getX() + this.getWidth() / 2,
-                    this.getY() + (this.getHeight() - RecipeListLayout.LINE_H) / 2 + 1, color);
-        }
-    }
-
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         // Intentionally empty: the vanilla blurred background would be drawn on
@@ -389,14 +346,22 @@ public class RecipeListScreen extends Screen {
 
     /**
      * The tree panel behind this window stays usable: its − / + markers fold a
-     * branch, because this is one of the two screens that own the mouse. Clicks
-     * inside this window's own panel are left to its widgets.
+     * branch and its badges open the recipe picker, because this is one of the
+     * two screens that own the mouse. Clicks inside this window's own panel are
+     * left to its widgets.
      */
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.layout != null
                 && !overPanel((int) mouseX, (int) mouseY)) {
-            String fold = TreeOverlayRenderer.hitFold((int) mouseX, (int) mouseY);
+            int mx = (int) mouseX;
+            int my = (int) mouseY;
+            RecipeNode choice = TreeOverlayRenderer.hitChoice(mx, my);
+            if (choice != null) {
+                this.minecraft.setScreen(new RecipePickerScreen(choice.item(), this));
+                return true;
+            }
+            String fold = TreeOverlayRenderer.hitFold(mx, my);
             if (fold != null) {
                 TreeCollapse.toggle(fold);
                 return true;

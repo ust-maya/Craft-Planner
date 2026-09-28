@@ -5,6 +5,7 @@ import com.craftplanner.Constants;
 import com.craftplanner.client.Keybinds;
 import com.craftplanner.client.OverlayState;
 import com.craftplanner.client.PlannerState;
+import com.craftplanner.client.RecipeLabel;
 import com.craftplanner.client.layout.PlacedNode;
 import com.craftplanner.client.layout.TreeLayout;
 import com.craftplanner.client.resource.Availability;
@@ -164,6 +165,19 @@ public final class TreeOverlayRenderer {
      * editor and the recipe list — ask this list what was clicked.
      */
     private static final List<FoldHit> foldHits = new ArrayList<>();
+    /**
+     * Screen rectangles of the "this item has several recipes" badges, same
+     * mechanism as {@link #foldHits}: the click is delivered by whichever screen
+     * currently owns the cursor.
+     */
+    private static final List<ChoiceHit> choiceHits = new ArrayList<>();
+
+    /** A clickable badge: the item whose recipe is chosen, and where it was drawn. */
+    private record ChoiceHit(RecipeNode node, int x, int y, int w, int h) {
+        boolean contains(int mx, int my) {
+            return mx >= x && mx <= x + w && my >= y && my <= y + h;
+        }
+    }
 
     /** A clickable fold marker: the branch it folds and where it was drawn. */
     private record FoldHit(String path, int x, int y, int size) {
@@ -180,6 +194,22 @@ public final class TreeOverlayRenderer {
         for (FoldHit hit : foldHits) {
             if (hit.contains(mx, my)) {
                 return hit.path;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The node whose badge is under {@code (mx, my)}, or {@code null}. The badge
+     * marks an item that more than one recipe produces, and the returned node is
+     * what the picker screen needs to list them — the node itself, because a
+     * badge only ever exists for a row that was drawn this frame.
+     */
+    public static RecipeNode hitChoice(int mx, int my) {
+        for (int i = choiceHits.size() - 1; i >= 0; i--) {
+            ChoiceHit hit = choiceHits.get(i);
+            if (hit.contains(mx, my)) {
+                return hit.node();
             }
         }
         return null;
@@ -254,6 +284,10 @@ public final class TreeOverlayRenderer {
         final String path;
         /** Index of the planned item this row belongs to — colours its lines. */
         final int branch;
+        /** Recipes that produce this item; more than one makes the badge appear. */
+        final int options;
+        /** 1-based position of the chosen recipe among {@link #options}. */
+        final int selected;
         /** Row index of the last *direct* child (for the vertical spine). */
         int lastChildIndex;
         /** Rows hidden because this branch is folded; 0 when expanded. */
@@ -265,6 +299,10 @@ public final class TreeOverlayRenderer {
             this.last = last;
             this.path = path;
             this.branch = branch;
+            // Counted from the parts rather than through node.options(), which
+            // copies the whole list: this runs for every row of every frame.
+            this.options = node.recipe() == null ? 0 : node.alternatives().size() + 1;
+            this.selected = node.selectedRecipeIndex() + 1;
             this.lastChildIndex = -1;
         }
 
@@ -386,6 +424,7 @@ public final class TreeOverlayRenderer {
         List<Row> rows = new ArrayList<>();
         List<RecipeNode> roots = graph.roots();
         foldHits.clear();
+        choiceHits.clear();
         for (int i = 0; i < roots.size(); i++) {
             buildRows(roots.get(i), 0, i == roots.size() - 1, null, i, rows);
         }
@@ -404,10 +443,14 @@ public final class TreeOverlayRenderer {
         int pinW = OverlayPlacement.w();
         int pinH = OverlayPlacement.h();
 
-        // Widest row decides the panel width (in layout pixels).
+        // Widest row decides the panel width (in layout pixels). The badge has to
+        // be counted here too: it is drawn after the label, and a row measured
+        // without it would have the badge cut off by the panel edge.
         int maxRowW = 0;
         for (Row r : rows) {
-            int w = iconX(r.depth) + ICON + TEXT_GAP + font.width(rowLabel(r)) + 4;
+            String badge = badgeText(r);
+            int w = iconX(r.depth) + ICON + TEXT_GAP + font.width(rowLabel(r)) + 4
+                    + (badge == null ? 0 : 4 + font.width(badge));
             maxRowW = Math.max(maxRowW, w);
         }
         // The footer sets a floor for the width: the shopping list wraps, but
@@ -548,16 +591,36 @@ public final class TreeOverlayRenderer {
             }
 
             String text = rowLabel(row);
-            int room = labelRoom - textX;
-            if (room > 0 && font.width(text) > room) {
+            String badge = badgeText(row);
+            // The badge keeps its room even when nothing is left for the label: a
+            // cut-off "how many ways are there" is the information the player is
+            // shortest of, and a row that cannot fit both shows the badge alone.
+            int room = labelRoom - textX - (badge == null ? 0 : 4 + font.width(badge));
+            if (room <= 0) {
+                text = "";
+            } else if (font.width(text) > room) {
                 text = trimToWidth(font, text, room);
             }
             int color = NodeColors.forNode(row.node, availability);
-            graphics.drawString(font, text, textX, yTop + (ROW_H - font.lineHeight) / 2, color, false);
+            int textY = yTop + (ROW_H - font.lineHeight) / 2;
+            graphics.drawString(font, text, textX, textY, color, false);
+
+            if (badge != null) {
+                int badgeX = textX + font.width(text) + 4;
+                graphics.drawString(font, badge, badgeX, textY,
+                        NodeColors.branch(row.branch), false);
+                choiceHits.add(new ChoiceHit(row.node,
+                        contentLeft + Math.round(badgeX * scale),
+                        contentTop + Math.round(textY * scale),
+                        Math.max(6, Math.round(font.width(badge) * scale)),
+                        Math.max(6, Math.round(font.lineHeight * scale))));
+            }
         }
 
         pose.popPose();
         graphics.disableScissor();
+
+        showChoiceTooltip(graphics, mc, font);
 
         // Footer: own scaled pose, clipped to the panel, so neither the icons
         // nor the numbers can ever spill into the game view.
@@ -594,6 +657,17 @@ public final class TreeOverlayRenderer {
         return row.hiddenRows > 0
                 ? label(row.node) + " (+" + row.hiddenRows + ")"
                 : label(row.node);
+    }
+
+    /**
+     * The {@code used / total ▾} badge of a row — its way of saying "this item
+     * can be made differently" and showing which way is picked — or {@code null}
+     * when the item has a single recipe or the badges are switched off.
+     */
+    private static String badgeText(Row row) {
+        return Config.badgesEnabled() && row.options > 1
+                ? row.selected + "/" + row.options + " ▾"
+                : null;
     }
 
     /**
@@ -839,6 +913,33 @@ public final class TreeOverlayRenderer {
         graphics.renderTooltip(font, lines, Optional.empty(), mx, my);
     }
 
+    /**
+     * Hover feedback for a {@code 2/3 ▾} badge: the number alone does not say
+     * which recipe is in use or what the others would ask for, so the tooltip
+     * names the machine, the mod and the ingredients.
+     *
+     * <p>Drawn only while one of the planner's screens is open: with no screen
+     * the game grabs the cursor and pins it to the centre of the window, and the
+     * tooltip would follow a pointer the player cannot see or move.</p>
+     */
+    private static void showChoiceTooltip(GuiGraphics graphics, Minecraft mc, Font font) {
+        if (mc.screen == null || choiceHits.isEmpty() || mc.level == null) {
+            return;
+        }
+        int mx = mouseX(mc);
+        int my = mouseY(mc);
+        RecipeNode node = hitChoice(mx, my);
+        if (node == null || node.recipe() == null) {
+            return;
+        }
+        List<Component> lines = new ArrayList<>(
+                RecipeLabel.describe(node.recipe(), mc.level.registryAccess()));
+        lines.add(0, Component.translatable("overlay.craftplanner.choice.tooltip",
+                Integer.toString(node.selectedRecipeIndex() + 1),
+                Integer.toString(node.alternatives().size() + 1)));
+        graphics.renderTooltip(font, lines, Optional.empty(), mx, my);
+    }
+
     private static void drawBorder(GuiGraphics graphics, int left, int top, int w, int h) {
         graphics.fill(left, top, left + w, top + 1, PANEL_BORDER);
         graphics.fill(left, top + h - 1, left + w, top + h, PANEL_BORDER);
@@ -942,6 +1043,7 @@ public final class TreeOverlayRenderer {
         // The node-link view has no fold markers; leave no clickable boxes of a
         // previous tree frame behind.
         foldHits.clear();
+        choiceHits.clear();
         TreeLayout layout = layoutFor(graph);
         if (layout.isEmpty()) {
             return;

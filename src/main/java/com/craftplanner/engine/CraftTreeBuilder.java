@@ -155,10 +155,11 @@ public final class CraftTreeBuilder {
             chosen = options.get(0);
         }
 
-        // Inputs are read through the type-aware layer, never through
-        // Recipe#getIngredients() directly: smithing recipes hold their slots in
-        // private fields and would come back empty (see RecipeIngredients).
-        NonNullList<Ingredient> ingredients = RecipeIngredients.of(chosen.value());
+        // Inputs are read through the index, which memoised them when it was
+        // built: smithing recipes keep their slots in private fields, machine
+        // recipes rebuild their list on every call, and neither must be parsed
+        // again per candidate per node — see RecipeIngredients and RecipeIndex.
+        NonNullList<Ingredient> ingredients = index.inputsOf(chosen);
 
         // A recipe the engine cannot read must not be recorded at all. Writing it
         // onto the node would leave the list screen offering a recipe button for a
@@ -331,7 +332,7 @@ public final class CraftTreeBuilder {
      * the filter is off.
      */
     private boolean hasVisibleIngredient(RecipeHolder<?> recipe) {
-        for (Ingredient ingredient : RecipeIngredients.of(recipe.value())) {
+        for (Ingredient ingredient : index.inputsOf(recipe)) {
             ItemKey key = IngredientUtil.representativeKey(ingredient);
             if (key != null && !filter.hides(key)) {
                 return true;
@@ -347,7 +348,7 @@ public final class CraftTreeBuilder {
      * {@code coal <-> coal_block} or {@code hay_block <-> wheat}.
      */
     private boolean reversesPackPair(RecipeHolder<?> recipe, ItemKey current) {
-        for (Ingredient ingredient : RecipeIngredients.of(recipe.value())) {
+        for (Ingredient ingredient : index.inputsOf(recipe)) {
             ItemKey ingredientKey = IngredientUtil.representativeKey(ingredient);
             if (ingredientKey == null) {
                 continue;
@@ -365,8 +366,8 @@ public final class CraftTreeBuilder {
     }
 
     /** True when one of {@code recipe}'s ingredients is exactly {@code item}. */
-    private static boolean consumes(RecipeHolder<?> recipe, ItemKey item) {
-        for (Ingredient ingredient : RecipeIngredients.of(recipe.value())) {
+    private boolean consumes(RecipeHolder<?> recipe, ItemKey item) {
+        for (Ingredient ingredient : index.inputsOf(recipe)) {
             ItemKey key = IngredientUtil.representativeKey(ingredient);
             if (key != null && key.equals(item)) {
                 return true;
@@ -376,11 +377,11 @@ public final class CraftTreeBuilder {
     }
 
     /** True when one of {@code recipe}'s ingredients is already on the path. */
-    private static boolean consumesPathItem(RecipeHolder<?> recipe, Set<ItemKey> path) {
+    private boolean consumesPathItem(RecipeHolder<?> recipe, Set<ItemKey> path) {
         if (path.isEmpty()) {
             return false;
         }
-        for (Ingredient ingredient : RecipeIngredients.of(recipe.value())) {
+        for (Ingredient ingredient : index.inputsOf(recipe)) {
             ItemKey key = IngredientUtil.representativeKey(ingredient);
             if (key != null && path.contains(key)) {
                 return true;
@@ -405,7 +406,7 @@ public final class CraftTreeBuilder {
             return false;
         }
         int inputs = 0;
-        for (Ingredient ingredient : RecipeIngredients.of(recipe.value())) {
+        for (Ingredient ingredient : index.inputsOf(recipe)) {
             if (IngredientUtil.isEmpty(ingredient)) {
                 continue;
             }

@@ -4,6 +4,7 @@ import com.craftplanner.client.Keybinds;
 import com.craftplanner.client.overlay.OverlayPlacement;
 import com.craftplanner.client.overlay.TreeCollapse;
 import com.craftplanner.client.overlay.TreeOverlayRenderer;
+import com.craftplanner.graph.RecipeNode;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -63,8 +64,14 @@ public final class OverlayLayoutScreen extends Screen {
         }
         int mx = (int) mouseX;
         int my = (int) mouseY;
-        // The panel drawn behind this screen keeps its fold markers clickable —
-        // arranging a huge tree without collapsing branches would be pointless.
+        // The panel drawn behind this screen keeps its affordances clickable:
+        // a badge opens the recipe picker, a marker folds the branch. Both are
+        // HUD geometry, so the hit boxes come from the renderer.
+        RecipeNode choice = TreeOverlayRenderer.hitChoice(mx, my);
+        if (choice != null) {
+            this.minecraft.setScreen(new RecipePickerScreen(choice.item(), this));
+            return true;
+        }
         String fold = TreeOverlayRenderer.hitFold(mx, my);
         if (fold != null) {
             TreeCollapse.toggle(fold);
