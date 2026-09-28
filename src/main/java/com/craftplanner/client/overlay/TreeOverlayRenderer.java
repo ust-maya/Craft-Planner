@@ -74,6 +74,15 @@ import net.neoforged.neoforge.client.event.RenderGuiEvent;
  * {@link OverlayPlacement} and the client config. A pinned panel then keeps the
  * text size it was given and clips its content, because the player has already
  * answered "it does not fit" by making the window larger.</p>
+ *
+ * <p>A machine pack's tree can be a hundred rows deep, so every row that has
+ * children carries a − / + marker that folds its branch away
+ * ({@link TreeCollapse}). Markers are drawn by the HUD but clicked through a
+ * screen — the editor above or the {@code K} list — because only there does the
+ * player have a cursor. Folding is a view decision: the hidden rows still count
+ * in the shopping list and the totals. Connector lines take one colour per
+ * planned item ({@link NodeColors#branch}) so a nested sub-assembly can be
+ * followed back to the goal it belongs to.</p>
  */
 @EventBusSubscriber(modid = Constants.MODID, value = Dist.CLIENT)
 public final class TreeOverlayRenderer {
@@ -86,6 +95,14 @@ public final class TreeOverlayRenderer {
     private static final int INDENT = 14;
     /** Left offset of the first icon; the rest is depth × {@link #INDENT}. */
     private static final int ICON_PAD = 2;
+    /**
+     * Gap between a row's icon and its label. Wide enough to hold the fold
+     * marker, and reserved whether or not the marker is drawn, so opening a
+     * screen never changes the panel width.
+     */
+    private static final int TEXT_GAP = 12;
+    /** Side of the fold marker box, in layout pixels. */
+    private static final int MARK = 9;
     /** Gap between the last tree row and the footer block. */
     private static final int FOOTER_GAP = 3;
     /** Gap between two shopping-list entries. */
@@ -119,7 +136,11 @@ public final class TreeOverlayRenderer {
      * the scrollable list (tree) layout instead of squeezing the text further.
      */
     private static final float MIN_READABLE_FIT = 0.6f;
-    private static final int CONNECTOR = NodeColors.EDGE;
+    /** Colours of the fold marker box: subtle when open, amber when folded. */
+    private static final int MARKER_BG = 0x50FFFFFF;
+    private static final int MARKER_FOLDED_BG = 0xC0E0A030;
+    private static final int MARKER_TEXT = NodeColors.TEXT;
+    private static final int MARKER_FOLDED_TEXT = 0xFF1E1200;
     private static final int PANEL_BG = 0xC0101010;
     private static final int PANEL_BORDER = 0x90606060;
     private static final int MUTED = 0x80C8C8C8;
@@ -133,6 +154,33 @@ public final class TreeOverlayRenderer {
      */
     private static TreeLayout cachedLayout;
     private static long cachedLayoutVersion = -1;
+    /**
+     * Screen rectangles of the fold markers drawn last frame, in the same
+     * GUI-scaled pixels the panels are positioned in. The markers live in the
+     * HUD, which has no cursor of its own, so the screens that do — the layout
+     * editor and the recipe list — ask this list what was clicked.
+     */
+    private static final List<FoldHit> foldHits = new ArrayList<>();
+
+    /** A clickable fold marker: the branch it folds and where it was drawn. */
+    private record FoldHit(String path, int x, int y, int size) {
+        boolean contains(int mx, int my) {
+            return mx >= x && mx <= x + size && my >= y && my <= y + size;
+        }
+    }
+
+    /**
+     * Branch key of the fold marker under {@code (mx, my)}, or {@code null} when
+     * the point hits nothing.
+     */
+    public static String hitFold(int mx, int my) {
+        for (FoldHit hit : foldHits) {
+            if (hit.contains(mx, my)) {
+                return hit.path;
+            }
+        }
+        return null;
+    }
 
     private TreeOverlayRenderer() {
     }
@@ -189,25 +237,53 @@ public final class TreeOverlayRenderer {
         final RecipeNode node;
         final int depth;
         final boolean last;
+        /** Fold key of this row, {@code null} when the node has no children. */
+        final String path;
+        /** Index of the planned item this row belongs to — colours its lines. */
+        final int branch;
         /** Row index of the last *direct* child (for the vertical spine). */
         int lastChildIndex;
+        /** Rows hidden because this branch is folded; 0 when expanded. */
+        int hiddenRows;
 
-        Row(RecipeNode node, int depth, boolean last) {
+        Row(RecipeNode node, int depth, boolean last, String path, int branch) {
             this.node = node;
             this.depth = depth;
             this.last = last;
+            this.path = path;
+            this.branch = branch;
             this.lastChildIndex = -1;
+        }
+
+        /** True when the row's own children are drawn below it. */
+        boolean expands(int index) {
+            return lastChildIndex > index;
         }
     }
 
-    private static int buildRows(RecipeNode node, int depth, boolean last, List<Row> out) {
+    /**
+     * Flattens the tree into rows, skipping the children of a folded branch.
+     *
+     * @return the row index the node was drawn at, so the parent can find the
+     *         last row of its children for the spine
+     */
+    private static int buildRows(RecipeNode node, int depth, boolean last, String parentPath,
+            int branch, List<Row> out) {
         int myIndex = out.size();
-        Row row = new Row(node, depth, last);
-        out.add(row);
         List<RecipeEdge> children = node.children();
+        // Only a node with children can be folded, so the allocating path key is
+        // built for exactly the rows that need one.
+        String path = children.isEmpty() ? null : pathOf(parentPath, node);
+        Row row = new Row(node, depth, last, path, branch);
+        out.add(row);
+        if (path != null && TreeCollapse.isFolded(path)) {
+            row.hiddenRows = countRows(children);
+            row.lastChildIndex = myIndex;
+            return myIndex;
+        }
         for (int i = 0; i < children.size(); i++) {
             int childIndex = buildRows(children.get(i).child(), depth + 1,
-                    i == children.size() - 1, out);
+                    i == children.size() - 1, path, branch, out);
             if (i == children.size() - 1) {
                 row.lastChildIndex = childIndex;
             }
@@ -216,6 +292,25 @@ public final class TreeOverlayRenderer {
             row.lastChildIndex = myIndex; // no children: spine not drawn
         }
         return myIndex;
+    }
+
+    /**
+     * Key of a branch: the chain of items leading to it. The engine merges equal
+     * ingredients into one child, so items are unique among siblings and the
+     * chain keeps pointing at the same branch across rebuilds — see
+     * {@link TreeCollapse}.
+     */
+    private static String pathOf(String parentPath, RecipeNode node) {
+        return parentPath == null ? node.item().toString() : parentPath + "/" + node.item();
+    }
+
+    /** Rows a folded branch would draw, children included. */
+    private static int countRows(List<RecipeEdge> children) {
+        int total = 0;
+        for (RecipeEdge edge : children) {
+            total += 1 + countRows(edge.child().children());
+        }
+        return total;
     }
 
     /** Left edge of the icon of a node at {@code depth}. */
@@ -277,8 +372,9 @@ public final class TreeOverlayRenderer {
 
         List<Row> rows = new ArrayList<>();
         List<RecipeNode> roots = graph.roots();
+        foldHits.clear();
         for (int i = 0; i < roots.size(); i++) {
-            buildRows(roots.get(i), 0, i == roots.size() - 1, rows);
+            buildRows(roots.get(i), 0, i == roots.size() - 1, null, i, rows);
         }
         if (rows.isEmpty()) {
             return;
@@ -298,7 +394,7 @@ public final class TreeOverlayRenderer {
         // Widest row decides the panel width (in layout pixels).
         int maxRowW = 0;
         for (Row r : rows) {
-            int w = iconX(r.depth) + ICON + 3 + font.width(label(r.node)) + 4;
+            int w = iconX(r.depth) + ICON + TEXT_GAP + font.width(rowLabel(r)) + 4;
             maxRowW = Math.max(maxRowW, w);
         }
         // The footer sets a floor for the width: the shopping list wraps, but
@@ -380,23 +476,28 @@ public final class TreeOverlayRenderer {
 
         final int originY = 0;
 
-        // Connector lines first (so icons paint on top).
+        // Connector lines first (so icons paint on top). Every planned item gets
+        // its own colour: nested machine recipes cross the panel, and one grey
+        // web makes it impossible to say which sub-assembly belongs to which
+        // goal.
         for (int r = firstVisible; r <= lastVisible; r++) {
             Row row = rows.get(r);
             int yc = rowCenterY(r, treeScroll, originY);
+            int line = NodeColors.branch(row.branch);
 
             // Elbow running from the parent's spine into this row's icon.
             // Roots have no parent, hence no elbow and no stub to their left.
             if (row.depth > 0) {
-                graphics.hLine(spineX(row.depth - 1), iconX(row.depth) - 1, yc, CONNECTOR);
+                graphics.hLine(spineX(row.depth - 1), iconX(row.depth) - 1, yc, line);
             }
 
             // This row's own spine: it starts at the bottom edge of its icon,
-            // so the branch looks like it grows out of the icon.
-            if (!row.node.children().isEmpty()) {
+            // so the branch looks like it grows out of the icon. A folded branch
+            // draws none — there is nothing below it to connect.
+            if (row.expands(r)) {
                 graphics.vLine(spineX(row.depth),
                         iconBottomY(r, treeScroll, originY),
-                        rowCenterY(row.lastChildIndex, treeScroll, originY), CONNECTOR);
+                        rowCenterY(row.lastChildIndex, treeScroll, originY), line);
             }
         }
         // Keep the parent line flowing from the top edge when scrolled.
@@ -404,22 +505,36 @@ public final class TreeOverlayRenderer {
             Row r0 = rows.get(firstVisible);
             if (r0.depth > 0) {
                 graphics.vLine(spineX(r0.depth - 1), originY,
-                        rowCenterY(firstVisible, treeScroll, originY), CONNECTOR);
+                        rowCenterY(firstVisible, treeScroll, originY),
+                        NodeColors.branch(r0.branch));
             }
         }
 
-        // Icons + labels. The panel is sized from the widest row, so the room
-        // left of a label is exactly its own width — no row is ever trimmed.
+        // Icons + fold markers + labels. The panel is sized from the widest row,
+        // so the room left of a label is exactly its own width — no row is ever
+        // trimmed.
         int labelRoom = contentW - 4;
         for (int r = firstVisible; r <= lastVisible; r++) {
             Row row = rows.get(r);
             int yTop = rowTop(r, treeScroll, originY);
             int ix = iconX(row.depth);
-            int textX = ix + ICON + 3;
+            int markerX = ix + ICON + 1;
+            int textX = ix + ICON + TEXT_GAP;
+            int markerY = yTop + (ROW_H - MARK) / 2;
 
             graphics.renderItem(row.node.displayStack(), ix, yTop + (ROW_H - ICON) / 2);
+            if (row.path != null) {
+                boolean folded = row.hiddenRows > 0;
+                drawFoldMarker(graphics, font, markerX, markerY, folded);
+                // Recorded in screen pixels: the markers are HUD geometry, and
+                // the screens that receive clicks think in those.
+                foldHits.add(new FoldHit(row.path,
+                        contentLeft + Math.round(markerX * scale),
+                        contentTop + Math.round(markerY * scale),
+                        Math.max(6, Math.round(MARK * scale))));
+            }
 
-            String text = label(row.node);
+            String text = rowLabel(row);
             int room = labelRoom - textX;
             if (room > 0 && font.width(text) > room) {
                 text = trimToWidth(font, text, room);
@@ -459,6 +574,27 @@ public final class TreeOverlayRenderer {
 
     private static String label(RecipeNode node) {
         return node.item().name().getString() + " ×" + node.required();
+    }
+
+    /** The row label, with the number of rows a folded branch is hiding. */
+    private static String rowLabel(Row row) {
+        return row.hiddenRows > 0
+                ? label(row.node) + " (+" + row.hiddenRows + ")"
+                : label(row.node);
+    }
+
+    /**
+     * The − / + box of a branch that has children. Folded branches are painted
+     * amber so a plan with collapsed parts is obvious at a glance.
+     */
+    private static void drawFoldMarker(GuiGraphics graphics, Font font, int x, int y,
+            boolean folded) {
+        graphics.fill(x, y, x + MARK, y + MARK, folded ? MARKER_FOLDED_BG : MARKER_BG);
+        String glyph = folded ? "+" : "-";
+        int textX = x + (MARK - font.width(glyph)) / 2;
+        int textY = y + (MARK - font.lineHeight) / 2;
+        graphics.drawString(font, glyph, textX, textY,
+                folded ? MARKER_FOLDED_TEXT : MARKER_TEXT, false);
     }
 
     /**
@@ -790,6 +926,9 @@ public final class TreeOverlayRenderer {
     }
 
     private static void renderGraph(RenderGuiEvent.Post event, Minecraft mc, CraftGraph graph) {
+        // The node-link view has no fold markers; leave no clickable boxes of a
+        // previous tree frame behind.
+        foldHits.clear();
         TreeLayout layout = layoutFor(graph);
         if (layout.isEmpty()) {
             return;

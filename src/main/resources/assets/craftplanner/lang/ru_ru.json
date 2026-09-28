@@ -16,7 +16,7 @@
   "overlay.craftplanner.title": "Craft Planner",
   "overlay.craftplanner.keys": "%1$s — добавить · %2$s — показать/скрыть · %3$s — список · %4$s — окно",
   "overlay.craftplanner.keys.short": "%1$s — добавить · %2$s — скрыть · %3$s — список · %4$s — окно",
-  "overlay.craftplanner.edit.hint": "Мышь — двигать · Угол — размер · Колесо — текст %1$s%%",
+  "overlay.craftplanner.edit.hint": "Мышь — двигать · Угол — размер · Колесо — текст %1$s%% · -/+ — свернуть ветку",
   "overlay.craftplanner.edit.hint2": "Клик вне окна или %1$s — сохранить · ПКМ — сброс",
   "overlay.craftplanner.legend.have": "есть",
   "overlay.craftplanner.legend.missing": "нет",

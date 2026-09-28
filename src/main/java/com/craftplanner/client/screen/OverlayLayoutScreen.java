@@ -2,6 +2,8 @@ package com.craftplanner.client.screen;
 
 import com.craftplanner.client.Keybinds;
 import com.craftplanner.client.overlay.OverlayPlacement;
+import com.craftplanner.client.overlay.TreeCollapse;
+import com.craftplanner.client.overlay.TreeOverlayRenderer;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -60,6 +62,13 @@ public final class OverlayLayoutScreen extends Screen {
         }
         int mx = (int) mouseX;
         int my = (int) mouseY;
+        // The panel drawn behind this screen keeps its fold markers clickable —
+        // arranging a huge tree without collapsing branches would be pointless.
+        String fold = TreeOverlayRenderer.hitFold(mx, my);
+        if (fold != null) {
+            TreeCollapse.toggle(fold);
+            return true;
+        }
         if (OverlayPlacement.overGrip(mx, my)) {
             OverlayPlacement.startSize(mx, my);
         } else if (OverlayPlacement.overPanel(mx, my)) {

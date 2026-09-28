@@ -16,7 +16,7 @@
   "overlay.craftplanner.title": "Craft Planner",
   "overlay.craftplanner.keys": "%1$s — add · %2$s — show/hide · %3$s — recipe list · %4$s — window",
   "overlay.craftplanner.keys.short": "%1$s — add · %2$s — hide · %3$s — list · %4$s — window",
-  "overlay.craftplanner.edit.hint": "Drag — move · Corner — size · Wheel — text %1$s%%",
+  "overlay.craftplanner.edit.hint": "Drag — move · Corner — size · Wheel — text %1$s%% · -/+ — fold branch",
   "overlay.craftplanner.edit.hint2": "Click outside or press %1$s — save · Right-click — reset",
   "overlay.craftplanner.legend.have": "have",
   "overlay.craftplanner.legend.missing": "need",

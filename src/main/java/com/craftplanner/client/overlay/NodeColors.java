@@ -28,6 +28,22 @@ public final class NodeColors {
     public static final int EDGE = 0x60FFFFFF;
     public static final int TEXT = 0xFFE0E0E0;
 
+    /**
+     * Colours of the tree connectors, one per planned goal. A machine recipe
+     * from a big pack nests five levels deep and shares its sub-assemblies with
+     * the next goal; one grey web of lines then makes it unreadable, while
+     * cycling a handful of hues lets the eye follow a single branch through the
+     * whole panel. The alpha keeps them behind the item icons.
+     */
+    private static final int[] BRANCH = {
+        0xB05CB8FF, 0xB07BE08A, 0xB0E0C040, 0xB0FF8A5C, 0xB0C77DFF, 0xB04ECDC4
+    };
+
+    /** Connector colour of the {@code rootIndex}-th planned item. */
+    public static int branch(int rootIndex) {
+        return BRANCH[Math.floorMod(rootIndex, BRANCH.length)];
+    }
+
     private NodeColors() {
     }
 
