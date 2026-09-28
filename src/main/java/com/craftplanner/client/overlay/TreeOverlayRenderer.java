@@ -2,6 +2,7 @@ package com.craftplanner.client.overlay;
 
 import com.craftplanner.Config;
 import com.craftplanner.Constants;
+import com.craftplanner.client.Keybinds;
 import com.craftplanner.client.OverlayState;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.layout.PlacedNode;
@@ -15,6 +16,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -102,6 +104,12 @@ public final class TreeOverlayRenderer {
      * up; below this a very narrow window clips instead.
      */
     private static final float MIN_SCALE = 0.08f;
+    /**
+     * Floor for the automatic "shrink to fit" of the graph layout. Below this
+     * the node-link view is unreadably small, and the overlay falls back to
+     * the scrollable list (tree) layout instead of squeezing the text further.
+     */
+    private static final float MIN_READABLE_FIT = 0.6f;
     private static final int CONNECTOR = NodeColors.EDGE;
     private static final int PANEL_BG = 0xC0101010;
     private static final int PANEL_BORDER = 0x90606060;
@@ -109,6 +117,13 @@ public final class TreeOverlayRenderer {
 
     /** Vertical scroll of the tree layout, in rows (tree mode only). */
     private static int treeScroll;
+    /**
+     * Cached node-link layout (graph mode). Recomputing it every frame is
+     * pure waste: the coordinates only change when the tree is rebuilt, so
+     * the cache is keyed by {@link PlannerState#graphVersion()}.
+     */
+    private static TreeLayout cachedLayout;
+    private static long cachedLayoutVersion = -1;
     /** Last drawn panel rectangle, used to hit-test the mouse wheel. */
     private static int lastPanelLeft;
     private static int lastPanelTop;
@@ -260,7 +275,7 @@ public final class TreeOverlayRenderer {
         // the hotkey line is a single line and has to fit — nothing is ever
         // cut or pushed outside the panel.
         int footerMinW = Math.max(widestEntry(availability, font),
-                font.width(Component.translatable("overlay.craftplanner.keys.short")));
+                font.width(keysHint("overlay.craftplanner.keys.short")));
 
         int layoutW = Math.max(maxRowW, footerMinW) + 2 * PADDING;
         float scale = Math.max(MIN_SCALE, Math.min(overlayScale(), (float) availW / layoutW));
@@ -380,6 +395,7 @@ public final class TreeOverlayRenderer {
             drawFooter(graphics, font, footer, contentW);
             pose.popPose();
             graphics.disableScissor();
+            showTailTooltip(graphics, font, footer, mc, left + pad, footerTop, scale);
         }
 
         if (maxScroll > 0) {
@@ -403,16 +419,28 @@ public final class TreeOverlayRenderer {
 
     /**
      * Hotkey hint for the footer: the verbose line when it fits, the short
-     * {@code V — … · K — …} when the panel is narrow, nothing at all when
+     * {@code N — … · V — … · K — …} when the panel is narrow, nothing at all when
      * even that would be cut. The hint is never trimmed mid-word.
      */
     private static Component hotkeyLine(Font font, int contentW) {
-        Component full = Component.translatable("overlay.craftplanner.keys");
+        Component full = keysHint("overlay.craftplanner.keys");
         if (font.width(full) <= contentW) {
             return full;
         }
-        Component brief = Component.translatable("overlay.craftplanner.keys.short");
+        Component brief = keysHint("overlay.craftplanner.keys.short");
         return font.width(brief) <= contentW ? brief : null;
+    }
+
+    /**
+     * A hotkey hint with the <em>current</em> key bindings substituted into its
+     * %1$s/%2$s/%3$s placeholders, so the footer keeps telling the truth after
+     * any rebind in Options → Controls.
+     */
+    private static Component keysHint(String key) {
+        return Component.translatable(key,
+                Keybinds.ADD_RECIPE.getKey().getDisplayName(),
+                Keybinds.TOGGLE_OVERLAY.getKey().getDisplayName(),
+                Keybinds.OPEN_RECIPES.getKey().getDisplayName());
     }
 
     // ---------------------------------------------------------------------
@@ -424,6 +452,16 @@ public final class TreeOverlayRenderer {
         final List<List<Map.Entry<ItemKey, Availability>>> lines = new ArrayList<>();
         /** Materials dropped because {@link #MAX_FOOTER_LINES} was reached. */
         int hidden;
+        /** The dropped materials, as the tooltip content of the {@code +N} marker. */
+        List<Map.Entry<ItemKey, Availability>> hiddenEntries = List.of();
+        /**
+         * Rectangle of the {@code +N} marker in layout pixels, set while the
+         * footer is drawn; {@code tailX < 0} means nothing was drawn.
+         */
+        int tailX = -1;
+        int tailY;
+        int tailW;
+        int tailH;
         /** Null when the hotkey line does not fit — it is never cut. */
         final Component keys;
 
@@ -508,6 +546,7 @@ public final class TreeOverlayRenderer {
                 footer.lines.add(current);
                 if (footer.lines.size() == MAX_FOOTER_LINES) {
                     footer.hidden = entries.size() - index;
+                    footer.hiddenEntries = List.copyOf(entries.subList(index, entries.size()));
                     return;
                 }
                 current = new ArrayList<>();
@@ -528,7 +567,14 @@ public final class TreeOverlayRenderer {
         int y = 0;
         for (int i = 0; i < footer.lines.size(); i++) {
             boolean last = i == footer.lines.size() - 1;
-            drawShoppingLine(graphics, font, footer.lines.get(i), y, last ? footer.hidden : 0);
+            int hidden = last ? footer.hidden : 0;
+            int tailX = drawShoppingLine(graphics, font, footer.lines.get(i), y, hidden);
+            if (tailX >= 0) {
+                footer.tailX = tailX;
+                footer.tailY = y + (ICON - font.lineHeight) / 2 + 1;
+                footer.tailW = font.width("+" + hidden);
+                footer.tailH = font.lineHeight;
+            }
             y += FOOTER_LINE_H;
         }
         if (footer.keys != null) {
@@ -539,8 +585,11 @@ public final class TreeOverlayRenderer {
     /**
      * One line of the shopping list: icon, total amount, colour by
      * availability — no names, so nothing has to be trimmed.
+     *
+     * @return the layout-x where the {@code +N} marker was drawn, {@code -1}
+     *         when the line has no marker (used to hover-test the tail tooltip)
      */
-    private static void drawShoppingLine(GuiGraphics graphics, Font font,
+    private static int drawShoppingLine(GuiGraphics graphics, Font font,
             List<Map.Entry<ItemKey, Availability>> line, int y, int hidden) {
         int textY = y + (ICON - font.lineHeight) / 2 + 1;
         int x = 0;
@@ -553,7 +602,41 @@ public final class TreeOverlayRenderer {
         }
         if (hidden > 0) {
             graphics.drawString(font, "+" + hidden, x, textY, MUTED, false);
+            return x;
         }
+        return -1;
+    }
+
+    /**
+     * Hover feedback for the {@code +N} marker: the number alone does not say
+     * <em>what</em> is hidden, so pointing at it lists the dropped materials.
+     *
+     * @param originX screen x of the footer pose the marker was drawn from
+     * @param originY screen y of that pose
+     * @param scale   scale factor of that pose
+     */
+    private static void showTailTooltip(GuiGraphics graphics, Font font, Footer footer,
+            Minecraft mc, int originX, int originY, float scale) {
+        if (footer.hidden <= 0 || footer.tailX < 0 || footer.hiddenEntries.isEmpty()) {
+            return;
+        }
+        double guiScale = mc.getWindow().getGuiScale();
+        int mx = (int) (mc.mouseHandler.xpos() / guiScale);
+        int my = (int) (mc.mouseHandler.ypos() / guiScale);
+        final int pad = 2;
+        int x1 = originX + (int) ((footer.tailX - pad) * scale);
+        int y1 = originY + (int) ((footer.tailY - pad) * scale);
+        int x2 = originX + (int) Math.ceil((footer.tailX + footer.tailW + pad) * scale);
+        int y2 = originY + (int) Math.ceil((footer.tailY + footer.tailH + pad) * scale);
+        if (mx < x1 || mx > x2 || my < y1 || my > y2) {
+            return;
+        }
+        List<Component> lines = new ArrayList<>();
+        for (Map.Entry<ItemKey, Availability> entry : footer.hiddenEntries) {
+            lines.add(entry.getKey().name().copy()
+                    .append(Component.literal(" ×" + entry.getValue().required())));
+        }
+        graphics.renderTooltip(font, lines, Optional.empty(), mx, my);
     }
 
     private static void drawBorder(GuiGraphics graphics, int left, int top, int w, int h) {
@@ -585,8 +668,24 @@ public final class TreeOverlayRenderer {
     private static final int G_FOOTER_SPACE = 24;
     private static final int G_LEGEND_SQUARE = 6;
 
+    /**
+     * The layout for the current tree: reused while
+     * {@link PlannerState#graphVersion()} does not change, recomputed once
+     * after every rebuild.
+     */
+    private static TreeLayout layoutFor(CraftGraph graph) {
+        long version = PlannerState.graphVersion();
+        TreeLayout layout = cachedLayout;
+        if (layout == null || cachedLayoutVersion != version) {
+            layout = TreeLayout.of(graph.roots());
+            cachedLayout = layout;
+            cachedLayoutVersion = version;
+        }
+        return layout;
+    }
+
     private static void renderGraph(RenderGuiEvent.Post event, Minecraft mc, CraftGraph graph) {
-        TreeLayout layout = TreeLayout.of(graph.roots());
+        TreeLayout layout = layoutFor(graph);
         if (layout.isEmpty()) {
             return;
         }
@@ -619,6 +718,19 @@ public final class TreeOverlayRenderer {
         int left = G_MARGIN;
         int top = G_MARGIN;
 
+        float availableWidth = Math.max(1f, panelWidth - 2f * G_PADDING);
+        float availableHeight = Math.max(1f, panelHeight - 2f * G_PADDING - G_TITLE_SPACE - footerSpace);
+        // Density decides how big a small graph is drawn; a large one is still
+        // shrunk to fit the panel, so the two limits simply combine.
+        float fit = Math.min(availableWidth / contentWidth, availableHeight / contentHeight);
+        if (fit < MIN_READABLE_FIT) {
+            // Fitting the node-link view would mean squeezing the text below
+            // readability: fall back to the scrollable list layout instead.
+            renderTree(event, mc, graph);
+            return;
+        }
+        float scale = Math.max(0.05f, Math.min(density, fit));
+
         graphics.fill(left, top, left + panelWidth, top + panelHeight, PANEL_BG);
         graphics.fill(left, top, left + panelWidth, top + 1, PANEL_BORDER);
         graphics.fill(left, top + panelHeight - 1, left + panelWidth, top + panelHeight, PANEL_BORDER);
@@ -629,13 +741,6 @@ public final class TreeOverlayRenderer {
                 Component.translatable("overlay.craftplanner.title"),
                 left + G_PADDING, top + 3, NodeColors.TEXT, false);
         drawLegend(graphics, font, left, top, panelWidth);
-
-        float availableWidth = Math.max(1f, panelWidth - 2f * G_PADDING);
-        float availableHeight = Math.max(1f, panelHeight - 2f * G_PADDING - G_TITLE_SPACE - footerSpace);
-        // Density decides how big a small graph is drawn; a large one is still
-        // shrunk to fit the panel, so the two limits simply combine.
-        float scale = Math.max(0.05f, Math.min(density,
-                Math.min(availableWidth / contentWidth, availableHeight / contentHeight)));
 
         graphics.enableScissor(left, top, left + panelWidth, top + panelHeight);
         PoseStack pose = graphics.pose();
@@ -657,8 +762,15 @@ public final class TreeOverlayRenderer {
         drawFooter(graphics, font, footer, footerLayoutW);
         pose.popPose();
         graphics.disableScissor();
+        showTailTooltip(graphics, font, footer, mc, left + G_PADDING, footerTop, density);
     }
 
+    /**
+     * Colour legend, right-aligned next to the title. One line while it fits
+     * beside the title; otherwise two lines (the second one may use the full
+     * panel width); dropped entirely only when even two lines do not fit —
+     * the old fixed 140 px slack silently swallowed it before.
+     */
     private static void drawLegend(GuiGraphics graphics, Font font, int left, int top, int panelWidth) {
         int[] colors = {
                 NodeColors.HAVE, NodeColors.MISSING,
@@ -670,19 +782,53 @@ public final class TreeOverlayRenderer {
                 Component.translatable("overlay.craftplanner.legend.intermediate"),
                 Component.translatable("overlay.craftplanner.legend.root")
         };
+        int[] itemW = new int[labels.length];
         int total = 0;
         for (int i = 0; i < labels.length; i++) {
-            total += G_LEGEND_SQUARE + 2 + font.width(labels[i]) + 6;
+            itemW[i] = G_LEGEND_SQUARE + 2 + font.width(labels[i]);
+            total += itemW[i] + 6;
         }
-        if (total > panelWidth - 140) {
+
+        int titleW = font.width(Component.translatable("overlay.craftplanner.title"));
+        int firstRowRoom = panelWidth - 2 * G_PADDING - titleW - 6;
+        int fullRoom = panelWidth - 2 * G_PADDING;
+        if (total <= firstRowRoom) {
+            drawLegendRow(graphics, font, colors, labels, itemW, 0, labels.length,
+                    left, top + 4, panelWidth, total);
             return;
         }
-        int x = left + panelWidth - G_PADDING - total;
-        int y = top + 4;
+
+        // Greedy split: as many entries as fit in the title row, the rest below.
+        int split = 0;
+        int firstTotal = 0;
         for (int i = 0; i < labels.length; i++) {
+            int next = split == 0 ? itemW[i] : firstTotal + 6 + itemW[i];
+            if (next > firstRowRoom) {
+                break;
+            }
+            firstTotal = next;
+            split++;
+        }
+        int restTotal = 0;
+        for (int i = split; i < labels.length; i++) {
+            restTotal += itemW[i] + 6;
+        }
+        if (split == 0 || restTotal > fullRoom) {
+            return;
+        }
+        drawLegendRow(graphics, font, colors, labels, itemW, 0, split,
+                left, top + 4, panelWidth, firstTotal);
+        drawLegendRow(graphics, font, colors, labels, itemW, split, labels.length,
+                left, top + 4 + font.lineHeight, panelWidth, restTotal);
+    }
+
+    private static void drawLegendRow(GuiGraphics graphics, Font font, int[] colors, Component[] labels,
+            int[] itemW, int from, int to, int left, int y, int panelWidth, int rowTotal) {
+        int x = left + panelWidth - G_PADDING - rowTotal;
+        for (int i = from; i < to; i++) {
             graphics.fill(x, y, x + G_LEGEND_SQUARE, y + G_LEGEND_SQUARE, colors[i]);
             graphics.drawString(font, labels[i], x + G_LEGEND_SQUARE + 2, y, NodeColors.TEXT, false);
-            x += G_LEGEND_SQUARE + 2 + font.width(labels[i]) + 6;
+            x += itemW[i] + 6;
         }
     }
 
