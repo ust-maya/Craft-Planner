@@ -1,6 +1,7 @@
 package com.craftplanner.client;
 
 import com.craftplanner.Constants;
+import com.craftplanner.client.overlay.OverlayPlacement;
 import com.craftplanner.client.screen.QuantityPopupScreen;
 import com.craftplanner.client.screen.RecipeListScreen;
 import com.craftplanner.engine.RecipeIndex;
@@ -61,6 +62,16 @@ public class ClientEvents {
 
         while (Keybinds.OPEN_RECIPES.consumeClick()) {
             mc.setScreen(new RecipeListScreen());
+        }
+
+        // The layout editor works on the panel that is on screen, so the first
+        // press on a hidden overlay only reveals it.
+        while (Keybinds.EDIT_LAYOUT.consumeClick()) {
+            if (!OverlayPlacement.editing() && !OverlayState.isVisible()) {
+                OverlayState.setVisible(true);
+            } else {
+                OverlayPlacement.toggle();
+            }
         }
     }
 

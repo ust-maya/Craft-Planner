@@ -26,6 +26,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import org.lwjgl.glfw.GLFW;
 
 /**
  * Draws the craft plan over the game screen (Stage 8).
@@ -63,8 +64,16 @@ import net.neoforged.neoforge.client.event.RenderGuiEvent;
  * icons, text and connector lines shrink together and the tree keeps its
  * proportions. That is the only way to make the text smaller — Minecraft's
  * font is a 9 px bitmap and cannot be rendered below its native size without
- * scaling. The panel is additionally scaled down to fit the screen instead of
- * being clipped, so a wide tree never loses its right-hand text.</p>
+ * scaling. An auto-sized panel is additionally scaled down to fit the screen
+ * instead of being clipped, so a wide tree never loses its right-hand text.</p>
+ *
+ * <p>Where the panel lives, how large it is and how dense its text is are the
+ * player's, not the mod's: {@code O} ({@link Keybinds#EDIT_LAYOUT}) opens a
+ * layout editor in which the panel is dragged, its bottom-right corner resized
+ * and the mouse wheel rescaled, and the result is committed to
+ * {@link OverlayPlacement} and the client config. A pinned panel then keeps the
+ * text size it was given and clips its content, because the player has already
+ * answered "it does not fit" by making the window larger.</p>
  */
 @EventBusSubscriber(modid = Constants.MODID, value = Dist.CLIENT)
 public final class TreeOverlayRenderer {
@@ -124,27 +133,28 @@ public final class TreeOverlayRenderer {
      */
     private static TreeLayout cachedLayout;
     private static long cachedLayoutVersion = -1;
-    /** Last drawn panel rectangle, used to hit-test the mouse wheel. */
-    private static int lastPanelLeft;
-    private static int lastPanelTop;
-    private static int lastPanelW;
-    private static int lastPanelH;
 
     private TreeOverlayRenderer() {
     }
 
     @SubscribeEvent
     public static void onRenderGui(RenderGuiEvent.Post event) {
-        if (!OverlayState.isVisible()) {
-            return;
-        }
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) {
             return;
         }
         CraftGraph graph = PlannerState.graph();
-        if (graph.isEmpty()) {
+        if (!OverlayState.isVisible() || graph.isEmpty()) {
+            // An editor that cannot show its panel is a stuck editor: commit
+            // whatever the player moved and go back to normal drawing.
+            if (OverlayPlacement.editing()) {
+                OverlayPlacement.applyAndSave();
+            }
             return;
+        }
+        if (mc.screen == null) {
+            OverlayPlacement.dragTo(mouseX(mc), mouseY(mc),
+                    mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
         }
         if ("graph".equals(Config.overlayMode())) {
             renderGraph(event, mc, graph);
@@ -157,16 +167,26 @@ public final class TreeOverlayRenderer {
      * Mouse wheel scrolls the left-side tree while it is on screen and the
      * cursor is over the panel, so it does not steal scrolling elsewhere
      * (chat, inventories). The exact clamp is applied when the tree is drawn.
+     *
+     * <p>In the layout editor the same wheel drives the text density instead —
+     * scrolling a panel the player is resizing only gets in the way.</p>
      */
     @SubscribeEvent
     public static void onMouseScrolled(InputEvent.MouseScrollingEvent event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (OverlayPlacement.editing()) {
+            if (mc.screen == null) {
+                OverlayPlacement.zoom(event.getScrollDeltaY() > 0 ? 1 : -1);
+                event.setCanceled(true);
+            }
+            return;
+        }
         if (!OverlayState.isVisible() || !"tree".equals(Config.overlayMode())) {
             return;
         }
         double mx = event.getMouseX();
         double my = event.getMouseY();
-        if (mx < lastPanelLeft || mx > lastPanelLeft + lastPanelW
-                || my < lastPanelTop || my > lastPanelTop + lastPanelH) {
+        if (!OverlayPlacement.overPanel((int) mx, (int) my)) {
             return;
         }
         treeScroll += event.getScrollDeltaY() > 0 ? -1 : 1;
@@ -238,11 +258,29 @@ public final class TreeOverlayRenderer {
     }
 
     /**
-     * Density of the overlay content ({@code overlay.scale}), clamped to the
-     * range the config allows so a hand-edited file cannot scale the UI away.
+     * Density of the overlay content: {@code overlay.scale} of the config, or
+     * the value the mouse wheel produced in the layout editor. Clamped to the
+     * range the config allows, so a hand-edited file cannot scale the UI away.
      */
     private static float overlayScale() {
-        return (float) Math.max(0.1, Math.min(1.0, Config.overlayScale()));
+        return (float) Math.max(0.1, Math.min(1.0, OverlayPlacement.density()));
+    }
+
+    /** Keeps a pinned panel on screen after a resolution change. */
+    private static int clampToScreen(int requested, int min, int max) {
+        if (requested == OverlayPlacement.AUTO) {
+            return min;
+        }
+        return max < min ? min : Math.max(min, Math.min(max, requested));
+    }
+
+    /** Cursor position in GUI-scaled pixels, the space the panel is drawn in. */
+    private static int mouseX(Minecraft mc) {
+        return (int) (mc.mouseHandler.xpos() / mc.getWindow().getGuiScale());
+    }
+
+    private static int mouseY(Minecraft mc) {
+        return (int) (mc.mouseHandler.ypos() / mc.getWindow().getGuiScale());
     }
 
     private static void renderTree(RenderGuiEvent.Post event, Minecraft mc, CraftGraph graph) {
@@ -264,6 +302,10 @@ public final class TreeOverlayRenderer {
         int screenH = mc.getWindow().getGuiScaledHeight();
         int availW = screenW - 2 * MARGIN;
         int availH = screenH - 2 * MARGIN;
+        int pinX = OverlayPlacement.x();
+        int pinY = OverlayPlacement.y();
+        int pinW = OverlayPlacement.w();
+        int pinH = OverlayPlacement.h();
 
         // Widest row decides the panel width (in layout pixels).
         int maxRowW = 0;
@@ -277,21 +319,37 @@ public final class TreeOverlayRenderer {
         int footerMinW = Math.max(widestEntry(availability, font),
                 font.width(keysHint("overlay.craftplanner.keys.short")));
 
-        int layoutW = Math.max(maxRowW, footerMinW) + 2 * PADDING;
-        float scale = Math.max(MIN_SCALE, Math.min(overlayScale(), (float) availW / layoutW));
-        int panelW = Math.min(availW, Math.max(1, Math.round(layoutW * scale)));
+        // Density comes first: an auto-sized panel shrinks to stay on screen,
+        // while a panel the player sized with the mouse keeps its text size and
+        // simply clips — resizing is the player's answer to "it does not fit".
+        float density = overlayScale();
+        int autoContentW = Math.max(maxRowW, footerMinW);
+        float scale;
+        int contentW;
+        int panelW;
+        if (pinW == OverlayPlacement.AUTO) {
+            scale = Math.max(MIN_SCALE,
+                    Math.min(density, (float) availW / (autoContentW + 2 * PADDING)));
+            contentW = autoContentW;
+            panelW = Math.min(availW, Math.max(1, Math.round((contentW + 2 * PADDING) * scale)));
+        } else {
+            scale = density;
+            panelW = Math.min(availW, pinW);
+            contentW = Math.max(24, Math.round(panelW / scale) - 2 * PADDING);
+        }
 
-        int contentW = layoutW - 2 * PADDING;
         Footer footer = buildFooter(availability, font, contentW,
                 hotkeyLine(font, contentW));
         int footerH = footer.height();
 
         int layoutH = TITLE_H + rows.size() * ROW_H + 2 * PADDING
                 + (footerH > 0 ? FOOTER_GAP + footerH : 0);
-        int panelH = Math.min(availH, Math.max(1, Math.round(layoutH * scale)));
+        int panelH = pinH == OverlayPlacement.AUTO
+                ? Math.min(availH, Math.max(1, Math.round(layoutH * scale)))
+                : Math.min(availH, pinH);
 
-        int left = MARGIN;
-        int top = MARGIN;
+        int left = clampToScreen(pinX, 0, screenW - panelW);
+        int top = clampToScreen(pinY, 0, screenH - panelH);
         int pad = Math.max(1, Math.round(PADDING * scale));
         int rowPx = Math.max(1, Math.round(ROW_H * scale));
         int footerPx = Math.round(footerH * scale);
@@ -407,10 +465,8 @@ public final class TreeOverlayRenderer {
             graphics.fill(barX, barY, barX + 2, barY + barH, 0x90A0A0A0);
         }
 
-        lastPanelLeft = left;
-        lastPanelTop = top;
-        lastPanelW = panelW;
-        lastPanelH = panelH;
+        OverlayPlacement.reportDrawn(left, top, panelW, panelH);
+        drawEditChrome(graphics, mc, font, left, top, panelW, panelH, screenW, screenH);
     }
 
     private static String label(RecipeNode node) {
@@ -433,14 +489,15 @@ public final class TreeOverlayRenderer {
 
     /**
      * A hotkey hint with the <em>current</em> key bindings substituted into its
-     * %1$s/%2$s/%3$s placeholders, so the footer keeps telling the truth after
-     * any rebind in Options → Controls.
+     * %1$s/%2$s/%3$s/%4$s placeholders, so the footer keeps telling the truth
+     * after any rebind in Options → Controls.
      */
     private static Component keysHint(String key) {
         return Component.translatable(key,
                 Keybinds.ADD_RECIPE.getKey().getDisplayName(),
                 Keybinds.TOGGLE_OVERLAY.getKey().getDisplayName(),
-                Keybinds.OPEN_RECIPES.getKey().getDisplayName());
+                Keybinds.OPEN_RECIPES.getKey().getDisplayName(),
+                Keybinds.EDIT_LAYOUT.getKey().getDisplayName());
     }
 
     // ---------------------------------------------------------------------
@@ -482,10 +539,16 @@ public final class TreeOverlayRenderer {
      * Builds the footer for a content width given in layout pixels. The
      * shopping list is sorted by shortage first, so what the player still has
      * to gather is what they see.
+     *
+     * <p>{@code keys} may be null — the hotkey line is dropped rather than cut
+     * when the panel is narrower than even the short hint, which the layout
+     * editor can produce by pinning the width or raising the text density. The
+     * width check has to test for that first, or {@code Font.width(null)}
+     * throws and takes the game down with it.</p>
      */
     private static Footer buildFooter(Map<ItemKey, Availability> availability, Font font,
             int contentW, Component keys) {
-        Footer footer = new Footer(font.width(keys) <= contentW ? keys : null);
+        Footer footer = new Footer(keys != null && font.width(keys) <= contentW ? keys : null);
         List<Map.Entry<ItemKey, Availability>> entries = shoppingList(availability);
         wrapShoppingList(footer, entries, font, contentW, 0);
         if (footer.hidden > 0) {
@@ -646,6 +709,93 @@ public final class TreeOverlayRenderer {
         graphics.fill(left + w - 1, top, left + w, top + h, PANEL_BORDER);
     }
 
+    // ---------------------------------------------------------------------
+    // Layout editor: move, resize and rescale the panel with the mouse
+    // ---------------------------------------------------------------------
+
+    private static final int EDIT_BORDER = 0xC0E0A030;
+    private static final int EDIT_GRIP = 0xE0E0A030;
+    private static final int EDIT_GRIP_HOVER = 0xE0FFE070;
+    private static final int EDIT_TEXT = 0xFFEEEEEE;
+
+    /**
+     * While the editor is open it owns every mouse button: a click that starts
+     * a drag must never leak into the world as a block break or an item use.
+     */
+    @SubscribeEvent
+    public static void onMouseButton(InputEvent.MouseButton.Pre event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (!OverlayPlacement.editing() || mc.screen != null
+                || event.getAction() != GLFW.GLFW_PRESS
+                || (event.getButton() != GLFW.GLFW_MOUSE_BUTTON_LEFT
+                        && event.getButton() != GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
+            return;
+        }
+        event.setCanceled(true);
+        int mx = mouseX(mc);
+        int my = mouseY(mc);
+        if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            OverlayPlacement.resetAndSave();
+        } else if (OverlayPlacement.overGrip(mx, my)) {
+            OverlayPlacement.startSize(mx, my);
+        } else if (OverlayPlacement.overPanel(mx, my)) {
+            OverlayPlacement.startMove(mx, my);
+        } else {
+            // Anywhere else means the layout is finished as it stands.
+            OverlayPlacement.applyAndSave();
+        }
+    }
+
+    @SubscribeEvent
+    public static void onMouseButtonReleased(InputEvent.MouseButton.Post event) {
+        if (event.getAction() == GLFW.GLFW_RELEASE) {
+            OverlayPlacement.endDrag();
+        }
+    }
+
+    /**
+     * Editor chrome on top of the finished panel: the outline being dragged, the
+     * resize grip in its corner and the one-line instructions.
+     */
+    private static void drawEditChrome(GuiGraphics graphics, Minecraft mc, Font font,
+            int left, int top, int panelW, int panelH, int screenW, int screenH) {
+        if (!OverlayPlacement.editing()) {
+            return;
+        }
+        graphics.fill(left, top, left + panelW, top + 1, EDIT_BORDER);
+        graphics.fill(left, top + panelH - 1, left + panelW, top + panelH, EDIT_BORDER);
+        graphics.fill(left, top, left + 1, top + panelH, EDIT_BORDER);
+        graphics.fill(left + panelW - 1, top, left + panelW, top + panelH, EDIT_BORDER);
+
+        int gripX = OverlayPlacement.gripLeft();
+        int gripY = OverlayPlacement.gripTop();
+        int gripSize = OverlayPlacement.gripSize();
+        boolean hovered = OverlayPlacement.overGrip(mouseX(mc), mouseY(mc));
+        int color = hovered ? EDIT_GRIP_HOVER : EDIT_GRIP;
+        graphics.fill(gripX, gripY, gripX + gripSize, gripY + gripSize, color);
+        graphics.fill(gripX + 1, gripY + 1, gripX + gripSize - 1, gripY + 2, 0xA0000000);
+        graphics.fill(gripX + 1, gripY + 4, gripX + gripSize - 1, gripY + 5, 0xA0000000);
+
+        // Trimmed to the screen, not to the panel: at a large GUI scale a
+        // translated hint can easily be wider than the whole window.
+        int maxTextW = Math.max(20, screenW - 8);
+        String first = trimToWidth(font, Component.translatable("overlay.craftplanner.edit.hint",
+                Integer.toString((int) Math.round(OverlayPlacement.liveDensity() * 100))).getString(), maxTextW);
+        String second = trimToWidth(font, Component.translatable("overlay.craftplanner.edit.hint2",
+                Keybinds.EDIT_LAYOUT.getKey().getDisplayName().getString()).getString(), maxTextW);
+        int widest = Math.max(font.width(first), font.width(second));
+        int textLeft = Math.max(2, Math.min(left + (panelW - widest) / 2, screenW - widest - 2));
+        // Below the panel when there is room, above it when the panel sits at the
+        // bottom edge — the instructions must never be cut by the screen.
+        int textTop = top + panelH + 8 + font.lineHeight <= screenH
+                ? top + panelH + 4
+                : top - 4 - (2 * font.lineHeight + 3);
+        graphics.fill(textLeft - 3, textTop - 2, textLeft + widest + 3,
+                textTop + 2 * font.lineHeight + 3, PANEL_BG);
+        graphics.drawString(font, first, textLeft, textTop, EDIT_TEXT, false);
+        graphics.drawString(font, second, textLeft, textTop + font.lineHeight + 2, EDIT_TEXT, false);
+    }
+
     /** Cuts text with an ellipsis so it fits the given pixel width. */
     private static String trimToWidth(Font font, String text, int maxWidth) {
         if (maxWidth <= 0 || font.width(text) <= maxWidth) {
@@ -694,12 +844,18 @@ public final class TreeOverlayRenderer {
         int screenHeight = mc.getWindow().getGuiScaledHeight();
         int maxPanelWidth = screenWidth - 2 * G_MARGIN;
         int maxPanelHeight = screenHeight - 2 * G_MARGIN;
+        int pinX = OverlayPlacement.x();
+        int pinY = OverlayPlacement.y();
+        int pinW = OverlayPlacement.w();
+        int pinH = OverlayPlacement.h();
 
         int contentWidth = layout.width();
         int contentHeight = layout.height();
         float density = overlayScale();
-        int panelWidth = Math.min(maxPanelWidth,
-                Math.max(1, Math.round(contentWidth * density)) + 2 * G_PADDING);
+        int panelWidth = pinW == OverlayPlacement.AUTO
+                ? Math.min(maxPanelWidth,
+                        Math.max(1, Math.round(contentWidth * density)) + 2 * G_PADDING)
+                : Math.min(maxPanelWidth, pinW);
 
         GuiGraphics graphics = event.getGuiGraphics();
         Font font = mc.font;
@@ -712,11 +868,13 @@ public final class TreeOverlayRenderer {
                 hotkeyLine(font, footerLayoutW));
         int footerSpace = Math.max(G_FOOTER_SPACE, Math.round(footer.height() * density) + 2);
 
-        int panelHeight = Math.min(maxPanelHeight,
-                Math.max(1, Math.round(contentHeight * density)) + 2 * G_PADDING
-                        + G_TITLE_SPACE + footerSpace);
-        int left = G_MARGIN;
-        int top = G_MARGIN;
+        int panelHeight = pinH == OverlayPlacement.AUTO
+                ? Math.min(maxPanelHeight,
+                        Math.max(1, Math.round(contentHeight * density)) + 2 * G_PADDING
+                                + G_TITLE_SPACE + footerSpace)
+                : Math.min(maxPanelHeight, pinH);
+        int left = clampToScreen(pinX, 0, screenWidth - panelWidth);
+        int top = clampToScreen(pinY, 0, screenHeight - panelHeight);
 
         float availableWidth = Math.max(1f, panelWidth - 2f * G_PADDING);
         float availableHeight = Math.max(1f, panelHeight - 2f * G_PADDING - G_TITLE_SPACE - footerSpace);
@@ -724,10 +882,15 @@ public final class TreeOverlayRenderer {
         // shrunk to fit the panel, so the two limits simply combine.
         float fit = Math.min(availableWidth / contentWidth, availableHeight / contentHeight);
         if (fit < MIN_READABLE_FIT) {
-            // Fitting the node-link view would mean squeezing the text below
-            // readability: fall back to the scrollable list layout instead.
-            renderTree(event, mc, graph);
-            return;
+            if (!OverlayPlacement.pinned()) {
+                // Fitting the node-link view would mean squeezing the text below
+                // readability: fall back to the scrollable list layout instead.
+                renderTree(event, mc, graph);
+                return;
+            }
+            // A panel the player sized on purpose keeps its text size and lets
+            // the graph clip — resizing was the point of pinning it.
+            fit = MIN_READABLE_FIT;
         }
         float scale = Math.max(0.05f, Math.min(density, fit));
 
@@ -763,6 +926,9 @@ public final class TreeOverlayRenderer {
         pose.popPose();
         graphics.disableScissor();
         showTailTooltip(graphics, font, footer, mc, left + G_PADDING, footerTop, density);
+        OverlayPlacement.reportDrawn(left, top, panelWidth, panelHeight);
+        drawEditChrome(graphics, mc, font, left, top, panelWidth, panelHeight,
+                screenWidth, screenHeight);
     }
 
     /**
