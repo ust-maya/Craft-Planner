@@ -104,7 +104,10 @@ public final class CraftTreeBuilder {
         if (level == null) {
             return;
         }
-        RecipeIndex index = RecipeIndex.build(level.getRecipeManager(), level.registryAccess());
+        // The index is cached per RecipeManager: a rebuild after an add, a
+        // preference change or the ore switch re-expands the tree over the
+        // existing index instead of re-walking every recipe in the game.
+        RecipeIndex index = RecipeIndex.cachedFor(level.getRecipeManager(), level.registryAccess());
         new CraftTreeBuilder(index, preferences, ResourceFilter.of(hideOreLike)).rebuild(graph);
     }
 

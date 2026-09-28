@@ -56,8 +56,39 @@ public final class RecipeIndex {
     private final Map<ItemKey, List<RecipeHolder<?>>> byOutput = new HashMap<>();
     private final HolderLookup.Provider registries;
 
+    /**
+     * Cache of the last built index. Building one walks every recipe of the
+     * manager — tens of thousands in a large modpack — so it must happen once
+     * per recipe set, not once per tree rebuild. The cache is keyed by the
+     * {@link RecipeManager} instance (a new world/connection brings a new
+     * one) and invalidated on {@code RecipesUpdatedEvent} (datapack reload).
+     */
+    private static RecipeIndex cached;
+    private static RecipeManager cachedManager;
+
     private RecipeIndex(HolderLookup.Provider registries) {
         this.registries = registries;
+    }
+
+    /**
+     * The index for {@code manager}, rebuilt only when the manager changed
+     * since the last call. {@link #invalidateCache()} covers the remaining
+     * case: the same manager reloaded from disk.
+     */
+    public static RecipeIndex cachedFor(RecipeManager manager, HolderLookup.Provider registries) {
+        RecipeIndex index = cached;
+        if (index == null || cachedManager != manager) {
+            index = build(manager, registries);
+            cached = index;
+            cachedManager = manager;
+        }
+        return index;
+    }
+
+    /** Drops the cached index so the next {@link #cachedFor} rebuilds it. */
+    public static void invalidateCache() {
+        cached = null;
+        cachedManager = null;
     }
 
     public static RecipeIndex build(RecipeManager manager, HolderLookup.Provider registries) {

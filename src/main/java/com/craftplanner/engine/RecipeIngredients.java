@@ -1,13 +1,17 @@
 package com.craftplanner.engine;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.core.NonNullList;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SmithingTransformRecipe;
 import net.minecraft.world.item.crafting.SmithingTrimRecipe;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The ingredient slots of a recipe, read in a way the planner can use.
@@ -34,6 +38,11 @@ import net.minecraft.world.item.crafting.SmithingTrimRecipe;
  * and "the planner knows how to read its inputs" from drifting apart.</p>
  */
 public final class RecipeIngredients {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("craftplanner/RecipeIngredients");
+
+    /** Recipe types whose read failure was already logged — of() runs per candidate per rebuild. */
+    private static final Set<RecipeType<?>> WARNED = new HashSet<>();
 
     /**
      * Reads the inputs of one recipe type.
@@ -75,16 +84,31 @@ public final class RecipeIngredients {
      *
      * <p>Equivalent to {@link Recipe#getIngredients()} for every type without a
      * provider, so the common path is unchanged.</p>
+     *
+     * <p>Reading is fail-safe: a modded {@code getIngredients()} with side
+     * effects, or smithing fields renamed by a Minecraft/NeoForge update, must
+     * degrade to "this item has no readable recipe" — the engine then ends the
+     * branch at a raw material — instead of crashing the client. The failure is
+     * logged once per recipe.</p>
      */
     public static NonNullList<Ingredient> of(Recipe<?> recipe) {
-        Provider provider = PROVIDERS.get(recipe.getType());
-        if (provider != null) {
-            NonNullList<Ingredient> resolved = provider.ingredients(recipe);
-            if (resolved != null) {
-                return resolved;
+        try {
+            Provider provider = PROVIDERS.get(recipe.getType());
+            if (provider != null) {
+                NonNullList<Ingredient> resolved = provider.ingredients(recipe);
+                if (resolved != null) {
+                    return resolved;
+                }
             }
+            return recipe.getIngredients();
+        } catch (RuntimeException | LinkageError e) {
+            if (WARNED.add(recipe.getType())) {
+                LOGGER.warn("Craft Planner could not read the ingredients of a {} recipe ({})."
+                        + " Such items will be treated as raw materials in the tree.",
+                        recipe.getType(), recipe.getClass(), e);
+            }
+            return NonNullList.create();
         }
-        return recipe.getIngredients();
     }
 
     /**
