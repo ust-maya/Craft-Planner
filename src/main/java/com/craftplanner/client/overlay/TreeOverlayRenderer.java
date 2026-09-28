@@ -26,7 +26,6 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
-import org.lwjgl.glfw.GLFW;
 
 /**
  * Draws the craft plan over the game screen (Stage 8).
@@ -69,8 +68,9 @@ import org.lwjgl.glfw.GLFW;
  *
  * <p>Where the panel lives, how large it is and how dense its text is are the
  * player's, not the mod's: {@code O} ({@link Keybinds#EDIT_LAYOUT}) opens a
- * layout editor in which the panel is dragged, its bottom-right corner resized
- * and the mouse wheel rescaled, and the result is committed to
+ * layout editor — {@code OverlayLayoutScreen}, a transparent screen that frees
+ * the mouse from the game — in which the panel is dragged, its bottom-right
+ * corner resized and the mouse wheel rescaled, and the result is committed to
  * {@link OverlayPlacement} and the client config. A pinned panel then keeps the
  * text size it was given and clips its content, because the player has already
  * answered "it does not fit" by making the window larger.</p>
@@ -139,22 +139,16 @@ public final class TreeOverlayRenderer {
 
     @SubscribeEvent
     public static void onRenderGui(RenderGuiEvent.Post event) {
+        if (!OverlayState.isVisible()) {
+            return;
+        }
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) {
             return;
         }
         CraftGraph graph = PlannerState.graph();
-        if (!OverlayState.isVisible() || graph.isEmpty()) {
-            // An editor that cannot show its panel is a stuck editor: commit
-            // whatever the player moved and go back to normal drawing.
-            if (OverlayPlacement.editing()) {
-                OverlayPlacement.applyAndSave();
-            }
+        if (graph.isEmpty()) {
             return;
-        }
-        if (mc.screen == null) {
-            OverlayPlacement.dragTo(mouseX(mc), mouseY(mc),
-                    mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
         }
         if ("graph".equals(Config.overlayMode())) {
             renderGraph(event, mc, graph);
@@ -168,20 +162,14 @@ public final class TreeOverlayRenderer {
      * cursor is over the panel, so it does not steal scrolling elsewhere
      * (chat, inventories). The exact clamp is applied when the tree is drawn.
      *
-     * <p>In the layout editor the same wheel drives the text density instead —
-     * scrolling a panel the player is resizing only gets in the way.</p>
+     * <p>The layout editor runs in its own screen, which takes the wheel for the
+     * text size; scrolling a panel while it is being resized only gets in the
+     * way, so the tree stays put until editing is over.</p>
      */
     @SubscribeEvent
     public static void onMouseScrolled(InputEvent.MouseScrollingEvent event) {
-        Minecraft mc = Minecraft.getInstance();
-        if (OverlayPlacement.editing()) {
-            if (mc.screen == null) {
-                OverlayPlacement.zoom(event.getScrollDeltaY() > 0 ? 1 : -1);
-                event.setCanceled(true);
-            }
-            return;
-        }
-        if (!OverlayState.isVisible() || !"tree".equals(Config.overlayMode())) {
+        if (OverlayPlacement.editing()
+                || !OverlayState.isVisible() || !"tree".equals(Config.overlayMode())) {
             return;
         }
         double mx = event.getMouseX();
@@ -719,43 +707,10 @@ public final class TreeOverlayRenderer {
     private static final int EDIT_TEXT = 0xFFEEEEEE;
 
     /**
-     * While the editor is open it owns every mouse button: a click that starts
-     * a drag must never leak into the world as a block break or an item use.
-     */
-    @SubscribeEvent
-    public static void onMouseButton(InputEvent.MouseButton.Pre event) {
-        Minecraft mc = Minecraft.getInstance();
-        if (!OverlayPlacement.editing() || mc.screen != null
-                || event.getAction() != GLFW.GLFW_PRESS
-                || (event.getButton() != GLFW.GLFW_MOUSE_BUTTON_LEFT
-                        && event.getButton() != GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
-            return;
-        }
-        event.setCanceled(true);
-        int mx = mouseX(mc);
-        int my = mouseY(mc);
-        if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-            OverlayPlacement.resetAndSave();
-        } else if (OverlayPlacement.overGrip(mx, my)) {
-            OverlayPlacement.startSize(mx, my);
-        } else if (OverlayPlacement.overPanel(mx, my)) {
-            OverlayPlacement.startMove(mx, my);
-        } else {
-            // Anywhere else means the layout is finished as it stands.
-            OverlayPlacement.applyAndSave();
-        }
-    }
-
-    @SubscribeEvent
-    public static void onMouseButtonReleased(InputEvent.MouseButton.Post event) {
-        if (event.getAction() == GLFW.GLFW_RELEASE) {
-            OverlayPlacement.endDrag();
-        }
-    }
-
-    /**
      * Editor chrome on top of the finished panel: the outline being dragged, the
-     * resize grip in its corner and the one-line instructions.
+     * resize grip in its corner and the one-line instructions. The HUD keeps
+     * rendering behind {@code OverlayLayoutScreen}, which is where the input of
+     * that mode is handled.
      */
     private static void drawEditChrome(GuiGraphics graphics, Minecraft mc, Font font,
             int left, int top, int panelW, int panelH, int screenW, int screenH) {

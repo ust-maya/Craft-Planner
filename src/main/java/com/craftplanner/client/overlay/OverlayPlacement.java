@@ -148,23 +148,18 @@ public final class OverlayPlacement {
     }
 
     /**
-     * The panel the player is looking at, if any. Entering edit mode without a
-     * drawn panel would give a rectangle to drag that does not exist.
+     * The panel the player is looking at, if any. Editing a layout that is not
+     * drawn would mean dragging a rectangle that does not exist.
      */
     public static boolean hasPanel() {
         return drawnW > 0 && drawnH > 0;
     }
 
-    /** The key: enter edit mode, or leave it and keep the new layout. */
-    public static void toggle() {
-        if (editing) {
-            applyAndSave();
-        } else if (hasPanel()) {
-            begin();
+    /** Starts editing from exactly what is on screen, so the panel never jumps. */
+    public static void begin() {
+        if (!hasPanel()) {
+            return;
         }
-    }
-
-    private static void begin() {
         liveX = drawnX;
         liveY = drawnY;
         liveW = drawnW;
@@ -223,7 +218,7 @@ public final class OverlayPlacement {
         sizing = false;
     }
 
-    /** Applies the drag to the live rectangle; called for every frame drawn. */
+    /** Applies the drag to the live rectangle; fed by every mouse-drag event. */
     public static void dragTo(int mx, int my, int screenW, int screenH) {
         if (!editing) {
             return;
