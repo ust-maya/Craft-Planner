@@ -102,10 +102,12 @@ final class RecipeListLayout {
      * @param itemNames     names of all planned items, in row order (empty = empty list)
      * @param maxAmount     largest requested amount, used to size the amount column
      * @param maxOptions    largest number of recipes behind one row, sizes the "N/M" button
+     * @param cutMarker     whether any row carries the {@code ✂} "tree cut here" mark
      */
     RecipeListLayout(TextMetrics metrics, int screenWidth, List<String> itemNames, long maxAmount, int maxOptions,
             String headerRecipe, String headerAmount, String headerRemove,
-            String clearLabel, String closeLabel, String oresLabel, String ambiguousLabel, String hint) {
+            String clearLabel, String closeLabel, String oresLabel, String ambiguousLabel, String hint,
+            boolean cutMarker) {
         // A column is as wide as the wider of its header and its content. The
         // header drives the width on purpose: it is a legend, and a legend cut
         // to two characters ("Уд…") is worse than a wider column.
@@ -113,8 +115,10 @@ final class RecipeListLayout {
         int plusW = Math.max(14, metrics.width("+") + GLYPH_PAD);
         int recipeW = Math.max(MIN_RECIPE_W,
                 // The counter is drawn with the "▾" chevron whenever the row is
-                // switchable, so the column has to fit the widest variant.
-                Math.max(metrics.width(maxOptions + "/" + maxOptions + " ▾"), metrics.width(headerRecipe)) + GAP);
+                // switchable, and with a "✂" whenever a branch is cut there, so
+                // the column has to fit the widest variant.
+                Math.max(metrics.width((cutMarker ? "✂ " : "") + maxOptions + "/" + maxOptions + " ▾"),
+                        metrics.width(headerRecipe)) + GAP);
         int amountW = Math.max(MIN_AMOUNT_W,
                 Math.max(metrics.width(Long.toString(maxAmount)), metrics.width(headerAmount)) + GAP);
         int removeW = Math.max(MIN_REMOVE_W,

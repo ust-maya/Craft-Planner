@@ -18,8 +18,9 @@ import net.minecraft.world.item.crafting.RecipeHolder;
  * in the tree, recipe button in the {@code K} window).
  *
  * <p>It lists every recipe that produces one item, names each by machine and mod
- * and by what it consumes, marks the one in use and lets the player pick another
- * or hand the choice back to the engine. The list screen's cycling button could
+ * and by what it consumes, marks the one in use and lets the player pick another,
+ * hand the choice back to the engine, or stop the tree at this item altogether.
+ * The list screen's cycling button could
  * only ever say "1/3, 2/3, 3/3" — which is no help when the options differ by
  * more than an index — so the choice is made here, where both the label and the
  * cost of each alternative are on screen.</p>
@@ -117,6 +118,7 @@ public final class RecipePickerScreen extends Screen {
             widest = Math.max(widest, this.font.width(label) + 16);
         }
         widest = Math.max(widest, this.font.width(Component.translatable("gui.craftplanner.picker.auto")) + 16);
+        widest = Math.max(widest, this.font.width(Component.translatable("gui.craftplanner.picker.cut")) + 20);
         return Math.min(this.width - 16, Math.max(220, widest + 2 * PAD));
     }
 
@@ -136,6 +138,17 @@ public final class RecipePickerScreen extends Screen {
             y += ROW_H;
         }
 
+        boolean cut = PlannerState.isCut(this.item);
+        // The cut is offered whether or not the item has several recipes: "stop
+        // planning rabbit hide" is asked for one-recipe leather just as much.
+        addRenderableWidget(FitButton.create(left + PAD, y, inner, ROW_H - 2,
+                Component.literal((cut ? "✔ " : "   ") + "✂ " + tr("gui.craftplanner.picker.cut")),
+                button -> PlannerState.toggleCut(this.item),
+                Component.translatable(cut
+                        ? "gui.craftplanner.picker.cut.on.tooltip"
+                        : "gui.craftplanner.picker.cut.tooltip")));
+        y += ROW_H;
+
         if (PlannerState.preferences().containsKey(this.item)) {
             // Only shown while the player has actually overridden the engine, so
             // the row below never promises a reset to something that is not set.
@@ -150,6 +163,10 @@ public final class RecipePickerScreen extends Screen {
                 // translation of "Close" to keep in sync.
                 Component.translatable("screen.craftplanner.list.close"),
                 button -> this.onClose(), null));
+    }
+
+    private static String tr(String key) {
+        return Component.translatable(key).getString();
     }
 
     /**
@@ -172,9 +189,9 @@ public final class RecipePickerScreen extends Screen {
         this.seenGraphVersion = PlannerState.graphVersion();
     }
 
-    /** The two rows that are always there: the reset and the close button. */
+    /** The rows that are always there: the cut switch and the close button. */
     private int fixedRows() {
-        return PlannerState.preferences().containsKey(this.item) ? 2 : 1;
+        return PlannerState.preferences().containsKey(this.item) ? 3 : 2;
     }
 
     /**

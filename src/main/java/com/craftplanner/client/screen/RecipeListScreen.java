@@ -55,6 +55,11 @@ public class RecipeListScreen extends Screen {
     private static final String KEY_ORES_HIDDEN = "screen.craftplanner.list.ores.hidden";
     private static final String KEY_ORES_SHOWN = "screen.craftplanner.list.ores.shown";
     private static final String KEY_AMBIGUOUS = "screen.craftplanner.list.ambiguous";
+    /** Tooltip of a row with several recipes, and of a row with exactly one. */
+    private static final String KEY_RECIPE_TOOLTIP = "screen.craftplanner.list.recipe.tooltip";
+    private static final String KEY_RECIPE_ONE = "screen.craftplanner.list.recipe.tooltip.one";
+    /** Tooltip of a row whose branch the player cut — the words the tree badge shows. */
+    private static final String KEY_CUT = "overlay.craftplanner.cut.tooltip";
 
     private static final int TEXT = 0xFFE0E0E0;
     private static final int MUTED = 0xFFA0A0A0;
@@ -107,10 +112,12 @@ public class RecipeListScreen extends Screen {
         List<String> names = new ArrayList<>(this.roots.size());
         long maxAmount = 1L;
         int maxOptions = 1;
+        boolean anyCut = false;
         for (RecipeNode node : this.roots) {
             names.add(node.item().name().getString());
             maxAmount = Math.max(maxAmount, node.required());
             maxOptions = Math.max(maxOptions, node.options().size());
+            anyCut |= PlannerState.isCut(node.item());
         }
         // The hint teaches the add-a-recipe gesture once; after the player has
         // opened and closed this window at least once it only adds noise.
@@ -121,7 +128,7 @@ public class RecipeListScreen extends Screen {
         this.layout = new RecipeListLayout(this.metrics, this.width, names, maxAmount, maxOptions,
                 tr(KEY_HEADER_RECIPE), tr(KEY_HEADER_AMOUNT), tr(KEY_HEADER_REMOVE),
                 tr(KEY_CLEAR), tr(KEY_CLOSE), oresLabel().getString(), ambiguousLabel,
-                PlannerState.listHintSeen() ? "" : tr(KEY_HINT));
+                PlannerState.listHintSeen() ? "" : tr(KEY_HINT), anyCut);
     }
 
     @Override
@@ -202,23 +209,39 @@ public class RecipeListScreen extends Screen {
 
     /**
      * "2/3 ▾" button (Stage 6): the row's item is produced by {@code 3} recipes
-     * and {@code 2} of them is in use. Inactive when there is only one way, and
-     * the chevron says the rest. Clicking opens {@link RecipePickerScreen}, which
-     * names every option — cycling them blindly left the player choosing an index
-     * without ever seeing what the index was.
+     * and {@code 2} of them is in use. Clicking opens {@link RecipePickerScreen},
+     * which names every option — cycling them blindly left the player choosing an
+     * index without ever seeing what the index was.
+     *
+     * <p>A row with a single way is clickable too: the picker that opens carries
+     * the "cut the tree here" switch, which is asked for exactly one way as much
+     * as for several ("stop planning rabbit hide"). Only an item with no recipe
+     * at all — plain raw material — has nothing to open. A row whose branch is
+     * cut carries {@code ✂}.</p>
      */
     private Button recipeButton(RecipeNode node, int x, int y) {
         List<RecipeHolder<?>> options = node.options();
         int total = options.size();
         int index = total == 0 ? 0 : Math.min(node.selectedRecipeIndex(), total - 1);
         String counter = total > 0 ? (index + 1) + "/" + total : "-";
+        boolean cut = PlannerState.isCut(node.item());
+
+        Component tooltip;
+        if (total == 0) {
+            tooltip = null;
+        } else if (cut) {
+            // The same words the tree badge uses for the same state.
+            tooltip = Component.translatable(KEY_CUT);
+        } else {
+            tooltip = Component.translatable(total > 1 ? KEY_RECIPE_TOOLTIP : KEY_RECIPE_ONE,
+                    index + 1, total);
+        }
 
         Button button = FitButton.create(x, y, this.layout.recipeW, RecipeListLayout.BUTTON_H,
-                Component.literal(total > 1 ? counter + " ▾" : counter),
+                Component.literal((cut ? "✂ " : "") + (total > 0 ? counter + " ▾" : counter)),
                 pressed -> this.minecraft.setScreen(new RecipePickerScreen(node.item(), this)),
-                Component.translatable("screen.craftplanner.list.recipe.tooltip",
-                        index + 1, total));
-        button.active = total > 1;
+                tooltip);
+        button.active = total > 0;
         return button;
     }
 
