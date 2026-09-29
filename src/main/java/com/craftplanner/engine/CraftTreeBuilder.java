@@ -52,18 +52,11 @@ import org.slf4j.LoggerFactory;
  *   <li>base materials are never expanded either: planks end the branch as
  *       {@link NodeKind#RAW} (see {@link BaseMaterials}), so the tree stops at
  *       "4 oak planks" instead of walking on to the log they were sawn from;</li>
- *   <li>a chain of machine hops that hands out one item for each one it takes,
- *       all the way down to mined material, ends at the last item as
- *       {@link NodeKind#RAW} ({@code recipes.cutRenameChains}, see
- *       {@link RecipeIndex#isRenameCut}): glass is planned as "furnace: 1 sand",
- *       not as stone -> cobblestone -> gravel -> sand. The row keeps its recipe
- *       and its alternatives, so pinning a machine step expands the branch
- *       again;</li>
  *   <li>an item the player cut the tree at (the "cut here" row of the recipe
  *       picker) ends the same way, for every place it appears in the plan:
  *       leather stays "2 leather to gather" instead of walking on to rabbit
- *       hide. Unlike the automatic cuts this is the player's own answer, so it
- *       also wins over a pinned recipe.</li>
+ *       hide. This is the player's own answer, so it also wins over a pinned
+ *       recipe.</li>
  * </ul>
  */
 public final class CraftTreeBuilder {
@@ -181,27 +174,22 @@ public final class CraftTreeBuilder {
         }
 
         RecipeHolder<?> chosen = chooseRecipe(options, preferences.get(node.item()), node.item(), path);
-        boolean pinned = isPinned(preferences.get(node.item()), options);
         // A null pick means every recipe for this item merely takes a storage
         // block apart (hay_block -> 9 wheat): the item is a base material and
-        // the branch ends here. A rename cut means the same about a chain of
-        // machine hops that hand out one item for one, down to mined material
-        // (sand from gravel from cobblestone from stone). A player cut is the
-        // same ending asked for by hand ("I will gather the leather myself, do
-        // not plan rabbit hide"), and unlike the automatic cuts it survives a
-        // pinned recipe — the player asked for it. The recipes are still
-        // recorded so the list screen can show which one applies and — when the
-        // item has several — let the player force one, which ends the cut.
+        // the branch ends here. A player cut is the same ending asked for by
+        // hand ("I will gather the leather myself, do not plan rabbit hide"), and
+        // it survives a pinned recipe — the player asked for it. The recipes are
+        // still recorded so the list screen can show which one applies and — when
+        // the item has several — let the player force one, which ends the cut.
         boolean cutHere = cuts.contains(node.item());
-        boolean renameCut = !pinned && !cutHere && index.isRenameCut(node.item());
-        boolean baseMaterial = chosen == null || renameCut || cutHere;
+        boolean baseMaterial = chosen == null || cutHere;
         if (chosen == null) {
             // Nothing survived the ladder; the first candidate is still the true
             // description of where the item comes from.
             chosen = options.get(0);
         }
         if (Config.traceChoices()) {
-            trace(node.item(), options, chosen, baseMaterial, renameCut, cutHere, path);
+            trace(node.item(), options, chosen, baseMaterial, cutHere, path);
         }
 
         // Inputs are read through the index, which memoised them when it was
@@ -397,23 +385,6 @@ public final class CraftTreeBuilder {
     }
 
     /**
-     * True when the player pinned one of {@code options} for this item. A pinned
-     * recipe is the player's own answer to "where does this come from", so no
-     * automatic cut may hide the branch again.
-     */
-    private static boolean isPinned(ResourceLocation preferredId, List<RecipeHolder<?>> options) {
-        if (preferredId == null) {
-            return false;
-        }
-        for (RecipeHolder<?> option : options) {
-            if (option.id().equals(preferredId)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * One block per expanded item for {@code debug.traceChoices}: the pick,
      * every candidate with its rank cost and the three rejection tests, and
      * the player's pinned choice when there is one. The tests are evaluated
@@ -421,14 +392,13 @@ public final class CraftTreeBuilder {
      * off outside a debugging session.
      */
     private void trace(ItemKey current, List<RecipeHolder<?>> options,
-                       RecipeHolder<?> chosen, boolean baseMaterial, boolean renameCut, boolean cutHere,
+                       RecipeHolder<?> chosen, boolean baseMaterial, boolean cutHere,
                        Set<ItemKey> path) {
         ResourceLocation pinned = preferences.get(current);
         LOGGER.debug("Craft Planner choice for {}{}: {}{} of {} recipes",
                 current, pinned == null ? "" : " (pinned to " + pinned + ")",
                 baseMaterial
                         ? (cutHere ? "none — the player cut the tree here"
-                                : renameCut ? "none — a machine chain that only renames raw material"
                                 : "none — treated as a base material")
                         : chosen.id(),
                 baseMaterial ? " (still recorded as the row's recipe)" : "",

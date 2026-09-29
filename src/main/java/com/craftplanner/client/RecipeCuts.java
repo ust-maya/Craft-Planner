@@ -22,12 +22,14 @@ import org.slf4j.LoggerFactory;
 /**
  * The items the player stopped the tree at, kept between game starts.
  *
- * <p>A cut is the manual counterpart of the automatic cuts in
- * {@link com.craftplanner.engine}: the branch ends at this item, which is then
- * planned as something to gather rather than crafted from its own ingredients.
- * Like the recipe choices of {@link RecipeChoices} it is keyed by item and
- * applies to every place that item appears in the plan, so the two live in
- * sibling files and are loaded together.</p>
+ * <p>A cut is the only way to stop a branch that the engine would otherwise
+ * expand: the branch ends at this item, which is then planned as something to
+ * gather rather than crafted from its own ingredients. The tree never decides
+ * that on its own — a machine hop the player does not want in the plan is cut
+ * by hand, from the {@code ✂} row of the recipe picker. Like the recipe choices
+ * of {@link RecipeChoices} it is keyed by item and applies to every place that
+ * item appears in the plan, so the two live in sibling files and are loaded
+ * together.</p>
  *
  * <p>A JSON array of item ids — a cut carries no recipe id, only the decision
  * "end here". The same limits as {@link RecipeChoices} applies: items with data

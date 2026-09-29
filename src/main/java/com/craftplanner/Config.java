@@ -110,19 +110,6 @@ public final class Config {
                     "a machine are not part of the plan.")
             .define("recipes.indexModded", true);
 
-    private static final ModConfigSpec.BooleanValue CUT_RENAME_CHAINS = BUILDER
-            .comment("End a tree branch at an item that machine recipes only rename: a chain of",
-                    "modded machine steps that each take one item and hand back one of the next,",
-                    "down to something nothing produces (Modern Industrialization grinding stone",
-                    "into cobblestone, cobblestone into gravel, gravel into sand). Such a chain",
-                    "spends exactly the material the last item costs, so the sand is treated as",
-                    "raw material and the plan shows the furnace step above it instead of four",
-                    "rows of grinding. Vanilla steps are never cut: a crafting table or a furnace",
-                    "row is what the plan is for. The cut row keeps its recipe badge, so a machine",
-                    "step can still be pinned from the picker — with overlay.badges off there is",
-                    "no badge to click and the cut cannot be undone from in game.")
-            .define("recipes.cutRenameChains", true);
-
     private static final ModConfigSpec.ConfigValue<String> MODDED_PRIORITY = BUILDER
             .comment("Where a machine recipe ranks against the vanilla ones when their ingredient",
                     "costs tie: 'after_vanilla' (default) keeps the hand crafting table first and",
@@ -190,11 +177,6 @@ public final class Config {
     /** Whether recipes of modded machine types are planned at all. */
     public static boolean indexModdedRecipes() {
         return INDEX_MODDED.get();
-    }
-
-    /** Whether a chain of 1:1 machine hops is cut and its last item treated as raw material. */
-    public static boolean cutRenameChains() {
-        return CUT_RENAME_CHAINS.get();
     }
 
     /** Rank of a machine recipe against the vanilla ones: see {@code MODDED_PRIORITIES}. */
