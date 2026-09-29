@@ -9,7 +9,9 @@ import com.craftplanner.graph.CraftGraph;
 import com.craftplanner.graph.ItemKey;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -37,7 +39,15 @@ public final class PlannerState {
      */
     private static final Map<ItemKey, ResourceLocation> PREFERENCES = new HashMap<>();
     /**
-     * Whether {@link RecipeChoices} has been merged into {@link #PREFERENCES}.
+     * Items the player cut the tree at: the branch ends there, the item itself
+     * is planned as material to gather. Keyed by item like {@link #PREFERENCES}
+     * and saved next to them, so a cut applies wherever the item appears and is
+     * still there after a restart.
+     */
+    private static final Set<ItemKey> CUTS = new LinkedHashSet<>();
+    /**
+     * Whether {@link RecipeChoices} and {@link RecipeCuts} have been merged into
+     * the live maps.
      * Loaded on the first rebuild rather than at mod construction: at that point
      * the item registry still does not know about the items of the other mods,
      * and every saved choice would read as "item no longer exists".
@@ -117,7 +127,9 @@ public final class PlannerState {
             ensureChoicesLoaded();
             GRAPH.removeRoot(key);
             PREFERENCES.remove(key);
+            CUTS.remove(key);
             RecipeChoices.write(PREFERENCES);
+            RecipeCuts.write(CUTS);
             rebuild();
         } finally {
             LOCK.unlock();
@@ -130,7 +142,9 @@ public final class PlannerState {
             ensureChoicesLoaded();
             GRAPH.clear();
             PREFERENCES.clear();
+            CUTS.clear();
             RecipeChoices.write(PREFERENCES);
+            RecipeCuts.write(CUTS);
             rebuild();
         } finally {
             LOCK.unlock();
@@ -171,6 +185,30 @@ public final class PlannerState {
     /** Recipe choice per item, as passed to {@link CraftTreeBuilder}. */
     public static Map<ItemKey, ResourceLocation> preferences() {
         return Collections.unmodifiableMap(PREFERENCES);
+    }
+
+    /**
+     * Stops the tree at an item (or lets it expand again). The item stays in the
+     * plan and starts counting as material to gather; its own ingredients are no
+     * longer planned. Like a recipe choice it applies wherever the item appears.
+     */
+    public static void toggleCut(ItemKey key) {
+        LOCK.lock();
+        try {
+            ensureChoicesLoaded();
+            if (!CUTS.remove(key)) {
+                CUTS.add(key);
+            }
+            RecipeCuts.write(CUTS);
+            pendingRebuildAt = System.currentTimeMillis() + REBUILD_DEBOUNCE_MS;
+        } finally {
+            LOCK.unlock();
+        }
+    }
+
+    /** True when the branch must end at this item. */
+    public static boolean isCut(ItemKey key) {
+        return CUTS.contains(key);
     }
 
     /**
@@ -227,7 +265,7 @@ public final class PlannerState {
             pendingRebuildAt = 0L;
             ensureChoicesLoaded();
             Minecraft mc = Minecraft.getInstance();
-            CraftTreeBuilder.rebuild(GRAPH, mc.level, PREFERENCES, hideOres());
+            CraftTreeBuilder.rebuild(GRAPH, mc.level, PREFERENCES, hideOres(), CUTS);
             graphVersion++;
             refreshAvailability();
         } finally {
@@ -236,8 +274,8 @@ public final class PlannerState {
     }
 
     /**
-     * Merges the saved recipe choices once, before a tree is ever expanded
-     * against them.
+     * Merges the saved recipe choices and tree cuts once, before a tree is ever
+     * expanded against them.
      */
     private static void ensureChoicesLoaded() {
         if (choicesLoaded) {
@@ -245,6 +283,7 @@ public final class PlannerState {
         }
         choicesLoaded = true;
         PREFERENCES.putAll(RecipeChoices.read());
+        CUTS.addAll(RecipeCuts.read());
     }
 
     /**

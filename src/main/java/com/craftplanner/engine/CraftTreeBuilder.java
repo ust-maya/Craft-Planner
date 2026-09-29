@@ -58,7 +58,12 @@ import org.slf4j.LoggerFactory;
  *       {@link RecipeIndex#isRenameCut}): glass is planned as "furnace: 1 sand",
  *       not as stone -> cobblestone -> gravel -> sand. The row keeps its recipe
  *       and its alternatives, so pinning a machine step expands the branch
- *       again.</li>
+ *       again;</li>
+ *   <li>an item the player cut the tree at (the "cut here" row of the recipe
+ *       picker) ends the same way, for every place it appears in the plan:
+ *       leather stays "2 leather to gather" instead of walking on to rabbit
+ *       hide. Unlike the automatic cuts this is the player's own answer, so it
+ *       also wins over a pinned recipe.</li>
  * </ul>
  */
 public final class CraftTreeBuilder {
@@ -76,21 +81,32 @@ public final class CraftTreeBuilder {
      * soon as the world is reloaded, while the ids stay valid.
      */
     private final Map<ItemKey, ResourceLocation> preferences = new HashMap<>();
+    /**
+     * Items the player cut the tree at: the branch ends there instead of
+     * expanding into their ingredients.
+     */
+    private final Set<ItemKey> cuts;
     /** Drops ore-like resources from the tree (Stage 11). */
     private final ResourceFilter filter;
     private int nodeCount;
 
     public CraftTreeBuilder(RecipeIndex index) {
-        this(index, Map.of(), ResourceFilter.NONE);
+        this(index, Map.of(), ResourceFilter.NONE, Set.of());
     }
 
     public CraftTreeBuilder(RecipeIndex index, Map<ItemKey, ResourceLocation> preferences) {
-        this(index, preferences, ResourceFilter.NONE);
+        this(index, preferences, ResourceFilter.NONE, Set.of());
     }
 
     public CraftTreeBuilder(RecipeIndex index, Map<ItemKey, ResourceLocation> preferences, ResourceFilter filter) {
+        this(index, preferences, filter, Set.of());
+    }
+
+    public CraftTreeBuilder(RecipeIndex index, Map<ItemKey, ResourceLocation> preferences, ResourceFilter filter,
+            Set<ItemKey> cuts) {
         this.index = index;
         this.filter = filter == null ? ResourceFilter.NONE : filter;
+        this.cuts = cuts == null ? Set.of() : cuts;
         if (preferences != null) {
             this.preferences.putAll(preferences);
         }
@@ -112,6 +128,15 @@ public final class CraftTreeBuilder {
      */
     public static void rebuild(CraftGraph graph, Level level, Map<ItemKey, ResourceLocation> preferences,
             boolean hideOreLike) {
+        rebuild(graph, level, preferences, hideOreLike, Set.of());
+    }
+
+    /**
+     * Same as above, with the items the player cut the tree at (the "cut here"
+     * row of the recipe picker).
+     */
+    public static void rebuild(CraftGraph graph, Level level, Map<ItemKey, ResourceLocation> preferences,
+            boolean hideOreLike, Set<ItemKey> cuts) {
         if (level == null) {
             return;
         }
@@ -119,7 +144,7 @@ public final class CraftTreeBuilder {
         // preference change or the ore switch re-expands the tree over the
         // existing index instead of re-walking every recipe in the game.
         RecipeIndex index = RecipeIndex.cachedFor(level.getRecipeManager(), level.registryAccess());
-        new CraftTreeBuilder(index, preferences, ResourceFilter.of(hideOreLike)).rebuild(graph);
+        new CraftTreeBuilder(index, preferences, ResourceFilter.of(hideOreLike), cuts).rebuild(graph);
     }
 
     /** Expands every root of the graph in place. */
@@ -161,18 +186,22 @@ public final class CraftTreeBuilder {
         // block apart (hay_block -> 9 wheat): the item is a base material and
         // the branch ends here. A rename cut means the same about a chain of
         // machine hops that hand out one item for one, down to mined material
-        // (sand from gravel from cobblestone from stone). The recipes are still
+        // (sand from gravel from cobblestone from stone). A player cut is the
+        // same ending asked for by hand ("I will gather the leather myself, do
+        // not plan rabbit hide"), and unlike the automatic cuts it survives a
+        // pinned recipe — the player asked for it. The recipes are still
         // recorded so the list screen can show which one applies and — when the
         // item has several — let the player force one, which ends the cut.
-        boolean renameCut = !pinned && index.isRenameCut(node.item());
-        boolean baseMaterial = chosen == null || renameCut;
+        boolean cutHere = cuts.contains(node.item());
+        boolean renameCut = !pinned && !cutHere && index.isRenameCut(node.item());
+        boolean baseMaterial = chosen == null || renameCut || cutHere;
         if (chosen == null) {
             // Nothing survived the ladder; the first candidate is still the true
             // description of where the item comes from.
             chosen = options.get(0);
         }
         if (Config.traceChoices()) {
-            trace(node.item(), options, chosen, baseMaterial, renameCut, path);
+            trace(node.item(), options, chosen, baseMaterial, renameCut, cutHere, path);
         }
 
         // Inputs are read through the index, which memoised them when it was
@@ -392,13 +421,14 @@ public final class CraftTreeBuilder {
      * off outside a debugging session.
      */
     private void trace(ItemKey current, List<RecipeHolder<?>> options,
-                       RecipeHolder<?> chosen, boolean baseMaterial, boolean renameCut,
+                       RecipeHolder<?> chosen, boolean baseMaterial, boolean renameCut, boolean cutHere,
                        Set<ItemKey> path) {
         ResourceLocation pinned = preferences.get(current);
         LOGGER.debug("Craft Planner choice for {}{}: {}{} of {} recipes",
                 current, pinned == null ? "" : " (pinned to " + pinned + ")",
                 baseMaterial
-                        ? (renameCut ? "none — a machine chain that only renames raw material"
+                        ? (cutHere ? "none — the player cut the tree here"
+                                : renameCut ? "none — a machine chain that only renames raw material"
                                 : "none — treated as a base material")
                         : chosen.id(),
                 baseMaterial ? " (still recorded as the row's recipe)" : "",
