@@ -84,9 +84,12 @@ final class RecipeListLayout {
     final int clearW;
     final int closeW;
     final int oresW;
+    /** Zero when no item of the plan has alternatives, and the button is then absent. */
+    final int ambiguousW;
     final int clearX;
     final int closeX;
     final int oresX;
+    final int ambiguousX;
     /** Footer rows, as offsets from the top of the footer block. */
     final int hintY;
     final int buttonsY;
@@ -102,7 +105,7 @@ final class RecipeListLayout {
      */
     RecipeListLayout(TextMetrics metrics, int screenWidth, List<String> itemNames, long maxAmount, int maxOptions,
             String headerRecipe, String headerAmount, String headerRemove,
-            String clearLabel, String closeLabel, String oresLabel, String hint) {
+            String clearLabel, String closeLabel, String oresLabel, String ambiguousLabel, String hint) {
         // A column is as wide as the wider of its header and its content. The
         // header drives the width on purpose: it is a legend, and a legend cut
         // to two characters ("Уд…") is worse than a wider column.
@@ -124,7 +127,11 @@ final class RecipeListLayout {
                 : Math.max(MIN_FOOTER_BUTTON_W, metrics.width(clearLabel) + PAD);
         int closeW = Math.max(MIN_FOOTER_BUTTON_W, metrics.width(closeLabel) + PAD);
         int oresW = Math.max(MIN_FOOTER_BUTTON_W, metrics.width(oresLabel) + PAD);
-        int footerNeed = 2 * PAD + clearW + oresW + closeW + 2 * GAP;
+        int ambiguousW = ambiguousLabel.isEmpty()
+                ? 0
+                : Math.max(MIN_FOOTER_BUTTON_W, metrics.width(ambiguousLabel) + PAD);
+        int gaps = ambiguousW > 0 ? 3 : 2;
+        int footerNeed = 2 * PAD + clearW + ambiguousW + oresW + closeW + gaps * GAP;
 
         int widestName = 0;
         for (String name : itemNames) {
@@ -179,22 +186,35 @@ final class RecipeListLayout {
         int recipeX = amountLeft - GAP - recipeW;
 
         // Footer buttons: scaled down first if the panel is too narrow to hold
-        // all three side by side, then the ore switch is centred in the gap.
-        int room = panelWidth - 2 * PAD - 2 * GAP;
-        int footerWant = clearW + oresW + closeW;
+        // them side by side, then the ore switch — and, when any item of the
+        // plan has alternatives, the ambiguous-recipes button next to it — are
+        // centred in the gap.
+        int room = panelWidth - 2 * PAD - gaps * GAP;
+        int footerWant = clearW + ambiguousW + oresW + closeW;
         if (footerWant > room && footerWant > 0) {
             double scale = Math.max(0.35, room / (double) footerWant);
             clearW = Math.max(MIN_FOOTER_BUTTON_W / 2, (int) (clearW * scale));
+            ambiguousW = ambiguousW == 0 ? 0 : Math.max(MIN_FOOTER_BUTTON_W / 2, (int) (ambiguousW * scale));
             oresW = Math.max(MIN_FOOTER_BUTTON_W / 2, (int) (oresW * scale));
             closeW = Math.max(MIN_FOOTER_BUTTON_W / 2, (int) (closeW * scale));
         }
         int clearX = PAD;
         int closeX = panelWidth - PAD - closeW;
         int free = closeX - GAP - (clearX + clearW);
-        if (oresW > free - 2 * GAP) {
-            oresW = Math.max(24, free - 2 * GAP);
+        int middle = ambiguousW > 0 ? ambiguousW + GAP + oresW : oresW;
+        if (middle > free - 2 * GAP) {
+            int shrink = middle - (free - 2 * GAP);
+            int cut = Math.min(shrink, Math.max(0, oresW - 24));
+            oresW -= cut;
+            shrink -= cut;
+            if (shrink > 0 && ambiguousW > 0) {
+                ambiguousW = Math.max(24, ambiguousW - shrink);
+            }
+            middle = ambiguousW > 0 ? ambiguousW + GAP + oresW : oresW;
         }
-        int oresX = clearX + clearW + Math.max(GAP, (free - oresW) / 2);
+        int middleX = clearX + clearW + Math.max(GAP, (free - middle) / 2);
+        int oresX = ambiguousW > 0 ? middleX + ambiguousW + GAP : middleX;
+        int ambiguousX = middleX;
 
         // Footer rows: the wrapped hint, then the buttons. With a single hint
         // line this reproduces the previous 15 / 27 offsets exactly.
@@ -219,9 +239,11 @@ final class RecipeListLayout {
         this.clearW = clearW;
         this.closeW = closeW;
         this.oresW = oresW;
+        this.ambiguousW = ambiguousW;
         this.clearX = clearX;
         this.closeX = closeX;
         this.oresX = oresX;
+        this.ambiguousX = ambiguousX;
     }
 
     /** Width of everything between the name column and the panel's right edge. */

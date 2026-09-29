@@ -27,7 +27,9 @@ import net.neoforged.fml.ModList;
  * needs to tell two alternatives apart — {@code Centrifuge · Modern
  * Industrialization} against {@code Crafting · Minecraft}. Machine mods register
  * one type per machine, so the type key is the machine's name, not a generic
- * "machine".</p>
+ * "machine". The key itself is English, so {@link MachineNames} is asked for the
+ * name of the block that machine is, and only a machine with no block of its own
+ * is still named by its registry path.</p>
  *
  * <p>Names are cached because both lookups walk a registry or a mod list and the
  * labels are produced while the tooltip or the picker is being drawn.</p>
@@ -39,10 +41,15 @@ public final class RecipeLabel {
     private RecipeLabel() {
     }
 
-    /** {@code "Centrifuge · Modern Industrialization"} for a machine recipe. */
+    /** {@code "Кузнечный молот · Modern Industrialization"} for a machine recipe. */
     public static Component of(RecipeHolder<?> holder) {
         ResourceLocation typeKey = BuiltInRegistries.RECIPE_TYPE.getKey(holder.value().getType());
-        String what = beautify(typeKey != null ? typeKey.getPath() : holder.id().getPath());
+        String what = MachineNames.of(typeKey);
+        if (what == null) {
+            // No block names this machine in the player's language: the registry
+            // path is still the one thing that tells two alternatives apart.
+            what = beautify(typeKey != null ? typeKey.getPath() : holder.id().getPath());
+        }
         String from = modName(holder.id().getNamespace());
         return Component.literal(from.isEmpty() ? what : what + " · " + from);
     }

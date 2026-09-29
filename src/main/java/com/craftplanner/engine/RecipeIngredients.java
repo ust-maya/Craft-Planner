@@ -92,13 +92,14 @@ public final class RecipeIngredients {
     public static NonNullList<Ingredient> of(Recipe<?> recipe) {
         try {
             Provider provider = PROVIDERS.get(recipe.getType());
+            NonNullList<Ingredient> base;
             if (provider != null) {
                 NonNullList<Ingredient> resolved = provider.ingredients(recipe);
-                if (resolved != null) {
-                    return resolved;
-                }
+                base = resolved != null ? resolved : recipe.getIngredients();
+            } else {
+                base = recipe.getIngredients();
             }
-            return recipe.getIngredients();
+            return multiplied(recipe, base);
         } catch (RuntimeException | LinkageError e) {
             if (WARNED.add(recipe.getType())) {
                 LOGGER.warn("Craft Planner could not read the ingredients of a {} recipe ({})."
@@ -107,6 +108,57 @@ public final class RecipeIngredients {
             }
             return NonNullList.create();
         }
+    }
+
+    /**
+     * Shapes that keep their per-operation count outside the ingredient list.
+     * Modern Industrialization's forge-hammer recipe is the known case:
+     * {@code getIngredients()} returns the single input slot, while the amount
+     * the hammer actually consumes lives in a separate {@code count()} field —
+     * {@code 2 copper ingots -> 1 double ingot} would otherwise read as 1:1,
+     * and the engine would see a chain that magically doubles copper.
+     */
+    private static NonNullList<Ingredient> multiplied(Recipe<?> recipe, NonNullList<Ingredient> ingredients) {
+        int count = externalCount(recipe);
+        if (count <= 1 || ingredients.size() != 1) {
+            return ingredients;
+        }
+        NonNullList<Ingredient> expanded = NonNullList.create();
+        for (int i = 0; i < count; i++) {
+            expanded.add(ingredients.get(0));
+        }
+        return expanded;
+    }
+
+    /** Cache of the reflection verdict per recipe class. */
+    private static final Map<Class<?>, Integer> COUNT_ACCESSORS = new HashMap<>();
+
+    /**
+     * The {@code count()} of a recognised hammer-shaped recipe, or 1 when the
+     * type has no external count. Reflection, because MI is a soft dependency:
+     * the class name is checked before the method, so a mod that merely has a
+     * {@code count()} method of a different shape is left alone.
+     */
+    private static int externalCount(Recipe<?> recipe) {
+        Class<?> cls = recipe.getClass();
+        Integer cached = COUNT_ACCESSORS.get(cls);
+        if (cached != null) {
+            return cached;
+        }
+        int count = 1;
+        if (cls.getName().startsWith("aztech.modern_industrialization.")
+                && cls.getSimpleName().toLowerCase().contains("hammer")) {
+            try {
+                Object raw = cls.getMethod("count").invoke(recipe);
+                if (raw instanceof Integer n && n > 1) {
+                    count = n;
+                }
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+                LOGGER.debug("Craft Planner could not read count() from a {} recipe.", cls, e);
+            }
+        }
+        COUNT_ACCESSORS.put(cls, count);
+        return count;
     }
 
     /**

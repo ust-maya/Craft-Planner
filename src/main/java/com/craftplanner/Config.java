@@ -110,12 +110,26 @@ public final class Config {
                     "a machine are not part of the plan.")
             .define("recipes.indexModded", true);
 
+    private static final ModConfigSpec.BooleanValue CUT_RENAME_CHAINS = BUILDER
+            .comment("End a tree branch at an item that machine recipes only rename: a chain of",
+                    "modded machine steps that each take one item and hand back one of the next,",
+                    "down to something nothing produces (Modern Industrialization grinding stone",
+                    "into cobblestone, cobblestone into gravel, gravel into sand). Such a chain",
+                    "spends exactly the material the last item costs, so the sand is treated as",
+                    "raw material and the plan shows the furnace step above it instead of four",
+                    "rows of grinding. Vanilla steps are never cut: a crafting table or a furnace",
+                    "row is what the plan is for. The cut row keeps its recipe badge, so a machine",
+                    "step can still be pinned from the picker — with overlay.badges off there is",
+                    "no badge to click and the cut cannot be undone from in game.")
+            .define("recipes.cutRenameChains", true);
+
     private static final ModConfigSpec.ConfigValue<String> MODDED_PRIORITY = BUILDER
-            .comment("Where a machine recipe ranks against the vanilla ones for the same item:",
-                    "'after_vanilla' (default) keeps the hand crafting table first and shows the",
-                    "machine as an alternative; 'before_smelting' puts machines ahead of the",
-                    "furnace group; 'first' lets a machine recipe outrank everything. Changing this",
-                    "rebuilds the recipe index, so the tree re-expands on the next tick.")
+            .comment("Where a machine recipe ranks against the vanilla ones when their ingredient",
+                    "costs tie: 'after_vanilla' (default) keeps the hand crafting table first and",
+                    "shows the machine as an alternative; 'before_smelting' puts machines ahead of",
+                    "the furnace group; 'first' lets a machine recipe outrank everything.",
+                    "The cheaper chain always wins regardless of this rank — see the recipe index.",
+                    "Changing this rebuilds the recipe index, so the tree re-expands on the next tick.")
             .defineInList("recipes.moddedPriority", MODDED_PRIORITY_DEFAULT, MODDED_PRIORITIES);
 
     private static final ModConfigSpec.IntValue MAX_AMOUNT = BUILDER
@@ -137,6 +151,14 @@ public final class Config {
                     "legacy forge: counterparts) and the *_ore naming, so modded ores are covered too.",
                     "The K window has a button that flips this switch in game without editing the file.")
             .define("filters.hideOres", true);
+
+    private static final ModConfigSpec.BooleanValue TRACE_CHOICES = BUILDER
+            .comment("Write every recipe decision of the tree into the debug log (run/client/logs/debug.log):",
+                    "for each expanded item — the chosen recipe, every candidate with its computed cost and",
+                    "the rejection reasons (laundering, pack reversal, back edge), and every ingredient the",
+                    "tree drops with the reason. Verbose; meant for finding out why a chain was picked,",
+                    "not for daily use.")
+            .define("debug.traceChoices", false);
 
     public static final ModConfigSpec SPEC = BUILDER.build();
 
@@ -170,6 +192,11 @@ public final class Config {
         return INDEX_MODDED.get();
     }
 
+    /** Whether a chain of 1:1 machine hops is cut and its last item treated as raw material. */
+    public static boolean cutRenameChains() {
+        return CUT_RENAME_CHAINS.get();
+    }
+
     /** Rank of a machine recipe against the vanilla ones: see {@code MODDED_PRIORITIES}. */
     public static String moddedPriority() {
         return MODDED_PRIORITY.get();
@@ -196,6 +223,11 @@ public final class Config {
     /** Whether ore-like resources are kept out of the tree by default. */
     public static boolean hideOres() {
         return HIDE_ORES.get();
+    }
+
+    /** Whether the engine logs every recipe decision and dropped ingredient. */
+    public static boolean traceChoices() {
+        return TRACE_CHOICES.get();
     }
 
     /** Pinned overlay panel left/top in GUI-scaled pixels, or {@code -1} for automatic. */

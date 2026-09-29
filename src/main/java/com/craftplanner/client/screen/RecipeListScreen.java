@@ -54,6 +54,7 @@ public class RecipeListScreen extends Screen {
     private static final String KEY_HEADER_REMOVE = "screen.craftplanner.list.header.remove";
     private static final String KEY_ORES_HIDDEN = "screen.craftplanner.list.ores.hidden";
     private static final String KEY_ORES_SHOWN = "screen.craftplanner.list.ores.shown";
+    private static final String KEY_AMBIGUOUS = "screen.craftplanner.list.ambiguous";
 
     private static final int TEXT = 0xFFE0E0E0;
     private static final int MUTED = 0xFFA0A0A0;
@@ -113,9 +114,13 @@ public class RecipeListScreen extends Screen {
         }
         // The hint teaches the add-a-recipe gesture once; after the player has
         // opened and closed this window at least once it only adds noise.
+        int ambiguous = BatchPickerScreen.ambiguousNodes().size();
+        String ambiguousLabel = ambiguous == 0
+                ? ""
+                : Component.translatable(KEY_AMBIGUOUS, ambiguous).getString();
         this.layout = new RecipeListLayout(this.metrics, this.width, names, maxAmount, maxOptions,
                 tr(KEY_HEADER_RECIPE), tr(KEY_HEADER_AMOUNT), tr(KEY_HEADER_REMOVE),
-                tr(KEY_CLEAR), tr(KEY_CLOSE), oresLabel().getString(),
+                tr(KEY_CLEAR), tr(KEY_CLOSE), oresLabel().getString(), ambiguousLabel,
                 PlannerState.listHintSeen() ? "" : tr(KEY_HINT));
     }
 
@@ -171,6 +176,17 @@ public class RecipeListScreen extends Screen {
                     refresh();
                 },
                 Component.translatable("screen.craftplanner.list.ores.tooltip")));
+
+        // Batch recipe choice: only offered while the tree actually holds items
+        // with more than one recipe — the engine's own pick is otherwise final.
+        if (l.ambiguousW > 0) {
+            addRenderableWidget(FitButton.create(left + l.ambiguousX, footerY, l.ambiguousW,
+                    RecipeListLayout.BUTTON_H,
+                    Component.literal(Component.translatable(KEY_AMBIGUOUS,
+                            BatchPickerScreen.ambiguousNodes().size()).getString()),
+                    button -> this.minecraft.setScreen(new BatchPickerScreen(this)),
+                    Component.translatable("screen.craftplanner.list.ambiguous.tooltip")));
+        }
     }
 
     /**

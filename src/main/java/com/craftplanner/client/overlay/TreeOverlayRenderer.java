@@ -22,6 +22,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -910,7 +911,7 @@ public final class TreeOverlayRenderer {
             lines.add(entry.getKey().name().copy()
                     .append(Component.literal(" ×" + entry.getValue().required())));
         }
-        graphics.renderTooltip(font, lines, Optional.empty(), mx, my);
+        showTooltip(graphics, font, mc, lines);
     }
 
     /**
@@ -918,7 +919,7 @@ public final class TreeOverlayRenderer {
      * which recipe is in use or what the others would ask for, so the tooltip
      * names the machine, the mod and the ingredients.
      *
-     * <p>Drawn only while one of the planner's screens is open: with no screen
+     * <p>Offered only while one of the planner's screens is open: with no screen
      * the game grabs the cursor and pins it to the centre of the window, and the
      * tooltip would follow a pointer the player cannot see or move.</p>
      */
@@ -937,7 +938,32 @@ public final class TreeOverlayRenderer {
         lines.add(0, Component.translatable("overlay.craftplanner.choice.tooltip",
                 Integer.toString(node.selectedRecipeIndex() + 1),
                 Integer.toString(node.alternatives().size() + 1)));
-        graphics.renderTooltip(font, lines, Optional.empty(), mx, my);
+        showTooltip(graphics, font, mc, lines);
+    }
+
+    /**
+     * Shows tooltip lines for the point the cursor is at. While a screen is open
+     * they are handed to it instead of being drawn here: Minecraft paints the HUD
+     * — and so every tooltip the overlay could draw — <em>before</em> the screen,
+     * and the planner's screens dim the whole view on top of it, which left the
+     * player with a dark box and unreadable text. A screen draws what it was
+     * handed as the last thing of its own render pass, above everything it
+     * painted, and wraps it to the vanilla tooltip width.
+     */
+    private static void showTooltip(GuiGraphics graphics, Font font, Minecraft mc,
+            List<Component> lines) {
+        if (lines.isEmpty()) {
+            return;
+        }
+        if (mc.screen == null) {
+            graphics.renderTooltip(font, lines, Optional.empty(), mouseX(mc), mouseY(mc));
+            return;
+        }
+        MutableComponent joined = lines.get(0).copy();
+        for (int i = 1; i < lines.size(); i++) {
+            joined.append(Component.literal("\n")).append(lines.get(i).copy());
+        }
+        mc.screen.setTooltipForNextRenderPass(joined);
     }
 
     private static void drawBorder(GuiGraphics graphics, int left, int top, int w, int h) {
