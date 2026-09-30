@@ -280,7 +280,6 @@ public final class TreeOverlayRenderer {
     private static final class Row {
         final RecipeNode node;
         final int depth;
-        final boolean last;
         /** Fold key of this row, {@code null} when the node has no children. */
         final String path;
         /** Index of the planned item this row belongs to — colours its lines. */
@@ -294,10 +293,9 @@ public final class TreeOverlayRenderer {
         /** Rows hidden because this branch is folded; 0 when expanded. */
         int hiddenRows;
 
-        Row(RecipeNode node, int depth, boolean last, String path, int branch) {
+        Row(RecipeNode node, int depth, String path, int branch) {
             this.node = node;
             this.depth = depth;
-            this.last = last;
             this.path = path;
             this.branch = branch;
             // Counted from the parts rather than through node.options(), which
@@ -319,14 +317,14 @@ public final class TreeOverlayRenderer {
      * @return the row index the node was drawn at, so the parent can find the
      *         last row of its children for the spine
      */
-    private static int buildRows(RecipeNode node, int depth, boolean last, String parentPath,
+    private static int buildRows(RecipeNode node, int depth, String parentPath,
             int branch, List<Row> out) {
         int myIndex = out.size();
         List<RecipeEdge> children = node.children();
         // Only a node with children can be folded, so the allocating path key is
         // built for exactly the rows that need one.
         String path = children.isEmpty() ? null : pathOf(parentPath, node);
-        Row row = new Row(node, depth, last, path, branch);
+        Row row = new Row(node, depth, path, branch);
         out.add(row);
         if (path != null && TreeCollapse.isFolded(path)) {
             row.hiddenRows = countRows(children);
@@ -334,8 +332,7 @@ public final class TreeOverlayRenderer {
             return myIndex;
         }
         for (int i = 0; i < children.size(); i++) {
-            int childIndex = buildRows(children.get(i).child(), depth + 1,
-                    i == children.size() - 1, path, branch, out);
+            int childIndex = buildRows(children.get(i).child(), depth + 1, path, branch, out);
             if (i == children.size() - 1) {
                 row.lastChildIndex = childIndex;
             }
@@ -427,7 +424,7 @@ public final class TreeOverlayRenderer {
         foldHits.clear();
         choiceHits.clear();
         for (int i = 0; i < roots.size(); i++) {
-            buildRows(roots.get(i), 0, i == roots.size() - 1, null, i, rows);
+            buildRows(roots.get(i), 0, null, i, rows);
         }
         if (rows.isEmpty()) {
             return;
