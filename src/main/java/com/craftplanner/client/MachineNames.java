@@ -37,9 +37,12 @@ import net.minecraft.world.level.block.Blocks;
  * <p>A block without a translation of its own is skipped: a mod that registers
  * the machine but ships no language entry for it would otherwise print the raw
  * key, which is worse than the English type name {@link RecipeLabel} falls back
- * to. Names are cached because the lookup walks a registry, and the picker and
- * the tooltips ask while they are being drawn; the cache is dropped when the
- * language changes, the same way vanilla's own tooltip cache is.</p>
+ * to. The same walk is offered as a block — {@link #blockOf} — so the picker can
+ * draw the machine's icon instead of its name, and there the translation does
+ * not matter: an icon only needs a block that exists. Names are cached because
+ * the lookup walks a registry, and the picker and the tooltips ask while they
+ * are being drawn; the cache is dropped when the language changes, the same way
+ * vanilla's own tooltip cache is.</p>
  */
 public final class MachineNames {
 
@@ -55,6 +58,8 @@ public final class MachineNames {
 
     /** Cached answers per recipe type; empty means "no block names this machine". */
     private static final Map<ResourceLocation, String> NAMES = new HashMap<>();
+    /** Cached blocks per recipe type; a remembered null means "no block runs it". */
+    private static final Map<ResourceLocation, Block> MACHINE_BLOCKS = new HashMap<>();
     /** Block ids grouped by namespace, in the order the lookup prefers them. */
     private static final Map<String, List<RegisteredBlock>> BLOCKS_BY_NAMESPACE = new HashMap<>();
     private static Language cachedLanguage;
@@ -71,11 +76,7 @@ public final class MachineNames {
         if (typeId == null) {
             return null;
         }
-        Language language = Language.getInstance();
-        if (cachedLanguage != language) {
-            NAMES.clear();
-            cachedLanguage = language;
-        }
+        dropCachesIfLanguageChanged();
         if (!NAMES.containsKey(typeId)) {
             String found = resolve(typeId);
             NAMES.put(typeId, found == null ? "" : found);
@@ -84,29 +85,60 @@ public final class MachineNames {
         return name.isEmpty() ? null : name;
     }
 
-    private static String resolve(ResourceLocation typeId) {
+    /** The block that runs this recipe type, or {@code null} when no block claims it. */
+    public static Block blockOf(ResourceLocation typeId) {
+        if (typeId == null) {
+            return null;
+        }
+        dropCachesIfLanguageChanged();
+        if (!MACHINE_BLOCKS.containsKey(typeId)) {
+            Block found = null;
+            for (Block candidate : candidatesOf(typeId)) {
+                // Air has no item to draw, but it is registered like any block.
+                if (candidate != Blocks.AIR) {
+                    found = candidate;
+                    break;
+                }
+            }
+            MACHINE_BLOCKS.put(typeId, found);
+        }
+        return MACHINE_BLOCKS.get(typeId);
+    }
+
+    /**
+     * The blocks that could run {@code typeId}, in the documented order: the exact
+     * id, the tiered siblings, the vanilla fallback. Both lookups walk this one list
+     * and cache their own answer; they disagree only about which candidate to stop at.
+     */
+    private static List<Block> candidatesOf(ResourceLocation typeId) {
         String path = typeId.getPath();
+        List<Block> candidates = new ArrayList<>();
         for (RegisteredBlock registered : blocksOf(typeId.getNamespace())) {
             if (registered.id().getPath().equals(path)) {
-                String name = named(registered.block());
-                if (name != null) {
-                    return name;
-                }
+                candidates.add(registered.block());
             }
         }
         String suffix = "_" + path;
         for (RegisteredBlock registered : blocksOf(typeId.getNamespace())) {
             if (registered.id().getPath().endsWith(suffix)) {
-                String name = named(registered.block());
-                if (name != null) {
-                    return name;
-                }
+                candidates.add(registered.block());
             }
         }
         if ("minecraft".equals(typeId.getNamespace())) {
             Block vanilla = VANILLA_TYPE_BLOCKS.get(path);
             if (vanilla != null) {
-                return named(vanilla);
+                candidates.add(vanilla);
+            }
+        }
+        return candidates;
+    }
+
+    /** The first candidate the language can name, or null when none can. */
+    private static String resolve(ResourceLocation typeId) {
+        for (Block candidate : candidatesOf(typeId)) {
+            String name = named(candidate);
+            if (name != null) {
+                return name;
             }
         }
         return null;
@@ -116,6 +148,19 @@ public final class MachineNames {
     private static String named(Block block) {
         String key = block.getDescriptionId();
         return block != Blocks.AIR && I18n.exists(key) ? block.getName().getString() : null;
+    }
+
+    /**
+     * Names follow the language, blocks do not — but both are dropped at the same
+     * point, so the two caches can never answer about different clients.
+     */
+    private static void dropCachesIfLanguageChanged() {
+        Language language = Language.getInstance();
+        if (cachedLanguage != language) {
+            NAMES.clear();
+            MACHINE_BLOCKS.clear();
+            cachedLanguage = language;
+        }
     }
 
     private static List<RegisteredBlock> blocksOf(String namespace) {

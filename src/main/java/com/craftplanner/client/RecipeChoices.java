@@ -23,8 +23,8 @@ import org.slf4j.LoggerFactory;
  * The recipe choices the player made, kept between game starts.
  *
  * <p>One JSON object of {@code "item id": "recipe id"} next to the client
- * config. Recipe ids rather than holders, exactly as in
- * {@link PlannerState#preferences()}: the holders belong to the level that
+ * config. Recipe ids rather than holders, exactly as in the live map inside
+ * {@link PlannerState}: the holders belong to the level that
  * produced them and are worthless after a reload, while an id resolves again
  * against whatever recipes the next session has.</p>
  *

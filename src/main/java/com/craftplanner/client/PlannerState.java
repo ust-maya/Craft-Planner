@@ -34,8 +34,11 @@ public final class PlannerState {
     private static final CraftGraph GRAPH = new CraftGraph();
     /**
      * Recipe choice per item (Stage 3 alternative selection, wired to the UI
-     * in Stage 6). Keyed by recipe id, because {@link RecipeHolder} instances
-     * belong to the level that produced them and go stale on reload.
+     * in Stage 6). One entry per item, holding the recipe id rather than the
+     * {@link RecipeHolder}: the holder belongs to the level that produced it
+     * and goes stale on reload. The player's pick is pinned for as long as the
+     * item is in the plan: nothing short of {@link #remove(ItemKey)} or
+     * {@link #clear()} takes it back.
      */
     private static final Map<ItemKey, ResourceLocation> PREFERENCES = new HashMap<>();
     /**
@@ -161,18 +164,17 @@ public final class PlannerState {
     }
 
     /**
-     * Picks another recipe for an item (Stage 6). The re-expansion is debounced
-     * by {@link #REBUILD_DEBOUNCE_MS} — see {@link #tick()}.
+     * Picks another recipe for an item (Stage 6) and keeps that pick: the item
+     * is planned with this recipe until it leaves the plan, whereupon
+     * {@link #remove(ItemKey)} or {@link #clear()} drops the choice with it.
+     * The re-expansion is debounced by {@link #REBUILD_DEBOUNCE_MS} — see
+     * {@link #tick()}.
      */
     public static void selectRecipe(ItemKey key, RecipeHolder<?> recipe) {
         LOCK.lock();
         try {
             ensureChoicesLoaded();
-            if (recipe == null) {
-                PREFERENCES.remove(key);
-            } else {
-                PREFERENCES.put(key, recipe.id());
-            }
+            PREFERENCES.put(key, recipe.id());
             // The choice is the one piece of the plan the player expects to still
             // be there after a restart, so it is written down as it is made.
             RecipeChoices.write(PREFERENCES);
@@ -180,11 +182,6 @@ public final class PlannerState {
         } finally {
             LOCK.unlock();
         }
-    }
-
-    /** Recipe choice per item, as passed to {@link CraftTreeBuilder}. */
-    public static Map<ItemKey, ResourceLocation> preferences() {
-        return Collections.unmodifiableMap(PREFERENCES);
     }
 
     /**
