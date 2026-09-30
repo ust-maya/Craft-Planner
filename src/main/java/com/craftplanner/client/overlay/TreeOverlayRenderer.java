@@ -84,7 +84,8 @@ import net.neoforged.neoforge.client.event.RenderGuiEvent;
  * children carries a − / + marker that folds its branch away
  * ({@link TreeCollapse}). Markers are drawn by the HUD but clicked through a
  * screen — the editor above or the {@code K} list — because only there does the
- * player have a cursor. Folding is a view decision: the hidden rows still count
+ * player have a cursor; the scrollbar at the panel's right edge is grabbed the
+ * same way. Folding is a view decision: the hidden rows still count
  * in the shopping list and the totals. Connector lines take one colour per
  * planned item ({@link NodeColors#branch}) so a nested sub-assembly can be
  * followed back to the goal it belongs to.</p>
@@ -149,6 +150,15 @@ public final class TreeOverlayRenderer {
     private static final int PANEL_BG = 0xC0101010;
     private static final int PANEL_BORDER = 0x90606060;
     private static final int MUTED = 0x80C8C8C8;
+    /** Scrollbar: quiet until the cursor is over it or it is being dragged. */
+    private static final int SCROLL_BAR = 0x90A0A0A0;
+    private static final int SCROLL_BAR_HOT = 0xF0E8E8E8;
+    /**
+     * Extra pixels around the 2 px bar that still count as a hit. A bar that
+     * thin cannot be aimed at with a game cursor, while the grab itself must not
+     * reach into the rows, or it would steal clicks from the fold markers.
+     */
+    private static final int SCROLL_HIT = 3;
 
     /** Vertical scroll of the tree layout, in rows (tree mode only). */
     private static int treeScroll;
@@ -216,6 +226,64 @@ public final class TreeOverlayRenderer {
         return null;
     }
 
+    /** Where the last drawn frame put the scrollbar, {@code null} when the plan fits. */
+    private static ScrollTrack scrollTrack;
+    /** True while one of the screens holds that scrollbar. */
+    private static boolean scrollGrab;
+
+    /**
+     * The scrollbar in screen pixels, with the mapping from a cursor row back to a
+     * scroll offset: the thumb is as tall as the visible part of the plan, so the
+     * free track height is the distance its whole range is spread over.
+     */
+    private record ScrollTrack(int x, int y, int w, int h, int barH, int maxScroll) {
+        boolean contains(int mx, int my) {
+            return mx >= x && mx <= x + w && my >= y && my <= y + h;
+        }
+
+        /** Rows to scroll so the middle of the thumb lands under {@code my}. */
+        int scrollAt(int my) {
+            int travel = Math.max(1, h - barH);
+            int offset = Math.round((my - y - barH / 2f) * maxScroll / travel);
+            return Math.max(0, Math.min(maxScroll, offset));
+        }
+    }
+
+    /**
+     * Takes a click on the scrollbar: the thumb jumps under the cursor and stays
+     * there until the drag is released, the way a browser track behaves.
+     *
+     * @return true when the point was the scrollbar and the click is consumed
+     */
+    public static boolean grabScroll(int mx, int my) {
+        if (scrollTrack == null || !scrollTrack.contains(mx, my)) {
+            return false;
+        }
+        scrollGrab = true;
+        treeScroll = scrollTrack.scrollAt(my);
+        return true;
+    }
+
+    /** Follows the cursor with the thumb while a grab is live. */
+    public static void dragScroll(int my) {
+        if (scrollTrack != null) {
+            treeScroll = scrollTrack.scrollAt(my);
+        }
+    }
+
+    /** Drops the scrollbar, on the release that ends the drag. */
+    public static void releaseScroll() {
+        scrollGrab = false;
+    }
+
+    /**
+     * True while the scrollbar is held: the drag then moves the plan, not the
+     * panel the editor is otherwise dragging.
+     */
+    public static boolean scrolling() {
+        return scrollGrab;
+    }
+
     /**
      * Scrolls the tree by {@code rows} rows; the exact clamp is applied when it
      * is drawn. Exposed for the screens that own the mouse wheel — while one is
@@ -231,6 +299,10 @@ public final class TreeOverlayRenderer {
 
     @SubscribeEvent
     public static void onRenderGui(RenderGuiEvent.Post event) {
+        // The scrollbar only exists while it is actually drawn: a track left over
+        // from a previous frame would keep answering clicks for a panel that is no
+        // longer on screen. renderTree re-arms it when the plan does not fit.
+        scrollTrack = null;
         if (!OverlayState.isVisible()) {
             return;
         }
@@ -630,7 +702,9 @@ public final class TreeOverlayRenderer {
             drawFooter(graphics, font, footer, contentW);
             pose.popPose();
             graphics.disableScissor();
-            showTailTooltip(graphics, font, footer, mc, left + pad, footerTop, scale);
+            if (!showTailTooltip(graphics, font, footer, mc, left + pad, footerTop, scale)) {
+                showMaterialTooltips(graphics, font, footer, mc, left + pad, footerTop, scale);
+            }
         }
 
         if (maxScroll > 0) {
@@ -639,7 +713,11 @@ public final class TreeOverlayRenderer {
             int barH = Math.max(8, trackH * visibleRows / rows.size());
             int barY = trackTop + (trackH - barH) * treeScroll / maxScroll;
             int barX = left + panelW - 3;
-            graphics.fill(barX, barY, barX + 2, barY + barH, 0x90A0A0A0);
+            // Recorded in screen pixels for the screens that receive clicks.
+            scrollTrack = new ScrollTrack(barX - SCROLL_HIT, trackTop,
+                    2 + 2 * SCROLL_HIT, trackH, barH, maxScroll);
+            boolean hot = scrollGrab || scrollTrack.contains(mouseX(mc), mouseY(mc));
+            graphics.fill(barX, barY, barX + 2, barY + barH, hot ? SCROLL_BAR_HOT : SCROLL_BAR);
         }
 
         OverlayPlacement.reportDrawn(left, top, panelW, panelH);
@@ -733,6 +811,11 @@ public final class TreeOverlayRenderer {
         /** The dropped materials, as the tooltip content of the {@code +N} marker. */
         List<Map.Entry<ItemKey, Availability>> hiddenEntries = List.of();
         /**
+         * Icons actually drawn, so hovering one can name the material behind it.
+         * Filled while the footer is drawn, in layout pixels like {@link #tailX}.
+         */
+        final List<MaterialIcon> icons = new ArrayList<>();
+        /**
          * Rectangle of the {@code +N} marker in layout pixels, set while the
          * footer is drawn; {@code tailX < 0} means nothing was drawn.
          */
@@ -754,6 +837,10 @@ public final class TreeOverlayRenderer {
             }
             return h;
         }
+    }
+
+    /** One drawn shopping-list icon: what it stands for and where it was put. */
+    private record MaterialIcon(ItemKey key, Availability value, int x, int y) {
     }
 
     /**
@@ -848,11 +935,12 @@ public final class TreeOverlayRenderer {
 
     /** Draws the footer in layout pixels; the caller owns the scaled pose. */
     private static void drawFooter(GuiGraphics graphics, Font font, Footer footer, int contentW) {
+        footer.icons.clear();
         int y = 0;
         for (int i = 0; i < footer.lines.size(); i++) {
             boolean last = i == footer.lines.size() - 1;
             int hidden = last ? footer.hidden : 0;
-            int tailX = drawShoppingLine(graphics, font, footer.lines.get(i), y, hidden);
+            int tailX = drawShoppingLine(graphics, font, footer, footer.lines.get(i), y, hidden);
             if (tailX >= 0) {
                 footer.tailX = tailX;
                 footer.tailY = y + (ICON - font.lineHeight) / 2 + 1;
@@ -873,12 +961,13 @@ public final class TreeOverlayRenderer {
      * @return the layout-x where the {@code +N} marker was drawn, {@code -1}
      *         when the line has no marker (used to hover-test the tail tooltip)
      */
-    private static int drawShoppingLine(GuiGraphics graphics, Font font,
+    private static int drawShoppingLine(GuiGraphics graphics, Font font, Footer footer,
             List<Map.Entry<ItemKey, Availability>> line, int y, int hidden) {
         int textY = y + (ICON - font.lineHeight) / 2 + 1;
         int x = 0;
         for (Map.Entry<ItemKey, Availability> entry : line) {
             graphics.renderItem(entry.getKey().toStack(), x, y);
+            footer.icons.add(new MaterialIcon(entry.getKey(), entry.getValue(), x, y));
             String amount = Long.toString(entry.getValue().required());
             graphics.drawString(font, amount, x + ICON + 1, textY,
                     NodeColors.forAvailability(entry.getValue()), false);
@@ -898,11 +987,12 @@ public final class TreeOverlayRenderer {
      * @param originX screen x of the footer pose the marker was drawn from
      * @param originY screen y of that pose
      * @param scale   scale factor of that pose
+     * @return true when the cursor was on the marker and a tooltip was shown
      */
-    private static void showTailTooltip(GuiGraphics graphics, Font font, Footer footer,
+    private static boolean showTailTooltip(GuiGraphics graphics, Font font, Footer footer,
             Minecraft mc, int originX, int originY, float scale) {
         if (footer.hidden <= 0 || footer.tailX < 0 || footer.hiddenEntries.isEmpty()) {
-            return;
+            return false;
         }
         double guiScale = mc.getWindow().getGuiScale();
         int mx = (int) (mc.mouseHandler.xpos() / guiScale);
@@ -913,7 +1003,7 @@ public final class TreeOverlayRenderer {
         int x2 = originX + (int) Math.ceil((footer.tailX + footer.tailW + pad) * scale);
         int y2 = originY + (int) Math.ceil((footer.tailY + footer.tailH + pad) * scale);
         if (mx < x1 || mx > x2 || my < y1 || my > y2) {
-            return;
+            return false;
         }
         List<Component> lines = new ArrayList<>();
         for (Map.Entry<ItemKey, Availability> entry : footer.hiddenEntries) {
@@ -921,6 +1011,59 @@ public final class TreeOverlayRenderer {
                     .append(Component.literal(" ×" + entry.getValue().required())));
         }
         showTooltip(graphics, font, mc, lines);
+        return true;
+    }
+
+    /**
+     * Hover feedback for a shopping-list icon: the footer shows one number per
+     * material — how much the whole plan asks for — which says nothing about
+     * <em>which</em> item it is or how much of it the player already carries. So
+     * pointing at an icon names it and splits the amount into needed, on hand and
+     * still missing.
+     *
+     * @param originX screen x of the footer pose the icons were drawn from
+     * @param originY screen y of that pose
+     * @param scale   scale factor of that pose
+     */
+    private static void showMaterialTooltips(GuiGraphics graphics, Font font, Footer footer,
+            Minecraft mc, int originX, int originY, float scale) {
+        if (footer.icons.isEmpty()) {
+            return;
+        }
+        double guiScale = mc.getWindow().getGuiScale();
+        int mx = (int) (mc.mouseHandler.xpos() / guiScale);
+        int my = (int) (mc.mouseHandler.ypos() / guiScale);
+        final int pad = 1;
+        for (MaterialIcon icon : footer.icons) {
+            int x1 = originX + (int) ((icon.x() - pad) * scale);
+            int y1 = originY + (int) ((icon.y() - pad) * scale);
+            int x2 = originX + (int) Math.ceil((icon.x() + ICON + pad) * scale);
+            int y2 = originY + (int) Math.ceil((icon.y() + ICON + pad) * scale);
+            if (mx < x1 || mx > x2 || my < y1 || my > y2) {
+                continue;
+            }
+            showTooltip(graphics, font, mc, materialLines(icon.key(), icon.value()));
+            return;
+        }
+    }
+
+    /**
+     * A material named, then what the plan asks of it: the amount the footer
+     * prints, plus the part the inventory already covers. Only a shortfall gets
+     * its own line — a material already in stock has nothing left to report.
+     */
+    private static List<Component> materialLines(ItemKey key, Availability value) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(key.name().copy());
+        lines.add(Component.translatable("overlay.craftplanner.material.required",
+                Long.toString(value.required())));
+        lines.add(Component.translatable("overlay.craftplanner.material.have",
+                Long.toString(value.available())));
+        if (value.missing() > 0) {
+            lines.add(Component.translatable("overlay.craftplanner.material.missing",
+                    Long.toString(value.missing())));
+        }
+        return lines;
     }
 
     /**
@@ -1178,7 +1321,9 @@ public final class TreeOverlayRenderer {
         drawFooter(graphics, font, footer, footerLayoutW);
         pose.popPose();
         graphics.disableScissor();
-        showTailTooltip(graphics, font, footer, mc, left + G_PADDING, footerTop, density);
+        if (!showTailTooltip(graphics, font, footer, mc, left + G_PADDING, footerTop, density)) {
+            showMaterialTooltips(graphics, font, footer, mc, left + G_PADDING, footerTop, density);
+        }
         OverlayPlacement.reportDrawn(left, top, panelWidth, panelHeight);
         drawEditChrome(graphics, mc, font, left, top, panelWidth, panelHeight,
                 screenWidth, screenHeight);
