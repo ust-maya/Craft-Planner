@@ -1,10 +1,12 @@
 package com.craftplanner.client;
 
 import com.craftplanner.engine.RecipeIngredients;
+import com.craftplanner.graph.CraftMath;
 import com.craftplanner.graph.IngredientUtil;
 import com.craftplanner.graph.ItemKey;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.core.HolderLookup;
@@ -56,8 +58,18 @@ public final class RecipeLabel {
 
     /**
      * The recipe as tooltip or picker rows: its name, what it produces and what
-     * it consumes. Ingredients are the representative of each slot — a tag shows
-     * one of its items, which is also what the tree expands to.
+     * it consumes. An ingredient that accepts several items is named by one of
+     * them — the first, deliberately not the cheapest item the tree decided to
+     * plan with, because this text describes <em>this recipe</em> and has to stay
+     * true whichever alternative the engine picked.
+     *
+     * <p>Slots are folded into one entry per {@link ItemKey} before the text is
+     * built, for the same reason the tree folds them: a crafting table asks for
+     * nine piles of bauxite in nine separate slots, and nine repetitions of one
+     * name describe the grid rather than what the player has to gather. The fold
+     * keys on item and data components, so two slots of the same item that differ
+     * by their components stay two lines, while two slots that happen to name the
+     * same item — including two different tags — become one line with the total.</p>
      */
     public static List<Component> describe(RecipeHolder<?> holder, HolderLookup.Provider registries) {
         List<Component> lines = new ArrayList<>();
@@ -67,19 +79,25 @@ public final class RecipeLabel {
             lines.add(Component.translatable("gui.craftplanner.recipe.output",
                     result.getHoverName(), Integer.toString(result.getCount())));
         }
-        StringBuilder needs = new StringBuilder();
+        // Insertion order is kept, so the list reads in the order the recipe asks
+        // for things; the total is a long because machine amounts are not int-sized.
+        Map<ItemKey, Long> needed = new LinkedHashMap<>();
         for (Ingredient ingredient : RecipeIngredients.of(holder.value())) {
-            ItemKey key = IngredientUtil.representativeKey(ingredient);
-            if (key == null) {
-                continue;
-            }
             ItemStack representative = IngredientUtil.representative(ingredient);
+            if (representative == null) {
+                continue; // a blank grid slot
+            }
+            needed.merge(ItemKey.of(representative),
+                    (long) Math.max(1, representative.getCount()), CraftMath::saturatingAdd);
+        }
+        StringBuilder needs = new StringBuilder();
+        for (Map.Entry<ItemKey, Long> entry : needed.entrySet()) {
             if (needs.length() > 0) {
                 needs.append(", ");
             }
-            needs.append(key.name().getString())
+            needs.append(entry.getKey().name().getString())
                     .append(" ×")
-                    .append(representative == null ? 1 : Math.max(1, representative.getCount()));
+                    .append(entry.getValue().longValue());
         }
         lines.add(needs.length() == 0
                 ? Component.translatable("gui.craftplanner.recipe.none")
