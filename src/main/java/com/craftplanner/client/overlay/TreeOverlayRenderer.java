@@ -891,35 +891,44 @@ public final class TreeOverlayRenderer {
                         && mx >= badgeX && mx <= badgeX + badgeW
                         && my >= cy && my <= cy + CHIP_H;
                 if (pass == 0) {
+                    // At rest the rail is glyphs only — a plate per row would
+                    // merge into a column and stop saying which row it is on.
+                    // A plate appears for a folded branch (that is a state,
+                    // sparse by definition) and under the cursor (that is the
+                    // answer to "which row"); the hit box is always the full
+                    // plate, glyph or not.
                     if (foldHover || badgeHover) {
                         graphics.fill(contentLeft, yc - rowPx / 2, stripRight,
                                 yc + rowPx / 2 + 1, UiPalette.MODAL_ROW_HOVER);
                     }
-                    if (fold) {
+                    if (folded || foldHover) {
                         UiShapes.chip(graphics, foldX, cy, FOLD_CHIP_W, CHIP_H,
-                                folded ? MARKER_FOLDED_BG : (foldHover
-                                        ? UiPalette.CHIP_HOVER_BG : UiPalette.CHIP_BG),
+                                folded && !foldHover ? MARKER_FOLDED_BG : UiPalette.CHIP_HOVER_BG,
                                 foldHover ? UiPalette.CHIP_HOVER_BORDER : UiPalette.CHIP_BORDER);
+                    }
+                    if (badge != null && badgeHover) {
+                        UiShapes.chip(graphics, badgeX, cy, badgeW, CHIP_H,
+                                UiPalette.CHIP_HOVER_BG, UiPalette.CHIP_HOVER_BORDER);
+                    }
+                    if (fold) {
                         foldHits.add(new FoldHit(row.path, foldX, cy, FOLD_CHIP_W));
                     }
                     if (badge != null) {
-                        UiShapes.chip(graphics, badgeX, cy, badgeW, CHIP_H,
-                                badgeHover ? UiPalette.CHIP_HOVER_BG : UiPalette.CHIP_BG,
-                                badgeHover ? UiPalette.CHIP_HOVER_BORDER : UiPalette.CHIP_BORDER);
                         choiceHits.add(new ChoiceHit(row.node, badgeX, cy, badgeW, CHIP_H));
                     }
                 } else {
-                    if (fold) {
+                    int gy = Math.max(contentTop,
+                            Math.min(contentBottom - font.lineHeight, yc - font.lineHeight / 2));
+                    if (fold && (folded || foldHover || rowPx >= font.lineHeight)) {
                         String glyph = folded ? "+" : "-";
                         graphics.drawString(font, glyph,
-                                foldX + (FOLD_CHIP_W - font.width(glyph)) / 2,
-                                cy + (CHIP_H - font.lineHeight) / 2,
-                                folded ? MARKER_FOLDED_TEXT : NodeColors.TEXT, false);
+                                foldX + (FOLD_CHIP_W - font.width(glyph)) / 2, gy,
+                                folded ? MARKER_FOLDED_TEXT : (foldHover
+                                        ? NodeColors.TEXT : MUTED), false);
                     }
                     if (badge != null) {
-                        graphics.drawString(font, badge, badgeX + CHIP_TEXT_PAD,
-                                cy + (CHIP_H - font.lineHeight) / 2,
-                                NodeColors.branch(row.branch), false);
+                        graphics.drawString(font, badge, badgeX + CHIP_TEXT_PAD, gy,
+                                badgeHover ? NodeColors.TEXT : NodeColors.branch(row.branch), false);
                     }
                 }
             }
