@@ -54,5 +54,6 @@
   "screen.craftplanner.list.ambiguous.tooltip": "Items the tree can craft in more than one way — choose them all in one place",
   "screen.craftplanner.ambiguous.title": "Pick recipes for the tree",
   "screen.craftplanner.ambiguous.header": "%1$s items with more than one recipe",
+  "screen.craftplanner.ambiguous.empty": "Nothing to choose — every item in the plan has one recipe",
   "screen.craftplanner.ambiguous.row.tooltip": "Choose which recipe this item is planned with"
 }
