@@ -2,6 +2,7 @@ package com.craftplanner.client.screen;
 
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.UiPalette;
+import com.craftplanner.client.UiShapes;
 import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.RecipeNode;
 import java.util.ArrayList;
@@ -157,11 +158,10 @@ public final class BatchPickerScreen extends Screen {
         int top = top();
         int bottom = top + panelHeight();
         graphics.fill(0, 0, this.width, this.height, DIM);
-        graphics.fill(left, top, left + this.panelWidth, bottom, PANEL_BG);
-        graphics.fill(left, top, left + this.panelWidth, top + 1, PANEL_BORDER);
-        graphics.fill(left, bottom - 1, left + this.panelWidth, bottom, PANEL_BORDER);
-        graphics.fill(left, top, left + 1, bottom, PANEL_BORDER);
-        graphics.fill(left + this.panelWidth - 1, top, left + this.panelWidth, bottom, PANEL_BORDER);
+        UiShapes.panel(graphics, left, top, this.panelWidth, bottom - top, PANEL_BG,
+                UiPalette.MODAL_BORDER_OUTER, PANEL_BORDER);
+        UiShapes.headerBand(graphics, left, top, this.panelWidth, HEADER_H - 4,
+                UiPalette.MODAL_HEADER_BG, UiPalette.ACCENT_LINE, PAD);
 
         graphics.drawCenteredString(this.font,
                 Component.translatable("screen.craftplanner.ambiguous.header", this.rows.size()).getString(),
