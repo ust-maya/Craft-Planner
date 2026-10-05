@@ -723,13 +723,7 @@ public final class TreeOverlayRenderer {
 
             graphics.renderItem(row.node.displayStack(), ix, yTop + (ROW_H - ICON) / 2);
 
-            String text = rowLabel(row);
-            int room = labelRoom - textX;
-            if (room <= 0) {
-                text = "";
-            } else if (font.width(text) > room) {
-                text = trimToWidth(font, text, room);
-            }
+            String text = trimToWidth(font, rowLabel(row), labelRoom - textX);
             int color = NodeColors.forNode(row.node, availability);
             graphics.drawString(font, text, textX, yTop + (ROW_H - font.lineHeight) / 2,
                     color, false);
@@ -1416,13 +1410,20 @@ public final class TreeOverlayRenderer {
         graphics.drawString(font, second, textLeft, textTop + font.lineHeight + 2, EDIT_TEXT, false);
     }
 
-    /** Cuts text with an ellipsis so it fits the given pixel width. */
+    /**
+     * Cuts text with an ellipsis so it fits the given pixel width — and gives up
+     * entirely when not even the ellipsis fits, rather than returning a string
+     * that still overflows (same contract as the list layout's trim).
+     */
     private static String trimToWidth(Font font, String text, int maxWidth) {
-        if (maxWidth <= 0 || font.width(text) <= maxWidth) {
+        if (font.width(text) <= maxWidth) {
             return text;
         }
+        if (maxWidth < font.width("…")) {
+            return "";
+        }
         StringBuilder sb = new StringBuilder(text);
-        while (sb.length() > 1 && font.width(sb.toString() + "…") > maxWidth) {
+        while (sb.length() > 1 && font.width(sb + "…") > maxWidth) {
             sb.setLength(sb.length() - 1);
         }
         return sb + "…";
