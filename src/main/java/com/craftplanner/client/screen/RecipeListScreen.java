@@ -404,6 +404,11 @@ public class RecipeListScreen extends Screen {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.layout != null
+                && overPanel((int) mouseX, (int) mouseY)
+                && scrollTrackClick((int) mouseX, (int) mouseY)) {
+            return true;
+        }
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.layout != null
                 && !overPanel((int) mouseX, (int) mouseY)) {
             int mx = (int) mouseX;
             int my = (int) mouseY;
@@ -421,11 +426,32 @@ public class RecipeListScreen extends Screen {
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
+    /**
+     * A click on the thin track at the panel's right edge jumps the list to
+     * that position. The HUD bar is draggable; here one click is the whole
+     * gesture — the same browser-style jump the HUD track answers with.
+     */
+    private boolean scrollTrackClick(int mx, int my) {
+        if (maxScroll() <= 0) {
+            return false;
+        }
+        RecipeListLayout l = this.layout;
+        int right = panelLeft() + l.panelWidth;
+        int trackTop = panelTop() + RecipeListLayout.HEADER;
+        int trackHeight = visibleRows() * RecipeListLayout.ROW_HEIGHT;
+        if (mx < right - 6 || mx > right || my < trackTop || my >= trackTop + trackHeight) {
+            return false;
+        }
+        this.scroll = Math.max(0, Math.min(maxScroll(),
+                (int) ((long) (my - trackTop) * maxScroll() / trackHeight)));
+        refresh();
+        return true;
+    }
+
     private boolean overPanel(int mx, int my) {
         int left = panelLeft();
         int top = panelTop();
-        return mx >= left && mx <= left + this.layout.panelWidth
-                && my >= top && my <= top + panelHeight();
+        return mx >= left && mx <= left + this.layout.panelWidth                && my >= top && my <= top + panelHeight();
     }
 
     @Override
