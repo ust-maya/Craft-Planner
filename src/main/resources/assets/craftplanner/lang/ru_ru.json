@@ -21,6 +21,8 @@
   "overlay.craftplanner.choice.tooltip": "Рецепт %1$s/%2$s — нажмите, чтобы выбрать другой",
   "overlay.craftplanner.single.tooltip": "Один рецепт — нажмите, чтобы изменить его или обрезать дерево здесь",
   "overlay.craftplanner.cut.tooltip": "Дерево обрезано, предмет считается сырьём — нажмите, чтобы снова раскрыть ветку",
+  "overlay.craftplanner.fold.collapse": "Свернуть ветку (скрыть её строки)",
+  "overlay.craftplanner.fold.expand": "Развернуть ветку (показать строки)",
   "overlay.craftplanner.material.required": "Нужно: %1$s",
   "overlay.craftplanner.material.have": "Есть: %1$s",
   "overlay.craftplanner.material.missing": "Не хватает: %1$s",

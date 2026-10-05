@@ -736,6 +736,7 @@ public final class TreeOverlayRenderer {
                 contentBottom, firstVisible, lastVisible, rowPx, hasFold, badgeColW);
 
         showChoiceTooltip(graphics, mc, font);
+        showFoldTooltip(graphics, mc, font);
 
         // Footer: own scaled pose, clipped to the panel, so neither the icons
         // nor the numbers can ever spill into the game view.
@@ -1331,6 +1332,31 @@ public final class TreeOverlayRenderer {
                 RecipeLabel.describe(node.recipe(), mc.level.registryAccess()));
         lines.add(0, head);
         showTooltip(graphics, font, mc, lines);
+    }
+
+    /**
+     * Hover feedback for the fold marks: the caret reads as a state but not as
+     * something to click, so the tooltip says what the click does. Same screen
+     * requirement as the badge's, and it steps aside when a badge answers the
+     * cursor first — one tooltip per frame, the richer one wins.
+     */
+    private static void showFoldTooltip(GuiGraphics graphics, Minecraft mc, Font font) {
+        if (mc.screen == null || mc.level == null) {
+            return;
+        }
+        int mx = mouseX(mc);
+        int my = mouseY(mc);
+        if (hitChoice(mx, my) != null) {
+            return;
+        }
+        String path = hitFold(mx, my);
+        if (path == null) {
+            return;
+        }
+        showTooltip(graphics, font, mc, List.of(Component.translatable(
+                TreeCollapse.isFolded(path)
+                        ? "overlay.craftplanner.fold.expand"
+                        : "overlay.craftplanner.fold.collapse")));
     }
 
     /**

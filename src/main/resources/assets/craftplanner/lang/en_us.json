@@ -21,6 +21,8 @@
   "overlay.craftplanner.choice.tooltip": "Recipe %1$s/%2$s — click to choose another",
   "overlay.craftplanner.single.tooltip": "One way to craft it — click to change it or to cut the tree here",
   "overlay.craftplanner.cut.tooltip": "Tree cut here, the item counts as material to gather — click to expand the branch again",
+  "overlay.craftplanner.fold.collapse": "Fold this branch (hide its rows)",
+  "overlay.craftplanner.fold.expand": "Unfold this branch (show its rows)",
   "overlay.craftplanner.material.required": "Needed: %1$s",
   "overlay.craftplanner.material.have": "In stock: %1$s",
   "overlay.craftplanner.material.missing": "Missing: %1$s",
