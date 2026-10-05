@@ -51,6 +51,10 @@ public final class UiPalette {
     public static final int CHIP_HOVER_BG = 0xF53A3A3A;
     public static final int CHIP_HOVER_BORDER = 0xFFFFC83D;
     public static final int CHIP_DISABLED = 0x66202020;
+    /** White on hover: the chip lifts, the label lifts with it. */
+    public static final int CHIP_TEXT_HOVER = 0xFFFFFFFF;
+    /** Keeps ~6:1 over the disabled composite, where the old grey fell under AA. */
+    public static final int CHIP_TEXT_DISABLED = 0xFFB0B0B0;
 
     /** Scrollbar: quiet track under a thumb that brightens when hovered or grabbed. */
     public static final int SCROLL_TRACK = 0x22FFFFFF;
