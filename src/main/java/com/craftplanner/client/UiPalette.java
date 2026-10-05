@@ -57,8 +57,7 @@ public final class UiPalette {
     public static final int SCROLL_BAR = 0x90A0A0A0;
     public static final int SCROLL_BAR_HOT = 0xF0E8E8E8;
 
-    /** Fold marker box: subtle when open, amber when folded. */
-    public static final int MARKER_BG = 0x50FFFFFF;
+    /** Folded chips keep the amber plate so a collapsed branch reads at a glance. */
     public static final int MARKER_FOLDED_BG = 0xC0E0A030;
     public static final int MARKER_FOLDED_TEXT = 0xFF1E1200;
 
