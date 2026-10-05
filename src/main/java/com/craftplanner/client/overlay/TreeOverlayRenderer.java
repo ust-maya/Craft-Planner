@@ -340,6 +340,9 @@ public final class TreeOverlayRenderer {
         // from a previous frame would keep answering clicks for a panel that is no
         // longer on screen. renderTree re-arms it when the plan does not fit.
         scrollTrack = null;
+        // Same reason for the drawn rectangle: a panel left over from a previous
+        // frame would keep answering the wheel and the hits where no panel is.
+        OverlayPlacement.reportDrawn(0, 0, 0, 0);
         if (!OverlayState.isVisible()) {
             return;
         }
