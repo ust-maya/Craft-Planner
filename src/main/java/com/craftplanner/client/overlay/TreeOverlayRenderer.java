@@ -613,33 +613,34 @@ public final class TreeOverlayRenderer {
         // its own colour: nested machine recipes cross the panel, and one grey
         // web makes it impossible to say which sub-assembly belongs to which
         // goal.
+
+        // A parent's spine is one continuous segment from below its icon to the
+        // last child's row center, so it is drawn over <em>all</em> rows and
+        // clipped to the visible window: the previous per-visible-row pass made
+        // every ancestor line vanish the moment its owner scrolled above the
+        // panel. The scissor already hides the off-screen ends; the clip only
+        // keeps the int range small and skips non-intersecting segments.
+        int viewBottom = (int) Math.ceil((contentBottom - contentTop) / (float) scale);
+        for (int p = 0; p < rows.size(); p++) {
+            Row parent = rows.get(p);
+            if (!parent.expands(p)) {
+                continue;
+            }
+            int start = Math.max(iconBottomY(p, treeScroll, originY), originY);
+            int end = Math.min(rowCenterY(parent.lastChildIndex, treeScroll, originY), viewBottom);
+            if (end - start >= 1) {
+                graphics.vLine(spineX(parent.depth), start, end,
+                        NodeColors.branch(parent.branch));
+            }
+        }
+
         for (int r = firstVisible; r <= lastVisible; r++) {
             Row row = rows.get(r);
-            int yc = rowCenterY(r, treeScroll, originY);
-            int line = NodeColors.branch(row.branch);
-
             // Elbow running from the parent's spine into this row's icon.
             // Roots have no parent, hence no elbow and no stub to their left.
             if (row.depth > 0) {
-                graphics.hLine(spineX(row.depth - 1), iconX(row.depth) - 1, yc, line);
-            }
-
-            // This row's own spine: it starts at the bottom edge of its icon,
-            // so the branch looks like it grows out of the icon. A folded branch
-            // draws none — there is nothing below it to connect.
-            if (row.expands(r)) {
-                graphics.vLine(spineX(row.depth),
-                        iconBottomY(r, treeScroll, originY),
-                        rowCenterY(row.lastChildIndex, treeScroll, originY), line);
-            }
-        }
-        // Keep the parent line flowing from the top edge when scrolled.
-        if (treeScroll > 0) {
-            Row r0 = rows.get(firstVisible);
-            if (r0.depth > 0) {
-                graphics.vLine(spineX(r0.depth - 1), originY,
-                        rowCenterY(firstVisible, treeScroll, originY),
-                        NodeColors.branch(r0.branch));
+                graphics.hLine(spineX(row.depth - 1), iconX(row.depth) - 1,
+                        rowCenterY(r, treeScroll, originY), NodeColors.branch(row.branch));
             }
         }
 
