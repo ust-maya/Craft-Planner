@@ -11,6 +11,7 @@ import java.util.List;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
 
 /**
  * One place for every decision the engine could not make alone.
@@ -147,6 +148,28 @@ public final class BatchPickerScreen extends Screen {
         return true;
     }
 
+    /**
+     * The icon column opens the same picker as the row button beside it — the
+     * widget deliberately stops after the icon so the chip's label keeps its
+     * width, which left the icons looking like part of the row but dead.
+     */
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && !this.rows.isEmpty()
+                && mouseY >= top() + HEADER_H) {
+            int left = (this.width - this.panelWidth) / 2;
+            int index = (int) ((mouseY - top() - HEADER_H) / ROW_H);
+            int shown = Math.max(0, Math.min(visibleRows(), this.rows.size() - this.scroll));
+            if (mouseX >= left + PAD && mouseX < left + PAD + ICON_W
+                    && index >= 0 && index < shown) {
+                RecipeNode node = this.rows.get(this.scroll + index);
+                this.minecraft.setScreen(new RecipePickerScreen(node.item(), this));
+                return true;
+            }
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         // Empty on purpose, like the picker: render() paints its own dim.
@@ -163,9 +186,12 @@ public final class BatchPickerScreen extends Screen {
         UiShapes.headerBand(graphics, left, top, this.panelWidth, HEADER_H - 4,
                 UiPalette.MODAL_HEADER_BG, UiPalette.ACCENT_LINE, PAD);
 
-        graphics.drawCenteredString(this.font,
+        // The header names the count, but a long translation must not leave the
+        // band — it is trimmed to the panel like every other string here.
+        String header = RecipeListLayout.trimToWidth(this.font::width,
                 Component.translatable("screen.craftplanner.ambiguous.header", this.rows.size()).getString(),
-                this.width / 2, top + 6, TEXT);
+                this.panelWidth - 2 * PAD);
+        graphics.drawCenteredString(this.font, header, this.width / 2, top + 6, TEXT);
         super.render(graphics, mouseX, mouseY, partialTick);
 
         if (this.rows.isEmpty()) {
@@ -183,6 +209,19 @@ public final class BatchPickerScreen extends Screen {
         for (int i = 0; i < shown; i++) {
             RecipeNode node = this.rows.get(this.scroll + i);
             graphics.renderItem(node.displayStack(), left + PAD + 2, top + HEADER_H + i * ROW_H + 2);
+        }
+
+        // A dozen alternatives scroll, so the list carries the same thumb the K
+        // window draws — a wheel with no visible position reads as a broken list.
+        int hidden = maxScroll();
+        if (hidden > 0) {
+            int trackTop = top + HEADER_H;
+            int trackH = shown * ROW_H;
+            int barH = Math.max(8, trackH * shown / this.rows.size());
+            int barY = trackTop + (trackH - barH) * this.scroll / hidden;
+            int barX = left + this.panelWidth - 4;
+            graphics.fill(barX, trackTop, barX + 3, trackTop + trackH, UiPalette.SCROLL_TRACK);
+            graphics.fill(barX, barY, barX + 3, barY + barH, UiPalette.SCROLL_BAR);
         }
     }
 
