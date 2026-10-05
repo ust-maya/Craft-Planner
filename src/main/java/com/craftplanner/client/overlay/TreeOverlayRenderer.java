@@ -4,6 +4,7 @@ import com.craftplanner.Config;
 import com.craftplanner.Constants;
 import com.craftplanner.client.Keybinds;
 import com.craftplanner.client.OverlayState;
+import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
 import com.craftplanner.client.layout.PlacedNode;
@@ -143,16 +144,16 @@ public final class TreeOverlayRenderer {
      */
     private static final float MIN_READABLE_FIT = 0.6f;
     /** Colours of the fold marker box: subtle when open, amber when folded. */
-    private static final int MARKER_BG = 0x50FFFFFF;
-    private static final int MARKER_FOLDED_BG = 0xC0E0A030;
+    private static final int MARKER_BG = UiPalette.MARKER_BG;
+    private static final int MARKER_FOLDED_BG = UiPalette.MARKER_FOLDED_BG;
     private static final int MARKER_TEXT = NodeColors.TEXT;
-    private static final int MARKER_FOLDED_TEXT = 0xFF1E1200;
-    private static final int PANEL_BG = 0xC0101010;
-    private static final int PANEL_BORDER = 0x90606060;
-    private static final int MUTED = 0x80C8C8C8;
+    private static final int MARKER_FOLDED_TEXT = UiPalette.MARKER_FOLDED_TEXT;
+    private static final int PANEL_BG = UiPalette.HUD_PANEL_BG;
+    private static final int PANEL_BORDER = UiPalette.HUD_PANEL_BORDER;
+    private static final int MUTED = UiPalette.HUD_MUTED;
     /** Scrollbar: quiet until the cursor is over it or it is being dragged. */
-    private static final int SCROLL_BAR = 0x90A0A0A0;
-    private static final int SCROLL_BAR_HOT = 0xF0E8E8E8;
+    private static final int SCROLL_BAR = UiPalette.SCROLL_BAR;
+    private static final int SCROLL_BAR_HOT = UiPalette.SCROLL_BAR_HOT;
     /**
      * Extra pixels around the 2 px bar that still count as a hit. A bar that
      * thin cannot be aimed at with a game cursor, while the grab itself must not
@@ -326,19 +327,24 @@ public final class TreeOverlayRenderer {
      * cursor is over the panel, so it does not steal scrolling elsewhere
      * (chat, inventories). The exact clamp is applied when the tree is drawn.
      *
-     * <p>The layout editor runs in its own screen, which takes the wheel for the
-     * text size; scrolling a panel while it is being resized only gets in the
-     * way, so the tree stays put until editing is over.</p>
+     * <p>Screens skip this entirely: the layout editor routes the wheel
+     * through its own {@code mouseScrolled}, and vanilla fires this event
+     * <em>besides</em> it — without the skip every notch would move the plan
+     * twice. The modals (picker, list, popup) get the same skip, which also
+     * stops their dimmed background from scrolling behind.</p>
      */
     @SubscribeEvent
     public static void onMouseScrolled(InputEvent.MouseScrollingEvent event) {
-        if (OverlayPlacement.editing()
-                || !OverlayState.isVisible() || !"tree".equals(Config.overlayMode())) {
+        if (OverlayPlacement.editing() || !OverlayState.isVisible()
+                || Minecraft.getInstance().screen != null) {
             return;
         }
         double mx = event.getMouseX();
         double my = event.getMouseY();
         if (!OverlayPlacement.overPanel((int) mx, (int) my)) {
+            return;
+        }
+        if (!"tree".equals(Config.overlayMode())) {
             return;
         }
         treeScroll += event.getScrollDeltaY() > 0 ? -1 : 1;
@@ -585,6 +591,7 @@ public final class TreeOverlayRenderer {
         pose.scale(scale, scale, 1f);
         graphics.drawString(font, Component.translatable("overlay.craftplanner.title"),
                 0, 0, NodeColors.TEXT, false);
+        drawTreeLegend(graphics, font, contentW);
         pose.popPose();
 
         int firstVisible = treeScroll;
@@ -722,6 +729,43 @@ public final class TreeOverlayRenderer {
 
         OverlayPlacement.reportDrawn(left, top, panelW, panelH);
         drawEditChrome(graphics, mc, font, left, top, panelW, panelH, screenW, screenH);
+    }
+
+    /**
+     * Colour legend of the tree rows, right-aligned on the title line, drawn in
+     * the title's scaled pose. Same entries as the graph view, so switching
+     * {@code overlay.mode} never leaves the player with a colour nobody named.
+     * Dropped entirely when it would collide with the title — a missing legend
+     * is better than an unreadable one, and the panel width is the player's.
+     */
+    private static void drawTreeLegend(GuiGraphics graphics, Font font, int contentW) {
+        int[] colors = {
+                NodeColors.HAVE, NodeColors.MISSING,
+                NodeColors.INTERMEDIATE, NodeColors.ROOT
+        };
+        Component[] labels = {
+                Component.translatable("overlay.craftplanner.legend.have"),
+                Component.translatable("overlay.craftplanner.legend.missing"),
+                Component.translatable("overlay.craftplanner.legend.intermediate"),
+                Component.translatable("overlay.craftplanner.legend.root")
+        };
+        final int gap = 6;
+        int[] itemW = new int[labels.length];
+        int total = 0;
+        for (int i = 0; i < labels.length; i++) {
+            itemW[i] = G_LEGEND_SQUARE + 2 + font.width(labels[i]);
+            total += itemW[i] + gap;
+        }
+        int titleW = font.width(Component.translatable("overlay.craftplanner.title"));
+        if (titleW + gap + total > contentW) {
+            return;
+        }
+        int x = contentW - total;
+        for (int i = 0; i < labels.length; i++) {
+            graphics.fill(x, 2, x + G_LEGEND_SQUARE, 2 + G_LEGEND_SQUARE, colors[i]);
+            graphics.drawString(font, labels[i], x + G_LEGEND_SQUARE + 2, 0, NodeColors.TEXT, false);
+            x += itemW[i] + gap;
+        }
     }
 
     private static String label(RecipeNode node) {
@@ -1138,10 +1182,10 @@ public final class TreeOverlayRenderer {
     // Layout editor: move, resize and rescale the panel with the mouse
     // ---------------------------------------------------------------------
 
-    private static final int EDIT_BORDER = 0xC0E0A030;
-    private static final int EDIT_GRIP = 0xE0E0A030;
-    private static final int EDIT_GRIP_HOVER = 0xE0FFE070;
-    private static final int EDIT_TEXT = 0xFFEEEEEE;
+    private static final int EDIT_BORDER = UiPalette.EDIT_BORDER;
+    private static final int EDIT_GRIP = UiPalette.EDIT_GRIP;
+    private static final int EDIT_GRIP_HOVER = UiPalette.EDIT_GRIP_HOVER;
+    private static final int EDIT_TEXT = UiPalette.EDIT_TEXT;
 
     /**
      * Editor chrome on top of the finished panel: the outline being dragged, the

@@ -3,6 +3,7 @@ package com.craftplanner.client.screen;
 import com.craftplanner.client.MachineNames;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
+import com.craftplanner.client.UiPalette;
 import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.RecipeNode;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -77,17 +78,17 @@ public final class RecipePickerScreen extends Screen {
     private static final int MIN_TAIL_L = 20;
     /** Rows that are always there under the options: the cut switch and close. */
     private static final int CONTROL_ROWS = 2;
-    private static final int PANEL_BG = 0xF0101010;
-    private static final int PANEL_BORDER = 0xFF404040;
+    private static final int PANEL_BG = UiPalette.MODAL_PANEL_BG;
+    private static final int PANEL_BORDER = UiPalette.MODAL_PANEL_BORDER;
     /** Same dim as the {@code K} window: the world behind stays readable. */
-    private static final int DIM = 0x80000000;
-    private static final int TEXT = 0xFFE0E0E0;
-    private static final int MUTED = 0xFFA0A0A0;
+    private static final int DIM = UiPalette.MODAL_SCRIM;
+    private static final int TEXT = UiPalette.TEXT;
+    private static final int MUTED = UiPalette.MUTED;
     /** The amber of the tree's own markers, so "in use" reads the same everywhere. */
-    private static final int ROW_SELECTED = 0x40E0A030;
-    private static final int ROW_HOVER = 0x28FFFFFF;
+    private static final int ROW_SELECTED = UiPalette.MODAL_ROW_SELECTED;
+    private static final int ROW_HOVER = UiPalette.MODAL_ROW_HOVER;
     /** Thumb of the option band: the quiet grey of the plan panel's own scrollbar. */
-    private static final int SCROLL = 0x90A0A0A0;
+    private static final int SCROLL = UiPalette.SCROLL_BAR;
 
     /** The item whose recipes are offered; also the key of the choice. */
     private final ItemKey item;

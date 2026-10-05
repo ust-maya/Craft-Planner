@@ -1,6 +1,7 @@
 package com.craftplanner.client.screen;
 
 import com.craftplanner.client.PlannerState;
+import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.overlay.TreeCollapse;
 import com.craftplanner.client.overlay.TreeOverlayRenderer;
 import com.craftplanner.graph.RecipeNode;
@@ -60,12 +61,12 @@ public class RecipeListScreen extends Screen {
     /** Tooltip of a row whose branch the player cut — the words the tree badge shows. */
     private static final String KEY_CUT = "overlay.craftplanner.cut.tooltip";
 
-    private static final int TEXT = 0xFFE0E0E0;
-    private static final int MUTED = 0xFFA0A0A0;
-    private static final int DIM = 0x80000000;
-    private static final int PANEL_BG = 0xF0101010;
-    private static final int PANEL_BORDER = 0xFF404040;
-    private static final int ROW_STRIPE = 0x20FFFFFF;
+    private static final int TEXT = UiPalette.TEXT;
+    private static final int MUTED = UiPalette.MUTED;
+    private static final int DIM = UiPalette.MODAL_SCRIM;
+    private static final int PANEL_BG = UiPalette.MODAL_PANEL_BG;
+    private static final int PANEL_BORDER = UiPalette.MODAL_PANEL_BORDER;
+    private static final int ROW_STRIPE = UiPalette.MODAL_ROW_STRIPE;
 
     private final List<RecipeNode> roots = new ArrayList<>();
     private int scroll;
@@ -332,7 +333,7 @@ public class RecipeListScreen extends Screen {
             int trackHeight = visibleRows() * RecipeListLayout.ROW_HEIGHT;
             int barHeight = Math.max(8, trackHeight * visibleRows() / this.roots.size());
             int barY = trackTop + (trackHeight - barHeight) * this.scroll / maxScroll();
-            graphics.fill(right - 4, barY, right - 1, barY + barHeight, 0xFF909090);
+            graphics.fill(right - 4, barY, right - 1, barY + barHeight, UiPalette.SCROLL_BAR);
         }
     }
 

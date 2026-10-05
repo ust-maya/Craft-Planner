@@ -2,6 +2,7 @@ package com.craftplanner.client.screen;
 
 import com.craftplanner.Config;
 import com.craftplanner.client.PlannerState;
+import com.craftplanner.client.UiPalette;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -53,7 +54,7 @@ public class QuantityPopupScreen extends Screen {
     static final int STEP_GAP = 3;
     private static final int FLASH_PERIOD_MS = 120;
     private static final int FLASH_DURATION_MS = 800;
-    private static final int CLAMP_FLASH = 0xFFFF5555;
+    private static final int CLAMP_FLASH = UiPalette.CLAMP_FLASH;
 
     // Vertical offsets inside the panel, top-down. Named so the layout stays
     // readable after the density pass that shrank every element.
@@ -69,11 +70,11 @@ public class QuantityPopupScreen extends Screen {
     /** Side margin of the Add / Cancel pair. */
     static final int BUTTON_MARGIN = 10;
 
-    private static final int TEXT = 0xFFE0E0E0;
-    private static final int MUTED = 0xFFA0A0A0;
-    private static final int DIM = 0x80000000;
-    private static final int PANEL_BG = 0xF0101010;
-    private static final int PANEL_BORDER = 0xFF404040;
+    private static final int TEXT = UiPalette.TEXT;
+    private static final int MUTED = UiPalette.MUTED;
+    private static final int DIM = UiPalette.MODAL_SCRIM;
+    private static final int PANEL_BG = UiPalette.MODAL_PANEL_BG;
+    private static final int PANEL_BORDER = UiPalette.MODAL_PANEL_BORDER;
 
     private final ItemStack stack;
     private final String itemName;
