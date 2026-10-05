@@ -7,6 +7,7 @@ import com.craftplanner.client.OverlayState;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
+import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.layout.PlacedNode;
 import com.craftplanner.client.layout.TreeLayout;
 import com.craftplanner.client.resource.Availability;
@@ -579,8 +580,18 @@ public final class TreeOverlayRenderer {
         int maxScroll = Math.max(0, rows.size() - visibleRows);
         treeScroll = Math.max(0, Math.min(treeScroll, maxScroll));
 
-        graphics.fill(left, top, left + panelW, top + panelH, PANEL_BG);
-        drawBorder(graphics, left, top, panelW, panelH);
+        UiShapes.panel(graphics, left, top, panelW, panelH, PANEL_BG,
+                UiPalette.HUD_BORDER_OUTER, PANEL_BORDER);
+        // Header band under the title line, closed by the shared accent
+        // underline. At small densities the whole header is a few pixels —
+        // below five there is nothing to band, and painting it would eat the
+        // first tree row.
+        if (contentTop - top >= 5) {
+            graphics.fill(left + 2, top + 2, left + panelW - 2, contentTop - 1,
+                    UiPalette.HUD_HEADER_BG);
+            graphics.fill(left + 2, contentTop - 1, left + panelW - 2, contentTop,
+                    UiPalette.HUD_ACCENT_LINE);
+        }
 
         PoseStack pose = graphics.pose();
 
@@ -703,6 +714,8 @@ public final class TreeOverlayRenderer {
         // Footer: own scaled pose, clipped to the panel, so neither the icons
         // nor the numbers can ever spill into the game view.
         if (footerH > 0) {
+            UiShapes.divider(graphics, left + 2, left + panelW - 2,
+                    footerTop - Math.max(1, gapPx / 2), UiPalette.HUD_SECTION_DIVIDER);
             graphics.enableScissor(left, footerTop, left + panelW, top + panelH - 1);
             pose.pushPose();
             pose.translate(left + pad, footerTop, 0);
@@ -720,12 +733,15 @@ public final class TreeOverlayRenderer {
             int trackH = contentBottom - contentTop;
             int barH = Math.max(8, trackH * visibleRows / rows.size());
             int barY = trackTop + (trackH - barH) * treeScroll / maxScroll;
-            int barX = left + panelW - 3;
+            int barX = left + panelW - 4;
+            // A quiet 3 px track makes the bar's existence obvious; the thumb
+            // on top brightens under the cursor.
+            graphics.fill(barX, trackTop, barX + 3, trackTop + trackH, UiPalette.SCROLL_TRACK);
             // Recorded in screen pixels for the screens that receive clicks.
             scrollTrack = new ScrollTrack(barX - SCROLL_HIT, trackTop,
-                    2 + 2 * SCROLL_HIT, trackH, barH, maxScroll);
+                    3 + 2 * SCROLL_HIT, trackH, barH, maxScroll);
             boolean hot = scrollGrab || scrollTrack.contains(mouseX(mc), mouseY(mc));
-            graphics.fill(barX, barY, barX + 2, barY + barH, hot ? SCROLL_BAR_HOT : SCROLL_BAR);
+            graphics.fill(barX, barY, barX + 3, barY + barH, hot ? SCROLL_BAR_HOT : SCROLL_BAR);
         }
 
         OverlayPlacement.reportDrawn(left, top, panelW, panelH);
@@ -1172,13 +1188,6 @@ public final class TreeOverlayRenderer {
         mc.screen.setTooltipForNextRenderPass(joined);
     }
 
-    private static void drawBorder(GuiGraphics graphics, int left, int top, int w, int h) {
-        graphics.fill(left, top, left + w, top + 1, PANEL_BORDER);
-        graphics.fill(left, top + h - 1, left + w, top + h, PANEL_BORDER);
-        graphics.fill(left, top, left + 1, top + h, PANEL_BORDER);
-        graphics.fill(left + w - 1, top, left + w, top + h, PANEL_BORDER);
-    }
-
     // ---------------------------------------------------------------------
     // Layout editor: move, resize and rescale the panel with the mouse
     // ---------------------------------------------------------------------
@@ -1199,19 +1208,17 @@ public final class TreeOverlayRenderer {
         if (!OverlayPlacement.editing()) {
             return;
         }
-        graphics.fill(left, top, left + panelW, top + 1, EDIT_BORDER);
-        graphics.fill(left, top + panelH - 1, left + panelW, top + panelH, EDIT_BORDER);
-        graphics.fill(left, top, left + 1, top + panelH, EDIT_BORDER);
-        graphics.fill(left + panelW - 1, top, left + panelW, top + panelH, EDIT_BORDER);
+        UiShapes.ring(graphics, left, top, panelW, panelH, EDIT_BORDER);
+        UiShapes.ring(graphics, left + 1, top + 1, panelW - 2, panelH - 2, EDIT_BORDER);
 
         int gripX = OverlayPlacement.gripLeft();
         int gripY = OverlayPlacement.gripTop();
         int gripSize = OverlayPlacement.gripSize();
         boolean hovered = OverlayPlacement.overGrip(mouseX(mc), mouseY(mc));
         int color = hovered ? EDIT_GRIP_HOVER : EDIT_GRIP;
-        graphics.fill(gripX, gripY, gripX + gripSize, gripY + gripSize, color);
-        graphics.fill(gripX + 1, gripY + 1, gripX + gripSize - 1, gripY + 2, 0xA0000000);
-        graphics.fill(gripX + 1, gripY + 4, gripX + gripSize - 1, gripY + 5, 0xA0000000);
+        UiShapes.chip(graphics, gripX, gripY, gripSize, gripSize, UiPalette.CHIP_BG, color);
+        graphics.fill(gripX + 2, gripY + 2, gripX + gripSize - 2, gripY + 3, color);
+        graphics.fill(gripX + 2, gripY + 4, gripX + gripSize - 3, gripY + 5, color);
 
         // Trimmed to the screen, not to the panel: at a large GUI scale a
         // translated hint can easily be wider than the whole window.
@@ -1227,8 +1234,8 @@ public final class TreeOverlayRenderer {
         int textTop = top + panelH + 8 + font.lineHeight <= screenH
                 ? top + panelH + 4
                 : top - 4 - (2 * font.lineHeight + 3);
-        graphics.fill(textLeft - 3, textTop - 2, textLeft + widest + 3,
-                textTop + 2 * font.lineHeight + 3, PANEL_BG);
+        UiShapes.chip(graphics, textLeft - 3, textTop - 2, widest + 6,
+                2 * font.lineHeight + 5, UiPalette.CHIP_BG, UiPalette.CHIP_BORDER);
         graphics.drawString(font, first, textLeft, textTop, EDIT_TEXT, false);
         graphics.drawString(font, second, textLeft, textTop + font.lineHeight + 2, EDIT_TEXT, false);
     }
@@ -1316,7 +1323,6 @@ public final class TreeOverlayRenderer {
                 : Math.min(maxPanelHeight, pinH);
         int left = clampToScreen(pinX, 0, screenWidth - panelWidth);
         int top = clampToScreen(pinY, 0, screenHeight - panelHeight);
-
         float availableWidth = Math.max(1f, panelWidth - 2f * G_PADDING);
         float availableHeight = Math.max(1f, panelHeight - 2f * G_PADDING - G_TITLE_SPACE - footerSpace);
         // Density decides how big a small graph is drawn; a large one is still
@@ -1335,11 +1341,13 @@ public final class TreeOverlayRenderer {
         }
         float scale = Math.max(0.05f, Math.min(density, fit));
 
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, PANEL_BG);
-        graphics.fill(left, top, left + panelWidth, top + 1, PANEL_BORDER);
-        graphics.fill(left, top + panelHeight - 1, left + panelWidth, top + panelHeight, PANEL_BORDER);
-        graphics.fill(left, top, left + 1, top + panelHeight, PANEL_BORDER);
-        graphics.fill(left + panelWidth - 1, top, left + panelWidth, top + panelHeight, PANEL_BORDER);
+        UiShapes.panel(graphics, left, top, panelWidth, panelHeight, PANEL_BG,
+                UiPalette.HUD_BORDER_OUTER, PANEL_BORDER);
+        int graphHeaderBottom = top + G_PADDING + G_TITLE_SPACE - 1;
+        graphics.fill(left + 2, top + 2, left + panelWidth - 2, graphHeaderBottom,
+                UiPalette.HUD_HEADER_BG);
+        graphics.fill(left + 2, graphHeaderBottom, left + panelWidth - 2, graphHeaderBottom + 1,
+                UiPalette.HUD_ACCENT_LINE);
 
         graphics.drawString(font,
                 Component.translatable("overlay.craftplanner.title"),
@@ -1359,6 +1367,8 @@ public final class TreeOverlayRenderer {
         graphics.disableScissor();
 
         int footerTop = top + panelHeight - footerSpace - 2;
+        UiShapes.divider(graphics, left + 2, left + panelWidth - 2,
+                footerTop - 2, UiPalette.HUD_SECTION_DIVIDER);
         graphics.enableScissor(left, footerTop, left + panelWidth, top + panelHeight - 1);
         pose.pushPose();
         pose.translate(left + G_PADDING, footerTop, 0);
@@ -1436,6 +1446,7 @@ public final class TreeOverlayRenderer {
         int x = left + panelWidth - G_PADDING - rowTotal;
         for (int i = from; i < to; i++) {
             graphics.fill(x, y, x + G_LEGEND_SQUARE, y + G_LEGEND_SQUARE, colors[i]);
+            UiShapes.ring(graphics, x, y, G_LEGEND_SQUARE, G_LEGEND_SQUARE, UiPalette.CHIP_BORDER);
             graphics.drawString(font, labels[i], x + G_LEGEND_SQUARE + 2, y, NodeColors.TEXT, false);
             x += itemW[i] + 6;
         }
