@@ -68,6 +68,16 @@ public final class UiPalette {
     public static final int MARKER_FOLDED_BG = 0xC0E0A030;
     public static final int MARKER_FOLDED_TEXT = 0xFF1E1200;
 
+    /**
+     * Rest-state marks of the overlay's control rail. Opaque on purpose: a mark
+     * can be two pixels wide at the default density, and a translucent grey
+     * figure of that size disappears into the panel behind it.
+     */
+    public static final int MARK_FOLDED = 0xFFFFC83D;
+    public static final int MARK_NEUTRAL = 0xFF9A9A9A;
+    /** Red, not a branch hue: "this branch stops here" must not read as a goal. */
+    public static final int MARK_CUT = 0xFFE06060;
+
     /** Chrome of the O layout editor, drawn over the overlay. */
     public static final int EDIT_BORDER = 0xC0E0A030;
     public static final int EDIT_GRIP = 0xE0E0A030;
