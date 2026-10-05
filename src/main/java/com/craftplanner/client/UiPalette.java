@@ -11,15 +11,22 @@ package com.craftplanner.client;
  */
 public final class UiPalette {
 
-    /** Panel fill of the modal screens: near-opaque so the world never bleeds through. */
-    public static final int MODAL_PANEL_BG = 0xF0141414;
+    /** Panel fill of the modal screens: opaque, since nothing may show through it. */
+    public static final int MODAL_PANEL_BG = 0xFF141414;
     public static final int MODAL_PANEL_BORDER = 0xFF4A4A4A;
     /** Dark ring hugging the panel edge; reads as depth without any gradient. */
     public static final int MODAL_BORDER_OUTER = 0xFF000000;
-    /** Full-screen dim behind a modal panel; same on every modal screen. */
-    public static final int MODAL_SCRIM = 0x80000000;
+    /**
+     * Full-screen dim behind a modal panel. Opaque on purpose: a translucent one
+     * left the inventory, the JEI and EMI bars and the blocks behind them readable
+     * through the scrim, which competed with the panel for attention and made the
+     * player hunt for the row they were planning. The overlay's own panels keep
+     * their translucency ({@code HUD_*}) because arranging them needs the game
+     * visible.
+     */
+    public static final int MODAL_SCRIM = 0xFF080808;
     /** Header band inside a panel, separated from the body by {@link #ACCENT_LINE}. */
-    public static final int MODAL_HEADER_BG = 0xF51C1C1C;
+    public static final int MODAL_HEADER_BG = 0xFF1C1C1C;
     /** Row background of the list screens. */
     public static final int MODAL_ROW_STRIPE = 0x12FFFFFF;
     public static final int MODAL_ROW_HOVER = 0x2EFFFFFF;
