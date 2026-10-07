@@ -1,6 +1,7 @@
 package com.craftplanner.client.overlay;
 
 import com.craftplanner.Config;
+import com.craftplanner.client.tree.TreeMetrics;
 
 /**
  * Geometry of the overlay panel: where it is drawn, how large it is and how
@@ -24,14 +25,24 @@ public final class OverlayPlacement {
     /** "Not pinned": the panel is placed and sized by the renderer. */
     public static final int AUTO = -1;
 
-    private static final double SCALE_MIN = 0.1;
-    private static final double SCALE_MAX = 1.0;
+    /**
+     * Range the text-size control may move through — the same readable band the
+     * layout itself enforces, so the editor can never be dragged to a density the
+     * renderer would silently refuse to draw at.
+     */
+    private static final double SCALE_MIN = TreeMetrics.MIN_READABLE_SCALE;
+    private static final double SCALE_MAX = TreeMetrics.MAX_SCALE;
     /** One mouse wheel notch of the text-size control. */
     private static final double SCALE_STEP = 0.05;
 
-    /** Smallest panel the resize grip may be dragged down to. */
-    private static final int MIN_W = 64;
-    private static final int MIN_H = 32;
+    /**
+     * Smallest panel the resize grip may be dragged down to. It has to hold the
+     * title band, one full row and the footer at the readable density: at the old
+     * 64x32 the panel could be sized so small that its rows, fold marks and
+     * scrollbar simply stopped being drawn.
+     */
+    private static final int MIN_W = 112;
+    private static final int MIN_H = 56;
 
     // --- committed geometry (mirrors the config file) ----------------------
     private static int x = AUTO;

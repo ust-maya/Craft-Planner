@@ -10,21 +10,27 @@ import java.util.Map;
 /**
  * Colour coding of tree nodes (Stage 8, availability added in Stage 9).
  *
- * <p>Craftable nodes keep a neutral colour because the tree itself produces
- * them; leaves (raw materials, and roots that have no recipe) are coloured
- * from the inventory comparison: green when covered, amber when partly
- * there, red when nothing is carried. A cycle guard is painted magenta so it
- * is never confused with the amber "partly there" state.</p>
+ * <p>Two encodings, deliberately kept apart: the <em>label</em> of a row says
+ * what the inventory covers (green / amber / red) or what the node is (goal,
+ * sub-assembly, cycle), while the <em>goal bar and connectors</em> say which
+ * planned item the row belongs to, from {@link #BRANCH}. A row therefore never
+ * carries two different meanings in one colour, and the legend only has to name
+ * the label colours.</p>
+ *
+ * <p>Every label colour is a text colour and has to hold WCAG AA against the
+ * HUD panel composited over a bright world — {@code UiPaletteContrastTest}
+ * checks that. The two that did not ({@link #MISSING} at 3.5:1 and {@link #RAW}
+ * at 4.4:1) are the ones a player actually needed to read.</p>
  */
 public final class NodeColors {
 
-    public static final int RAW = 0xFF9A9A9A;
+    public static final int RAW = 0xFFB8B8B8;
     public static final int INTERMEDIATE = 0xFF8FD3FF;
     public static final int ROOT = 0xFFFFE08F;
     public static final int CYCLE = 0xFFFF7FD0;
     public static final int HAVE = 0xFF7BE08A;
     public static final int PARTIAL = 0xFFE0C040;
-    public static final int MISSING = 0xFFE06060;
+    public static final int MISSING = 0xFFFF7A66;
     public static final int TEXT = 0xFFE0E0E0;
 
     /**

@@ -60,10 +60,17 @@ runs {
 
 configurations {
     runtimeClasspath.extendsFrom localRuntime
+    // The layouts under client.tree and client.screen are plain arithmetic over a
+    // text-width function, so their tests need the main classes — and nothing
+    // else of the game.
+    testImplementation.extendsFrom implementation
 }
 
 dependencies {
     implementation "net.neoforged:neoforge:${neo_version}"
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'
 
     // EMI integration is soft: com.craftplanner.integration reaches EMI through
     // reflection, so no compile-time dependency is required and the mod runs
@@ -99,6 +106,14 @@ tasks.withType(ProcessResources).configureEach {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+}
+
+// The tree and list layouts are testable without a game; see client/tree.
+test {
+    useJUnitPlatform()
+    testLogging {
+        events 'failed'
+    }
 }
 
 idea {

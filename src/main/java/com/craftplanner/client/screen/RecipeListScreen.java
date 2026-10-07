@@ -1,10 +1,9 @@
 package com.craftplanner.client.screen;
 
 import com.craftplanner.client.PlannerState;
+import com.craftplanner.client.TextMetrics;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
-import com.craftplanner.client.overlay.TreeCollapse;
-import com.craftplanner.client.overlay.TreeOverlayRenderer;
 import com.craftplanner.graph.RecipeNode;
 import java.util.ArrayList;
 import java.util.List;
@@ -396,10 +395,10 @@ public class RecipeListScreen extends Screen {
     }
 
     /**
-     * The tree panel behind this window stays usable: its − / + markers fold a
-     * branch and its badges open the recipe picker, because this is one of the
-     * two screens that own the mouse. Clicks inside this window's own panel are
-     * left to its widgets.
+     * A click on this window's own panel pages its list; everything else is left
+     * to its widgets. The overlay behind it is no longer clickable from here: a
+     * HUD row cannot be aimed at reliably, which is why the tree's controls moved
+     * to {@link CraftTreeScreen}.
      */
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -407,21 +406,6 @@ public class RecipeListScreen extends Screen {
                 && overPanel((int) mouseX, (int) mouseY)
                 && scrollTrackClick((int) mouseX, (int) mouseY)) {
             return true;
-        }
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.layout != null
-                && !overPanel((int) mouseX, (int) mouseY)) {
-            int mx = (int) mouseX;
-            int my = (int) mouseY;
-            RecipeNode choice = TreeOverlayRenderer.hitChoice(mx, my);
-            if (choice != null) {
-                this.minecraft.setScreen(new RecipePickerScreen(choice.item(), this));
-                return true;
-            }
-            String fold = TreeOverlayRenderer.hitFold(mx, my);
-            if (fold != null) {
-                TreeCollapse.toggle(fold);
-                return true;
-            }
         }
         return super.mouseClicked(mouseX, mouseY, button);
     }

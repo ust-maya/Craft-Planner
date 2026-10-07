@@ -1,0 +1,777 @@
+package com.craftplanner.client.screen;
+
+import com.craftplanner.client.Keybinds;
+import com.craftplanner.client.PlanRows;
+import com.craftplanner.client.PlannerState;
+import com.craftplanner.client.RecipeLabel;
+import com.craftplanner.client.TextMetrics;
+import com.craftplanner.client.UiPalette;
+import com.craftplanner.client.UiShapes;
+import com.craftplanner.client.overlay.NodeColors;
+import com.craftplanner.client.overlay.TreeCollapse;
+import com.craftplanner.client.resource.Availability;
+import com.craftplanner.client.tree.TreeFlatten;
+import com.craftplanner.client.tree.TreeMetrics;
+import com.craftplanner.client.tree.TreePanel;
+import com.craftplanner.client.tree.TreeRow;
+import com.craftplanner.graph.RecipeNode;
+import java.util.ArrayList;
+import java.util.List;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import org.lwjgl.glfw.GLFW;
+
+/**
+ * The craft tree as a window (hotkey {@code G}).
+ *
+ * <p>This is the surface the tree was meant to be read on. The overlay it grew
+ * out of is a HUD: the game holds the mouse, so there is no cursor to aim with,
+ * no tooltip the player can wait for and no keyboard — which forced every
+ * control the panel gained (fold marks, recipe badges, a scrollbar) to be
+ * reached by first entering another mode, and every label to survive being drawn
+ * at a fraction of the font's size. Here the text is at {@code 1:1}, the cursor
+ * is the player's, the footer buttons are real widgets, and the plan is walkable
+ * without the mouse.</p>
+ *
+ * <p>A row is {@code goal bar · fold toggle · icon · name · ×amount · recipe
+ * chip}, the first three columns stepping in with depth. Nesting is carried by
+ * geometry the eye can follow — a 3 px bar in the goal's own colour running the
+ * whole length of its subtree, and neutral 1 px guides from a parent's icon
+ * centre into each child — while the goal row also carries a tinted band, so a
+ * plan reads as a list of goals with their assemblies under them rather than one
+ * grey column of identical squares. Colour is not asked to do double duty: the
+ * label's ink is what the inventory covers, the bar's hue is which goal the row
+ * belongs to, and the legend in the footer names the inks.</p>
+ *
+ * <p>The arithmetic is not here: {@link TreeMetrics} places the columns and
+ * {@link TreePanel} sizes the panel and maps the scroll, both shared with the HUD
+ * and both covered by tests, so the two surfaces cannot drift into two different
+ * trees again.</p>
+ */
+public final class CraftTreeScreen extends Screen {
+
+    private static final String KEY_TITLE = "screen.craftplanner.tree.title";
+    private static final String KEY_EMPTY = "screen.craftplanner.tree.empty";
+    private static final String KEY_SUMMARY = "screen.craftplanner.tree.summary";
+    private static final String KEY_COLLAPSE = "screen.craftplanner.tree.collapse.all";
+    private static final String KEY_EXPAND = "screen.craftplanner.tree.expand.all";
+    private static final String KEY_LIST = "screen.craftplanner.tree.list";
+    private static final String KEY_CLOSE = "screen.craftplanner.tree.close";
+    private static final String KEY_HINT = "screen.craftplanner.tree.hint";
+    private static final String KEY_HIDDEN = "screen.craftplanner.tree.hidden.rows";
+
+    private static final int PAD = 6;
+    private static final int HEADER_H = 20;
+    private static final int COL_GAP = 6;
+    private static final int BUTTON_H = RecipeListLayout.BUTTON_H;
+    private static final int LINE_H = RecipeListLayout.LINE_H;
+    private static final int MIN_NAME_W = 70;
+    private static final int MAX_NAME_W = 320;
+    /** Rows one wheel notch moves: at one row per notch a long plan barely stirred. */
+    private static final int WHEEL_ROWS = 3;
+
+    private List<TreeRow<RecipeNode>> rows = List.of();
+    /** Panel-relative geometry; the panel is centred after it is known. */
+    private TreePanel.Plan plan = new TreePanel.Plan(1.0, TreeMetrics.ROW_H, 120, 40, PAD,
+            PAD + HEADER_H, PAD + HEADER_H + TreeMetrics.ROW_H, 100, false, 1, 0, 0);
+    private int panelLeft;
+    private int panelTop;
+
+    private int nameW = MIN_NAME_W;
+    private int amountW;
+    private int recipeW;
+    private int maxDepth;
+
+    private int scroll;
+    private int focus = -1;
+    private boolean thumbDrag;
+    private long seenGraphVersion = -1;
+    private int seenFoldCount = -1;
+
+    public CraftTreeScreen() {
+        super(Component.translatable(KEY_TITLE));
+    }
+
+    @Override
+    protected void init() {
+        rebuild();
+    }
+
+    @Override
+    public void tick() {
+        // A recipe choice lands after the selectRecipe debounce and an item can be
+        // added from another screen, so the tree follows the plan rather than the
+        // click that opened it.
+        if (PlannerState.graphVersion() != this.seenGraphVersion
+                || TreeCollapse.foldCount() != this.seenFoldCount) {
+            rebuild();
+        }
+    }
+
+    /** Re-reads the plan, measures the columns, sizes the panel and re-places widgets. */
+    private void rebuild() {
+        this.seenGraphVersion = PlannerState.graphVersion();
+        this.seenFoldCount = TreeCollapse.foldCount();
+        this.rows = PlanRows.rows();
+        measure(this.font::width);
+        // The plan comes back panel-relative, so centring cannot disagree with the
+        // sizing that produced it.
+        this.plan = TreePanel.plan(new TreePanel.Request(
+                this.width - 16, this.height - 16, 1.0, TreePanel.AUTO, TreePanel.AUTO,
+                naturalContentW(), HEADER_H, footerH(), this.rows.size(), PAD), this.scroll);
+        this.panelLeft = (this.width - this.plan.panelW()) / 2;
+        this.panelTop = (this.height - this.plan.panelH()) / 2;
+        this.scroll = this.plan.scroll();
+        if (this.focus >= this.rows.size()) {
+            this.focus = this.rows.size() - 1;
+        }
+        buildWidgets();
+    }
+
+    /**
+     * Measures the data columns from what the plan actually holds, the way
+     * {@code RecipeListLayout} does: a column is as wide as the widest thing it
+     * must show and the name column takes the rest, so only names are ever
+     * trimmed, and only when the window is narrower than they need.
+     */
+    private void measure(TextMetrics metrics) {
+        int widestName = 0;
+        long maxAmount = 1;
+        int widestChip = 0;
+        this.maxDepth = 0;
+        for (TreeRow<RecipeNode> row : this.rows) {
+            widestName = Math.max(widestName, metrics.width(row.name()));
+            maxAmount = Math.max(maxAmount, row.amount());
+            this.maxDepth = Math.max(this.maxDepth, row.depth());
+            String chip = chipText(row);
+            if (chip != null) {
+                widestChip = Math.max(widestChip, metrics.width(chip));
+            }
+        }
+        this.nameW = Math.min(MAX_NAME_W, Math.max(MIN_NAME_W, widestName + 2));
+        this.amountW = Math.max(metrics.width(Long.toString(maxAmount)) + 8, metrics.width("×9999"));
+        this.recipeW = widestChip == 0 ? 0 : widestChip + 2 * 3;
+    }
+
+    private int naturalContentW() {
+        return TreeMetrics.labelX(this.maxDepth) + this.nameW
+                + (this.amountW > 0 ? COL_GAP + this.amountW : 0)
+                + (this.recipeW > 0 ? COL_GAP + this.recipeW : 0);
+    }
+
+    /** Legend, two hint lines and the button row. */
+    private int footerH() {
+        return 3 + LINE_H + 2 + 2 * LINE_H + 4 + BUTTON_H + 4;
+    }
+
+    private void buildWidgets() {
+        clearWidgets();
+        int rowLeft = this.panelLeft + PAD;
+        int buttonsY = contentBottom() + footerH() - BUTTON_H - 4;
+        int gap = 4;
+        int collapseW = Math.max(60, this.font.width(tr(KEY_COLLAPSE)) + PAD);
+        int expandW = Math.max(60, this.font.width(tr(KEY_EXPAND)) + PAD);
+        int listW = Math.max(60, this.font.width(tr(KEY_LIST)) + PAD);
+        int closeW = Math.max(48, this.font.width(tr(KEY_CLOSE)) + PAD);
+        int right = this.panelLeft + this.plan.panelW() - PAD;
+
+        if (!this.rows.isEmpty()) {
+            addRenderableWidget(FitButton.create(rowLeft, buttonsY, collapseW, BUTTON_H,
+                    tr(KEY_COLLAPSE), button -> foldAll(true),
+                    Component.translatable("screen.craftplanner.tree.collapse.tooltip")));
+            addRenderableWidget(FitButton.create(rowLeft + collapseW + gap, buttonsY, expandW, BUTTON_H,
+                    tr(KEY_EXPAND), button -> foldAll(false),
+                    Component.translatable("screen.craftplanner.tree.expand.tooltip")));
+        }
+        // The two navigation buttons stay pinned to the right edge, so they are
+        // always in the same place however few goals the plan holds.
+        addRenderableWidget(FitButton.create(right - closeW - gap - listW, buttonsY, listW, BUTTON_H,
+                tr(KEY_LIST), button -> this.minecraft.setScreen(new RecipeListScreen()),
+                Component.translatable("screen.craftplanner.tree.list.tooltip")));
+        addRenderableWidget(FitButton.create(right - closeW, buttonsY, closeW, BUTTON_H,
+                tr(KEY_CLOSE), button -> onClose(), null));
+    }
+
+    private void foldAll(boolean collapse) {
+        if (collapse) {
+            List<String> paths = new ArrayList<>();
+            for (TreeRow<RecipeNode> row : this.rows) {
+                if (row.path() != null) {
+                    paths.add(row.path());
+                }
+            }
+            TreeCollapse.foldAll(paths);
+        } else {
+            TreeCollapse.unfoldAll();
+        }
+        this.focus = Math.max(-1, Math.min(this.focus, this.rows.size() - 1));
+        rebuild();
+    }
+
+    // --- drawing ------------------------------------------------------------
+
+    @Override
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        graphics.fill(0, 0, this.width, this.height, UiPalette.MODAL_SCRIM);
+        UiShapes.panel(graphics, this.panelLeft, this.panelTop, this.plan.panelW(), this.plan.panelH(),
+                UiPalette.MODAL_PANEL_BG, UiPalette.MODAL_BORDER_OUTER, UiPalette.MODAL_PANEL_BORDER);
+        UiShapes.headerBand(graphics, this.panelLeft, this.panelTop, this.plan.panelW(),
+                HEADER_H - 3, UiPalette.MODAL_HEADER_BG, UiPalette.ACCENT_LINE, PAD);
+
+        drawHeader(graphics);
+        drawRows(graphics, mouseX, mouseY);
+
+        super.render(graphics, mouseX, mouseY, partialTick);
+
+        drawFooter(graphics);
+        renderRowTooltip(graphics, mouseX, mouseY);
+    }
+
+    private void drawHeader(GuiGraphics graphics) {
+        graphics.drawString(this.font, this.title, this.panelLeft + PAD, this.panelTop + 4,
+                UiPalette.TEXT, false);
+        if (this.rows.isEmpty()) {
+            return;
+        }
+        Component summary = Component.translatable(KEY_SUMMARY,
+                PlannerState.graph().roots().size(), this.rows.size());
+        int room = this.plan.panelW() - 2 * PAD - this.font.width(this.title) - COL_GAP;
+        graphics.drawString(this.font,
+                RecipeListLayout.trimToWidth(this.font::width, summary.getString(), room),
+                this.panelLeft + PAD + this.font.width(this.title) + COL_GAP, this.panelTop + 4,
+                UiPalette.MUTED, false);
+    }
+
+    private void drawRows(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (this.rows.isEmpty()) {
+            graphics.drawCenteredString(this.font,
+                    Component.translatable(KEY_EMPTY,
+                            Keybinds.ADD_RECIPE.getKey().getDisplayName()).getString(),
+                    this.panelLeft + this.plan.panelW() / 2, contentTop() + 6, UiPalette.MUTED);
+            return;
+        }
+        int first = this.scroll;
+        int last = Math.min(this.rows.size() - 1, this.scroll + this.plan.visibleRows() - 1);
+        graphics.enableScissor(this.panelLeft + 2, contentTop(), labelRightEdge() + 2, contentBottom());
+        drawGoalBars(graphics, first, last);
+        drawGuides(graphics, first, last);
+        for (int r = first; r <= last; r++) {
+            drawRow(graphics, r, mouseX, mouseY);
+        }
+        graphics.disableScissor();
+    }
+
+    /**
+     * One 3 px bar per planned goal, spanning the full height of its subtree.
+     *
+     * <p>The overlay coloured a 1 px connector per edge instead, cycling six
+     * hues: at a small density that is not a hierarchy but confetti, and a player
+     * could not say which sub-assembly belonged to which goal. One solid bar per
+     * goal, which keeps running past the top of the panel as the plan scrolls, is
+     * the same information in a shape that survives a quick look.</p>
+     */
+    private void drawGoalBars(GuiGraphics graphics, int first, int last) {
+        int x = contentLeft() + TreeMetrics.barX(0);
+        for (int r = first; r <= last; r++) {
+            TreeRow<RecipeNode> row = this.rows.get(r);
+            if (row.depth() != 0) {
+                continue;
+            }
+            int end = Math.min(TreeFlatten.subtreeEnd(this.rows, r), last);
+            graphics.fill(x, rowTop(r), x + TreeMetrics.BAR_W,
+                    rowTop(end) + this.plan.pitch(), NodeColors.branch(row.branch()));
+        }
+    }
+
+    private void drawGuides(GuiGraphics graphics, int first, int last) {
+        int left = contentLeft();
+        for (int r = first; r <= last; r++) {
+            TreeRow<RecipeNode> parent = this.rows.get(r);
+            if (!parent.expands(r)) {
+                continue;
+            }
+            int x = left + TreeMetrics.spineX(parent.depth());
+            graphics.vLine(x, contentTop() + TreeMetrics.iconBottom(r, this.scroll),
+                    rowCenter(parent.lastChildIndex()), UiPalette.TREE_GUIDE);
+        }
+        for (int r = first; r <= last; r++) {
+            TreeRow<RecipeNode> row = this.rows.get(r);
+            if (row.depth() == 0) {
+                continue;
+            }
+            graphics.hLine(left + TreeMetrics.spineX(row.depth() - 1),
+                    left + TreeMetrics.iconX(row.depth()) - 1, rowCenter(r), UiPalette.TREE_GUIDE);
+        }
+    }
+
+    private void drawRow(GuiGraphics graphics, int r, int mouseX, int mouseY) {
+        TreeRow<RecipeNode> row = this.rows.get(r);
+        int yTop = rowTop(r);
+        int left = contentLeft();
+        int bandRight = labelRightEdge();
+        boolean hovered = r == hoveredRow(mouseY) && mouseX >= this.panelLeft;
+        boolean focused = r == this.focus;
+
+        if (row.depth() == 0) {
+            graphics.fill(left - PAD, yTop, bandRight, yTop + this.plan.pitch(),
+                    UiPalette.TREE_ROOT_BAND);
+        }
+        if (focused) {
+            graphics.fill(left - PAD, yTop, bandRight, yTop + this.plan.pitch(),
+                    UiPalette.TREE_FOCUS_BG);
+            UiShapes.ring(graphics, left - PAD, yTop, bandRight - left + PAD, this.plan.pitch(),
+                    UiPalette.TREE_FOCUS_BORDER);
+        } else if (hovered) {
+            graphics.fill(left - PAD, yTop, bandRight, yTop + this.plan.pitch(),
+                    UiPalette.MODAL_ROW_HOVER);
+        }
+
+        if (row.foldable()) {
+            TreeMetrics.Rect plate = TreeMetrics.toScreen(
+                    TreeMetrics.toggleRect(row.depth(), r, this.scroll), 1.0, left, contentTop());
+            boolean aimed = hovered && TreeMetrics.toggleHit(row.depth(), r, this.scroll, 1.0,
+                    left, contentTop()).contains(mouseX, mouseY);
+            // A folded branch keeps the amber plate: a plan with collapsed parts has
+            // to be obvious at a glance, since what it hides is still being planned.
+            UiShapes.chip(graphics, plate.x(), plate.y(), plate.w(), plate.h(),
+                    row.folded() ? UiPalette.MARKER_FOLDED_BG
+                            : aimed ? UiPalette.CHIP_HOVER_BG : UiPalette.CHIP_BG,
+                    aimed ? UiPalette.CHIP_HOVER_BORDER : UiPalette.CHIP_BORDER);
+            graphics.drawCenteredString(this.font, row.folded() ? "+" : "-",
+                    plate.x() + plate.w() / 2, plate.y() + 1,
+                    row.folded() ? UiPalette.MARKER_FOLDED_TEXT : UiPalette.TEXT);
+        }
+
+        TreeMetrics.Rect icon = TreeMetrics.toScreen(
+                TreeMetrics.iconRect(row.depth(), r, this.scroll), 1.0, left, contentTop());
+        graphics.renderItem(row.node().displayStack(), icon.x(), icon.y());
+
+        int ink = ink(row);
+        int nameX = left + TreeMetrics.labelX(row.depth());
+        String name = RecipeListLayout.trimToWidth(this.font::width, row.name(),
+                nameRightEdge() - nameX);
+        graphics.drawString(this.font, name, nameX, textY(r), ink, false);
+
+        if (this.amountW > 0) {
+            String amount = "×" + row.amount()
+                    + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
+            String shown = RecipeListLayout.trimToWidth(this.font::width, amount, this.amountW);
+            graphics.drawString(this.font, shown, nameRightEdge() - this.font.width(shown),
+                    textY(r), ink, false);
+        }
+        String chip = chipText(row);
+        if (chip != null && this.recipeW > 0) {
+            TreeMetrics.Rect box = chipRect(r);
+            UiShapes.chip(graphics, box.x(), box.y(), box.w(), box.h(),
+                    UiPalette.CHIP_BG, UiPalette.CHIP_BORDER);
+            graphics.drawString(this.font, chip, box.x() + 3, box.y() + (box.h() - LINE_H) / 2,
+                    row.badge() == TreeRow.Badge.CUT ? UiPalette.MARK_CUT
+                            : NodeColors.branch(row.branch()), false);
+        }
+    }
+
+    /** The row's label colour: how far the inventory covers what the plan asks. */
+    private static int ink(TreeRow<RecipeNode> row) {
+        return switch (row.status()) {
+            case COVERED -> NodeColors.HAVE;
+            case PARTIAL -> NodeColors.PARTIAL;
+            case MISSING -> NodeColors.MISSING;
+            case UNKNOWN -> switch (row.kind()) {
+                case ROOT -> NodeColors.ROOT;
+                case ASSEMBLY -> NodeColors.INTERMEDIATE;
+                case CYCLE -> NodeColors.CYCLE;
+                case MATERIAL -> NodeColors.RAW;
+            };
+        };
+    }
+
+    /** {@code 2/3 ▾} for a switchable recipe, {@code ▾} for the only one, {@code ✂} for a cut. */
+    private static String chipText(TreeRow<RecipeNode> row) {
+        return switch (row.badge()) {
+            case CUT -> "✂";
+            case MULTIPLE -> row.selected() + "/" + row.options() + " ▾";
+            case SINGLE -> "▾";
+            case NONE -> null;
+        };
+    }
+
+    private TreeMetrics.Rect chipRect(int r) {
+        return new TreeMetrics.Rect(nameRightEdge() + COL_GAP + this.amountW + COL_GAP,
+                textY(r) - (BUTTON_H - LINE_H) / 2, this.recipeW, BUTTON_H);
+    }
+
+    private int rowTop(int r) {
+        return contentTop() + (r - this.scroll) * this.plan.pitch();
+    }
+
+    private int rowCenter(int r) {
+        return rowTop(r) + this.plan.pitch() / 2;
+    }
+
+    private int textY(int r) {
+        return rowTop(r) + (this.plan.pitch() - LINE_H) / 2;
+    }
+
+    /** Right edge of the name column: whatever sits to its right is a fixed column. */
+    private int nameRightEdge() {
+        return chipLeft() - (this.recipeW > 0 ? COL_GAP : 0)
+                - (this.amountW > 0 ? COL_GAP + this.amountW : 0);
+    }
+
+    private int chipLeft() {
+        return labelRightEdge() - (this.recipeW > 0 ? this.recipeW : 0);
+    }
+
+    /**
+     * Right edge of the content area, in screen pixels: the very line
+     * {@link TreePanel} measured {@code contentW} against, so a chip can never
+     * reach into the padding the scrollbar sits in, however narrow the window is.
+     */
+    private int labelRightEdge() {
+        return contentLeft() + this.plan.contentW();
+    }
+
+    private void drawFooter(GuiGraphics graphics) {
+        int left = this.panelLeft;
+        int y = contentBottom() + 2;
+        UiShapes.divider(graphics, left + 2, left + this.plan.panelW() - 2, y - 2,
+                UiPalette.SECTION_DIVIDER);
+        drawLegend(graphics, left + PAD, y + 3);
+        int hintY = y + 3 + LINE_H + 2;
+        List<String> hint = RecipeListLayout.wrapText(this.font::width, hint(),
+                this.plan.panelW() - 2 * PAD, 2);
+        for (int i = 0; i < hint.size(); i++) {
+            graphics.drawString(this.font, hint.get(i), left + PAD, hintY + i * LINE_H,
+                    UiPalette.MUTED, false);
+        }
+    }
+
+    /**
+     * The key line names the bindings the player actually has, so a rebind in
+     * Options → Controls cannot leave the window lying about itself.
+     */
+    private String hint() {
+        return Component.translatable(KEY_HINT,
+                Keybinds.ADD_RECIPE.getKey().getDisplayName(),
+                Keybinds.OPEN_RECIPES.getKey().getDisplayName(),
+                Keybinds.TOGGLE_OVERLAY.getKey().getDisplayName()).getString();
+    }
+
+    /** The four label colours, each named: the encoding the rows actually use. */
+    private void drawLegend(GuiGraphics graphics, int x, int y) {
+        int[] colors = {NodeColors.HAVE, NodeColors.MISSING, NodeColors.INTERMEDIATE, NodeColors.ROOT};
+        String[] keys = {"overlay.craftplanner.legend.have", "overlay.craftplanner.legend.missing",
+                "overlay.craftplanner.legend.intermediate", "overlay.craftplanner.legend.root"};
+        int room = this.plan.panelW() - 2 * PAD;
+        int used = 0;
+        for (int i = 0; i < keys.length; i++) {
+            String label = tr(keys[i]).getString();
+            used += 8 + this.font.width(label) + 8;
+            if (used > room) {
+                // Two entries named beat four silently overlapping the hint below.
+                return;
+            }
+            graphics.fill(x, y + 2, x + 6, y + 8, colors[i]);
+            graphics.drawString(this.font, label, x + 8, y, UiPalette.TEXT, false);
+            x += 8 + this.font.width(label) + 8;
+        }
+    }
+
+    // --- coordinates --------------------------------------------------------
+
+    private int contentLeft() {
+        return this.panelLeft + this.plan.contentLeft();
+    }
+
+    private int contentTop() {
+        return this.panelTop + this.plan.contentTop();
+    }
+
+    private int contentBottom() {
+        return this.panelTop + this.plan.contentBottom();
+    }
+
+    // --- input --------------------------------------------------------------
+
+    private int hoveredRow(int mouseY) {
+        int r = TreeMetrics.rowAt(contentTop(), contentBottom(), this.scroll, 1.0, mouseY);
+        if (r < this.scroll || r >= this.rows.size()) {
+            return -1;
+        }
+        return r;
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT || !overPanel((int) mouseX, (int) mouseY)) {
+            return super.mouseClicked(mouseX, mouseY, button);
+        }
+        if (grabThumb((int) mouseX, (int) mouseY)) {
+            return true;
+        }
+        int jumped = trackJump((int) mouseX, (int) mouseY);
+        if (jumped >= 0) {
+            this.scroll = jumped;
+            rebuild();
+            return true;
+        }
+        int r = hoveredRow((int) mouseY);
+        if (r < 0) {
+            return super.mouseClicked(mouseX, mouseY, button);
+        }
+        this.focus = r;
+        TreeRow<RecipeNode> row = this.rows.get(r);
+        TreeMetrics.Rect toggle = TreeMetrics.toggleHit(row.depth(), r, this.scroll, 1.0,
+                contentLeft(), contentTop());
+        if (row.foldable() && toggle.contains((int) mouseX, (int) mouseY)) {
+            TreeCollapse.toggle(row.path());
+            rebuild();
+            return true;
+        }
+        if (this.recipeW > 0 && chipRect(r).contains((int) mouseX, (int) mouseY)) {
+            openPicker(row);
+            return true;
+        }
+        if (row.badge() != TreeRow.Badge.NONE && mouseX >= contentLeft()
+                + TreeMetrics.labelX(row.depth()) && mouseX < nameRightEdge()) {
+            // The name is the row's label, so it is also where the player looks
+            // for the way to change what the row is made of.
+            openPicker(row);
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    private boolean overPanel(int mx, int my) {
+        return mx >= this.panelLeft && mx <= this.panelLeft + this.plan.panelW()
+                && my >= this.panelTop && my <= this.panelTop + this.plan.panelH();
+    }
+
+    private void openPicker(TreeRow<RecipeNode> row) {
+        if (row.badge() == TreeRow.Badge.NONE) {
+            return;
+        }
+        this.minecraft.setScreen(new RecipePickerScreen(row.node().item(), this));
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (this.thumbDrag) {
+            this.scroll = TreePanel.scrollAt(contentTop(), trackHeight(), thumbHeight(),
+                    this.plan.maxScroll(), (int) mouseY);
+            rebuild();
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        this.thumbDrag = false;
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    private boolean grabThumb(int mx, int my) {
+        if (this.plan.maxScroll() <= 0 || !thumbRect().contains(mx, my)) {
+            return false;
+        }
+        this.thumbDrag = true;
+        // The thumb stays under the cursor instead of jumping its own height.
+        this.scroll = TreePanel.scrollAt(contentTop(), trackHeight(), thumbHeight(),
+                this.plan.maxScroll(), my);
+        rebuild();
+        return true;
+    }
+
+    /** A click on the bare track pages the plan to that point. */
+    private int trackJump(int mx, int my) {
+        if (this.plan.maxScroll() <= 0) {
+            return -1;
+        }
+        int x = thumbRect().x();
+        if (mx < x - 3 || mx > x + TreeMetrics.SCROLL_BAR_W + 6
+                || my < contentTop() || my >= contentBottom()) {
+            return -1;
+        }
+        return TreePanel.scrollAt(contentTop(), trackHeight(), thumbHeight(),
+                this.plan.maxScroll(), my);
+    }
+
+    private TreeMetrics.Rect thumbRect() {
+        int x = labelRightEdge() + 2;
+        return new TreeMetrics.Rect(x,
+                TreePanel.thumbTop(contentTop(), trackHeight(), thumbHeight(),
+                        this.scroll, this.plan.maxScroll()),
+                TreeMetrics.SCROLL_BAR_W + 4, thumbHeight());
+    }
+
+    private int trackHeight() {
+        return Math.max(1, contentBottom() - contentTop());
+    }
+
+    private int thumbHeight() {
+        return TreePanel.thumbHeight(trackHeight(), this.plan.visibleRows(), this.rows.size());
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (this.plan.maxScroll() <= 0) {
+            return false;
+        }
+        this.scroll = TreePanel.clampScroll(this.scroll + (scrollY > 0 ? -WHEEL_ROWS : WHEEL_ROWS),
+                this.rows.size(), this.plan.visibleRows());
+        rebuild();
+        return true;
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (this.rows.isEmpty()) {
+            return super.keyPressed(keyCode, scanCode, modifiers);
+        }
+        switch (keyCode) {
+            case GLFW.GLFW_KEY_DOWN:
+                moveFocus(1);
+                return true;
+            case GLFW.GLFW_KEY_UP:
+                moveFocus(-1);
+                return true;
+            case GLFW.GLFW_KEY_LEFT:
+                foldFocused(true);
+                return true;
+            case GLFW.GLFW_KEY_RIGHT:
+                foldFocused(false);
+                return true;
+            case GLFW.GLFW_KEY_ENTER:
+            case GLFW.GLFW_KEY_KP_ENTER:
+                openPicker(this.rows.get(Math.max(0, this.focus)));
+                return true;
+            case GLFW.GLFW_KEY_PAGE_DOWN:
+                page(1);
+                return true;
+            case GLFW.GLFW_KEY_PAGE_UP:
+                page(-1);
+                return true;
+            case GLFW.GLFW_KEY_HOME:
+                this.scroll = 0;
+                rebuild();
+                return true;
+            case GLFW.GLFW_KEY_END:
+                this.scroll = this.plan.maxScroll();
+                rebuild();
+                return true;
+            default:
+                break;
+        }
+        if (Keybinds.OPEN_RECIPES.matches(keyCode, scanCode)) {
+            this.minecraft.setScreen(new RecipeListScreen());
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    private void moveFocus(int delta) {
+        int target = this.focus < 0 ? 0
+                : Math.max(0, Math.min(this.rows.size() - 1, this.focus + delta));
+        this.focus = target;
+        if (target < this.scroll) {
+            this.scroll = target;
+        } else if (target >= this.scroll + this.plan.visibleRows()) {
+            this.scroll = target - this.plan.visibleRows() + 1;
+        }
+        rebuild();
+    }
+
+    private void page(int direction) {
+        this.scroll = TreePanel.clampScroll(this.scroll + direction * this.plan.visibleRows(),
+                this.rows.size(), this.plan.visibleRows());
+        if (this.focus >= 0) {
+            this.focus = Math.max(this.scroll,
+                    Math.min(this.scroll + this.plan.visibleRows() - 1, this.focus));
+        }
+        rebuild();
+    }
+
+    private void foldFocused(boolean collapse) {
+        if (this.focus < 0 || this.focus >= this.rows.size()) {
+            return;
+        }
+        TreeRow<RecipeNode> row = this.rows.get(this.focus);
+        if (row.path() == null || row.folded() == collapse) {
+            return;
+        }
+        TreeCollapse.toggle(row.path());
+        rebuild();
+    }
+
+    // --- tooltips -----------------------------------------------------------
+
+    private void renderRowTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        int r = hoveredRow(mouseY);
+        if (r < 0) {
+            return;
+        }
+        TreeRow<RecipeNode> row = this.rows.get(r);
+        TreeMetrics.Rect toggle = TreeMetrics.toggleHit(row.depth(), r, this.scroll, 1.0,
+                contentLeft(), contentTop());
+        if (row.foldable() && toggle.contains(mouseX, mouseY)) {
+            this.setTooltipForNextRenderPass(Component.translatable(row.folded()
+                    ? "overlay.craftplanner.fold.expand" : "overlay.craftplanner.fold.collapse"));
+            return;
+        }
+        List<Component> lines = rowTooltip(row);
+        MutableComponent joined = lines.get(0).copy();
+        for (int i = 1; i < lines.size(); i++) {
+            joined.append(Component.literal("\n")).append(lines.get(i).copy());
+        }
+        this.setTooltipForNextRenderPass(joined);
+    }
+
+    /**
+     * What a row says about itself: the item, then what the plan asks of it and
+     * what the inventory already covers, then the recipe in use and what clicking
+     * would change. The bare red {@code ×12} in the old panel left the player to
+     * guess which of its three meanings applied.
+     */
+    private List<Component> rowTooltip(TreeRow<RecipeNode> row) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(row.node().item().name().copy());
+        Availability state = PlannerState.availability().get(row.node().item());
+        lines.add(Component.translatable("overlay.craftplanner.material.required",
+                Long.toString(row.amount())));
+        if (state != null) {
+            lines.add(Component.translatable("overlay.craftplanner.material.have",
+                    Long.toString(state.available())));
+            if (state.missing() > 0) {
+                lines.add(Component.translatable("overlay.craftplanner.material.missing",
+                        Long.toString(state.missing())));
+            }
+        }
+        if (row.hiddenRows() > 0) {
+            lines.add(Component.translatable(KEY_HIDDEN, row.hiddenRows()));
+        }
+        RecipeNode node = row.node();
+        if (node.recipe() == null || this.minecraft.level == null) {
+            return lines;
+        }
+        int total = node.options().size();
+        Component head;
+        if (row.badge() == TreeRow.Badge.CUT) {
+            head = Component.translatable("overlay.craftplanner.cut.tooltip");
+        } else if (total > 1) {
+            head = Component.translatable("overlay.craftplanner.choice.tooltip",
+                    Integer.toString(node.selectedRecipeIndex() + 1), Integer.toString(total));
+        } else {
+            head = Component.translatable("overlay.craftplanner.single.tooltip");
+        }
+        lines.addAll(RecipeLabel.describe(node.recipe(), this.minecraft.level.registryAccess()));
+        lines.add(0, head);
+        return lines;
+    }
+
+    private static Component tr(String key) {
+        return Component.translatable(key);
+    }
+}

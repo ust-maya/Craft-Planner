@@ -1,6 +1,7 @@
 package com.craftplanner.client;
 
 import com.craftplanner.Constants;
+import com.craftplanner.client.screen.CraftTreeScreen;
 import com.craftplanner.client.screen.OverlayLayoutScreen;
 import com.craftplanner.client.screen.QuantityPopupScreen;
 import com.craftplanner.client.screen.RecipeListScreen;
@@ -64,6 +65,10 @@ public class ClientEvents {
             mc.setScreen(new RecipeListScreen());
         }
 
+        while (Keybinds.OPEN_TREE.consumeClick()) {
+            mc.setScreen(new CraftTreeScreen());
+        }
+
         // The editor arranges the panel that is on screen, so the first press on
         // a hidden overlay only reveals it. It is a screen, and screens close
         // themselves: the key is answered again inside OverlayLayoutScreen.
@@ -109,6 +114,8 @@ public class ClientEvents {
             OverlayState.toggle();
         } else if (matches(Keybinds.OPEN_RECIPES, keyCode, scanCode)) {
             mc.setScreen(new RecipeListScreen());
+        } else if (matches(Keybinds.OPEN_TREE, keyCode, scanCode)) {
+            mc.setScreen(new CraftTreeScreen());
         }
     }
 
@@ -129,7 +136,8 @@ public class ClientEvents {
      * chat, anvil, books, command blocks — keeps the key for typing.
      */
     private static boolean readsItemsFrom(Screen screen) {
-        if (screen instanceof QuantityPopupScreen || screen instanceof RecipeListScreen) {
+        if (screen instanceof QuantityPopupScreen || screen instanceof RecipeListScreen
+                || screen instanceof CraftTreeScreen) {
             return false;
         }
         if (screen instanceof AbstractContainerScreen<?>) {

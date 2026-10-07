@@ -1,5 +1,6 @@
 package com.craftplanner.client.screen;
 
+import com.craftplanner.client.TextMetrics;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -263,18 +264,7 @@ final class RecipeListLayout {
 
     /** Cuts the text with an ellipsis so it fits the given pixel width. */
     static String trimToWidth(TextMetrics metrics, String text, int maxWidth) {
-        if (metrics.width(text) <= maxWidth) {
-            return text;
-        }
-        int ellipsisWidth = metrics.width("…");
-        if (maxWidth < ellipsisWidth) {
-            return "";
-        }
-        StringBuilder sb = new StringBuilder(text);
-        while (sb.length() > 0 && metrics.width(sb.toString()) + ellipsisWidth > maxWidth) {
-            sb.setLength(sb.length() - 1);
-        }
-        return sb + "…";
+        return metrics.trim(text, maxWidth);
     }
 
     /**
