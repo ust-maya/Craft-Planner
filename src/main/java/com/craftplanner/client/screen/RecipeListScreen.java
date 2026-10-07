@@ -1,13 +1,9 @@
 package com.craftplanner.client.screen;
 
 import com.craftplanner.client.PlannerState;
-import com.craftplanner.client.resource.Availability;
-import com.craftplanner.client.resource.ResourceCheck;
-import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.RecipeNode;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -25,65 +21,39 @@ import net.minecraft.world.item.crafting.RecipeHolder;
  * and re-expands the trees, so the overlay and the shopping list stay in
  * sync.</p>
  *
- * <p>Stage 9: the footer compares the aggregated shopping list against the
- * player's inventory and prints how much is still missing.</p>
+ * <p>The footer deliberately shows no raw-material summary and no deficit line:
+ * whatever the list holds, the bottom of the window carries only the hint and
+ * the buttons. The inventory comparison of Stage 9 itself is untouched — it
+ * still feeds the overlay's shopping list and node colours.</p>
  *
  * <p>Stage 11: the footer also carries the ore switch — a button that flips
  * {@code filters.hideOres} at runtime, so ore blocks and raw ore materials can
  * be kept out of the tree without editing the config file and restarting.</p>
  *
- * <p>Stage 12: the panel is laid out densely — 18 px rows, 14 px buttons, 320 px
- * wide — and the visible row count is additionally clamped to the window height,
- * so a long target list cannot push the panel off screen. The font stays at the
- * vanilla 9 px: the controls are vanilla {@code Button} widgets that render
- * their own labels, so shrinking the text would mean replacing the widgets.</p>
+ * <p>Layout (2026-09-25): the geometry lives in {@link RecipeListLayout} and is
+ * measured from the font instead of hard-coded, so a long translation cannot
+ * push text out of the panel: columns grow with their headers, the panel grows
+ * with the columns, the footer hint wraps onto several lines and whatever is
+ * still too wide is cut with an ellipsis inside its own box. This class only
+ * draws the result and places the widgets from it.</p>
  */
 public class RecipeListScreen extends Screen {
 
-    private static final int PANEL_WIDTH = 320;
-    private static final int ROW_HEIGHT = 18;
-    private static final int HEADER = 24;
-    private static final int FOOTER = 50;
-    /**
-     * Offsets inside the footer block, measured from {@link #footerTop()}.
-     * Kept in one place because the summary line, the hint and the button row
-     * all share the same vertical space — the hint is drawn after the widgets,
-     * so an overlap would paint text on top of a button.
-     */
-    private static final int FOOTER_TEXT_Y = 3;
-    private static final int FOOTER_HINT_Y = 15;
-    private static final int FOOTER_BUTTON_Y = 27;
-    /** Cap on visible rows; the window height can lower it further. */
-    private static final int MAX_VISIBLE_ROWS = 16;
-    private static final int SCROLL_GUTTER = 5;
-    /** Height of every button in the panel. */
-    private static final int BUTTON_H = 14;
-    private static final int FOOTER_BUTTON_W = 72;
-
-    // Right-aligned control cluster (measured from the panel's right edge).
-    private static final int REMOVE_W = 16;
-    private static final int REMOVE_X = -SCROLL_GUTTER - REMOVE_W;          // -21
-    private static final int PLUS_W = 13;
-    private static final int PLUS_X = REMOVE_X - 3 - PLUS_W;               // -37
-    private static final int MINUS_W = 13;
-    private static final int MINUS_X = PLUS_X - 3 - MINUS_W;               // -53
-    /**
-     * Room reserved for the quantity. The number is right-aligned inside it, so
-     * a wide amount can never creep under the recipe button — the two columns
-     * are only a few pixels apart and used to overlap for 4-digit counts.
-     */
-    private static final int AMOUNT_W = 28;
-    private static final int AMOUNT_RIGHT = MINUS_X - 4;                   // -57
-    private static final int AMOUNT_LEFT = AMOUNT_RIGHT - AMOUNT_W;        // -85
-    private static final int RECIPE_W = 32;
-    private static final int RECIPE_X = AMOUNT_LEFT - 4 - RECIPE_W;        // -121
-
-    /** Width of the ore-filter switch in the footer. */
-    private static final int ORES_W = 100;
+    // --- translation keys --------------------------------------------------
+    private static final String KEY_TITLE = "screen.craftplanner.list.title";
+    private static final String KEY_CLEAR = "screen.craftplanner.list.clear";
+    private static final String KEY_CLOSE = "screen.craftplanner.list.close";
+    private static final String KEY_EMPTY = "screen.craftplanner.list.empty";
+    private static final String KEY_HINT = "screen.craftplanner.list.hint";
+    private static final String KEY_HEADER_ITEM = "screen.craftplanner.list.header.item";
+    private static final String KEY_HEADER_RECIPE = "screen.craftplanner.list.header.recipe";
+    private static final String KEY_HEADER_AMOUNT = "screen.craftplanner.list.header.amount";
+    private static final String KEY_HEADER_REMOVE = "screen.craftplanner.list.header.remove";
+    private static final String KEY_ORES_HIDDEN = "screen.craftplanner.list.ores.hidden";
+    private static final String KEY_ORES_SHOWN = "screen.craftplanner.list.ores.shown";
 
     private static final int TEXT = 0xFFE0E0E0;
     private static final int MUTED = 0xFFA0A0A0;
-    private static final int MISSING = 0xFFE06060;
     private static final int DIM = 0x80000000;
     private static final int PANEL_BG = 0xF0101010;
     private static final int PANEL_BORDER = 0xFF404040;
@@ -91,76 +61,94 @@ public class RecipeListScreen extends Screen {
 
     private final List<RecipeNode> roots = new ArrayList<>();
     private int scroll;
+    /** Measured geometry of the current list; rebuilt by {@link #computeLayout()}. */
+    private RecipeListLayout layout;
+    /** {@code font::width}, refreshed in {@link #init()} — the layout's only input. */
+    private TextMetrics metrics;
 
     public RecipeListScreen() {
-        super(Component.translatable("screen.craftplanner.list.title"));
+        super(Component.translatable(KEY_TITLE));
     }
 
     @Override
     protected void init() {
+        this.metrics = this.font::width;
         this.roots.clear();
         this.roots.addAll(PlannerState.graph().roots());
+        computeLayout();
         this.scroll = Math.min(this.scroll, maxScroll());
         buildWidgets();
     }
 
+    /**
+     * Measures the panel for the current list. Everything else — widget bounds,
+     * drawing, the panel height — reads the result, so they cannot drift apart.
+     */
+    private void computeLayout() {
+        List<String> names = new ArrayList<>(this.roots.size());
+        long maxAmount = 1L;
+        int maxOptions = 1;
+        for (RecipeNode node : this.roots) {
+            names.add(node.item().name().getString());
+            maxAmount = Math.max(maxAmount, node.required());
+            maxOptions = Math.max(maxOptions, node.options().size());
+        }
+        this.layout = new RecipeListLayout(this.metrics, this.width, names, maxAmount, maxOptions,
+                tr(KEY_HEADER_RECIPE), tr(KEY_HEADER_AMOUNT), tr(KEY_HEADER_REMOVE),
+                tr(KEY_CLEAR), tr(KEY_CLOSE), oresLabel().getString(), tr(KEY_HINT));
+    }
+
     private void buildWidgets() {
         clearWidgets();
+        RecipeListLayout l = this.layout;
         int left = panelLeft();
         int top = panelTop();
-        int right = left + PANEL_WIDTH;
+        int right = left + l.panelWidth;
 
         for (int i = 0; i < visibleRows(); i++) {
             RecipeNode node = this.roots.get(this.scroll + i);
-            int y = top + HEADER + i * ROW_HEIGHT + 2;
+            int y = top + RecipeListLayout.HEADER + i * RecipeListLayout.ROW_HEIGHT + 2;
 
-            addRenderableWidget(recipeButton(node, right + RECIPE_X, y));
-            addRenderableWidget(Button.builder(Component.literal("-"), button -> change(node, -1))
-                    .bounds(right + MINUS_X, y, MINUS_W, BUTTON_H)
-                    .tooltip(Tooltip.create(Component.translatable("screen.craftplanner.list.decrease")))
-                    .build());
-            addRenderableWidget(Button.builder(Component.literal("+"), button -> change(node, 1))
-                    .bounds(right + PLUS_X, y, PLUS_W, BUTTON_H)
-                    .tooltip(Tooltip.create(Component.translatable("screen.craftplanner.list.increase")))
-                    .build());
-            addRenderableWidget(Button.builder(Component.literal("x"), button -> remove(node))
-                    .bounds(right + REMOVE_X, y, REMOVE_W, BUTTON_H)
-                    .tooltip(Tooltip.create(Component.translatable("screen.craftplanner.list.remove.tooltip")))
-                    .build());
+            addRenderableWidget(recipeButton(node, right + l.recipeX, y));
+            addRenderableWidget(fitButton(right + l.minusX, y, l.minusW, RecipeListLayout.BUTTON_H,
+                    Component.literal("-"), button -> change(node, -1),
+                    Component.translatable("screen.craftplanner.list.decrease")));
+            addRenderableWidget(fitButton(right + l.plusX, y, l.plusW, RecipeListLayout.BUTTON_H,
+                    Component.literal("+"), button -> change(node, 1),
+                    Component.translatable("screen.craftplanner.list.increase")));
+            addRenderableWidget(fitButton(right + l.removeX, y, l.removeW, RecipeListLayout.BUTTON_H,
+                    Component.literal("x"), button -> remove(node),
+                    Component.translatable("screen.craftplanner.list.remove.tooltip")));
         }
 
-        int footerY = footerTop() + FOOTER_BUTTON_Y;
+        int footerY = footerTop() + l.buttonsY;
         if (!this.roots.isEmpty()) {
-            addRenderableWidget(Button.builder(Component.translatable("screen.craftplanner.list.clear"),
+            addRenderableWidget(fitButton(left + l.clearX, footerY, l.clearW, RecipeListLayout.BUTTON_H,
+                    Component.translatable(KEY_CLEAR),
                     button -> {
                         PlannerState.clear();
                         refresh();
-                    })
-                    .bounds(left + 6, footerY, FOOTER_BUTTON_W, BUTTON_H)
-                    .tooltip(Tooltip.create(Component.translatable("screen.craftplanner.list.clear.tooltip")))
-                    .build());
+                    },
+                    Component.translatable("screen.craftplanner.list.clear.tooltip")));
         }
-        addRenderableWidget(Button.builder(Component.translatable("screen.craftplanner.list.close"),
-                button -> onClose())
-                .bounds(right - FOOTER_BUTTON_W - 4, footerY, FOOTER_BUTTON_W, BUTTON_H)
-                .build());
+        addRenderableWidget(fitButton(left + l.closeX, footerY, l.closeW, RecipeListLayout.BUTTON_H,
+                Component.translatable(KEY_CLOSE),
+                button -> onClose(), null));
 
         // Ore filter switch: sits between the two buttons and stays available
         // even with an empty list, because it changes the tree, not the list.
-        addRenderableWidget(Button.builder(oresLabel(), button -> {
-            PlannerState.toggleHideOres();
-            refresh();
-        })
-                .bounds(left + PANEL_WIDTH / 2 - ORES_W / 2, footerY, ORES_W, BUTTON_H)
-                .tooltip(Tooltip.create(Component.translatable("screen.craftplanner.list.ores.tooltip")))
-                .build());
+        addRenderableWidget(fitButton(left + l.oresX, footerY, l.oresW, RecipeListLayout.BUTTON_H,
+                oresLabel(),
+                button -> {
+                    PlannerState.toggleHideOres();
+                    refresh();
+                },
+                Component.translatable("screen.craftplanner.list.ores.tooltip")));
     }
 
     /** Label of the ore switch, showing the state the tree is currently in. */
     private static Component oresLabel() {
-        return Component.translatable(PlannerState.hideOres()
-                ? "screen.craftplanner.list.ores.hidden"
-                : "screen.craftplanner.list.ores.shown");
+        return Component.translatable(PlannerState.hideOres() ? KEY_ORES_HIDDEN : KEY_ORES_SHOWN);
     }
 
     /**
@@ -174,12 +162,10 @@ public class RecipeListScreen extends Screen {
         int total = options.size();
         int index = total == 0 ? 0 : Math.min(node.selectedRecipeIndex(), total - 1);
 
-        Button button = Button.builder(Component.literal(total > 0 ? (index + 1) + "/" + total : "-"),
-                pressed -> cycleRecipe(node))
-                .bounds(x, y, RECIPE_W, BUTTON_H)
-                .tooltip(Tooltip.create(Component.translatable(
-                        "screen.craftplanner.list.recipe.tooltip", index + 1, total)))
-                .build();
+        FitButton button = fitButton(x, y, this.layout.recipeW, RecipeListLayout.BUTTON_H,
+                Component.literal(total > 0 ? (index + 1) + "/" + total : "-"),
+                pressed -> cycleRecipe(node),
+                Component.translatable("screen.craftplanner.list.recipe.tooltip", index + 1, total));
         button.active = total > 1;
         return button;
     }
@@ -213,10 +199,21 @@ public class RecipeListScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        if (this.layout == null) {
+            // Defensive: init() always measures first, but render must never
+            // depend on that order.
+            if (this.metrics == null) {
+                this.metrics = this.font::width;
+            }
+            computeLayout();
+        }
+        RecipeListLayout l = this.layout;
+        TextMetrics m = this.metrics;
         int left = panelLeft();
         int top = panelTop();
-        int right = left + PANEL_WIDTH;
+        int right = left + l.panelWidth;
         int bottom = top + panelHeight();
+        int innerW = l.panelWidth - 2 * RecipeListLayout.PAD;
 
         // Background first, widgets afterwards — the panel would otherwise be
         // painted over the buttons.
@@ -229,101 +226,123 @@ public class RecipeListScreen extends Screen {
 
         for (int i = 0; i < visibleRows(); i++) {
             if ((this.scroll + i) % 2 == 1) {
-                int y = top + HEADER + i * ROW_HEIGHT;
-                graphics.fill(left + 1, y, right - 1, y + ROW_HEIGHT, ROW_STRIPE);
+                int y = top + RecipeListLayout.HEADER + i * RecipeListLayout.ROW_HEIGHT;
+                graphics.fill(left + 1, y, right - 1, y + RecipeListLayout.ROW_HEIGHT, ROW_STRIPE);
             }
         }
 
         super.render(graphics, mouseX, mouseY, partialTick);
 
         Font font = this.font;
-        graphics.drawCenteredString(font, this.title, left + PANEL_WIDTH / 2, top + 3, TEXT);
+        drawCentered(font, m, graphics, this.title.getString(), left + l.panelWidth / 2, top + 3, innerW, TEXT);
 
-        // Column headers make the otherwise cryptic rows self-explanatory.
+        // Column headers make the otherwise cryptic rows self-explanatory. Each
+        // one is trimmed to its own column, so they can neither overlap each
+        // other nor leave the panel.
         if (!this.roots.isEmpty()) {
             int hy = top + 13;
-            graphics.drawString(font, Component.translatable("screen.craftplanner.list.header.item"),
-                    left + 6, hy, MUTED, false);
-            graphics.drawCenteredString(font,
-                    Component.translatable("screen.craftplanner.list.header.recipe"),
-                    right + RECIPE_X + RECIPE_W / 2, hy, MUTED);
-            graphics.drawCenteredString(font,
-                    Component.translatable("screen.craftplanner.list.header.amount"),
-                    right + (AMOUNT_LEFT + AMOUNT_RIGHT) / 2, hy, MUTED);
-            graphics.drawCenteredString(font,
-                    Component.translatable("screen.craftplanner.list.header.remove"),
-                    right + REMOVE_X + REMOVE_W / 2, hy, MUTED);
-        }
-
-        if (this.roots.isEmpty()) {
-            graphics.drawCenteredString(font,
-                    Component.translatable("screen.craftplanner.list.empty"),
-                    left + PANEL_WIDTH / 2, footerTop() + FOOTER_TEXT_Y, MUTED);
-            graphics.drawCenteredString(font,
-                    trimToWidth(font, Component.translatable("screen.craftplanner.list.hint").getString(),
-                            PANEL_WIDTH - 16),
-                    left + PANEL_WIDTH / 2, footerTop() + FOOTER_HINT_Y, MUTED);
+            drawTrimmed(font, m, graphics, tr(KEY_HEADER_ITEM), left + RecipeListLayout.PAD, hy,
+                    (right + l.recipeX) - RecipeListLayout.GAP - (left + RecipeListLayout.PAD), MUTED);
+            drawCentered(font, m, graphics, tr(KEY_HEADER_RECIPE),
+                    right + l.recipeX + l.recipeW / 2, hy, l.recipeW - 4, MUTED);
+            drawCentered(font, m, graphics, tr(KEY_HEADER_AMOUNT),
+                    right + (l.amountLeft + l.amountRight) / 2, hy, l.amountW - 4, MUTED);
+            drawCentered(font, m, graphics, tr(KEY_HEADER_REMOVE),
+                    right + l.removeX + l.removeW / 2, hy, l.removeW - 4, MUTED);
         }
 
         for (int i = 0; i < visibleRows(); i++) {
             RecipeNode node = this.roots.get(this.scroll + i);
-            int y = top + HEADER + i * ROW_HEIGHT;
-            graphics.renderItem(node.displayStack(), left + 6, y + 1);
-            String name = trimToWidth(font, node.item().name().getString(), right + RECIPE_X - 6 - (left + 26));
-            graphics.drawString(font, name, left + 26, y + 5, TEXT, false);
-            String amount = Long.toString(node.required());
-            graphics.drawString(font, amount, right + AMOUNT_RIGHT - font.width(amount), y + 5, TEXT, false);
+            int y = top + RecipeListLayout.HEADER + i * RecipeListLayout.ROW_HEIGHT;
+            graphics.renderItem(node.displayStack(), left + RecipeListLayout.PAD, y + 1);
+            graphics.drawString(font, RecipeListLayout.trimToWidth(m, node.item().name().getString(), l.nameW),
+                    left + RecipeListLayout.NAME_LEFT, y + 5, TEXT, false);
+            String amount = RecipeListLayout.trimToWidth(m, Long.toString(node.required()), l.amountW);
+            graphics.drawString(font, amount, right + l.amountRight - m.width(amount), y + 5, TEXT, false);
         }
 
-        int footerLine = footerTop() + FOOTER_TEXT_Y;
-        Map<ItemKey, Availability> availability = PlannerState.availability();
-        long missing = ResourceCheck.totalMissing(availability);
-        Component deficit = missing > 0
-                ? Component.translatable("screen.craftplanner.list.missing",
-                        missing, ResourceCheck.deficitTypes(availability))
-                : null;
-
-        // The summary and the deficit share one row: the deficit is pinned to
-        // the right edge, so the summary gives way instead of running underneath
-        // it (with long numbers the two would otherwise overlap).
-        int deficitWidth = deficit == null ? 0 : font.width(deficit);
-        int summaryRoom = PANEL_WIDTH - 12 - (deficitWidth == 0 ? 0 : deficitWidth + 12);
-        Component summary = Component.translatable("screen.craftplanner.list.summary",
-                rawTypes(), rawTotal());
-        graphics.drawString(font, trimToWidth(font, summary.getString(), summaryRoom),
-                left + 6, footerLine, MUTED, false);
-
-        if (deficit != null) {
-            graphics.drawString(font, deficit,
-                    right - 6 - deficitWidth, footerLine, MISSING, false);
-        }
-
-        if (!this.roots.isEmpty()) {
-            graphics.drawCenteredString(font,
-                    trimToWidth(font, Component.translatable("screen.craftplanner.list.hint").getString(),
-                            PANEL_WIDTH - 16),
-                    left + PANEL_WIDTH / 2, footerTop() + FOOTER_HINT_Y, MUTED);
-        }
+        renderFooter(graphics, font, m, left);
 
         if (maxScroll() > 0) {
-            int trackTop = top + HEADER;
-            int trackHeight = visibleRows() * ROW_HEIGHT;
+            int trackTop = top + RecipeListLayout.HEADER;
+            int trackHeight = visibleRows() * RecipeListLayout.ROW_HEIGHT;
             int barHeight = Math.max(8, trackHeight * visibleRows() / this.roots.size());
             int barY = trackTop + (trackHeight - barHeight) * this.scroll / maxScroll();
             graphics.fill(right - 4, barY, right - 1, barY + barHeight, 0xFF909090);
         }
     }
 
-    /** Cuts the item name with an ellipsis so it fits the given pixel width. */
-    private static String trimToWidth(Font font, String text, int maxWidth) {
-        if (maxWidth <= 0 || font.width(text) <= maxWidth) {
-            return text;
+    /**
+     * Footer: the empty-list message (only when there is nothing to plan) and
+     * the wrapped hint. The button row is made of widgets and is drawn by
+     * {@code super.render}.
+     *
+     * <p>No raw-material summary and no deficit line are drawn here — by design,
+     * in every state of the list. {@link RecipeListLayout} therefore reserves no
+     * row for them, so the footer is exactly as tall as the hint needs.</p>
+     */
+    private void renderFooter(GuiGraphics graphics, Font font, TextMetrics m, int left) {
+        RecipeListLayout l = this.layout;
+        int innerW = l.panelWidth - 2 * RecipeListLayout.PAD;
+
+        if (this.roots.isEmpty()) {
+            drawCentered(font, m, graphics, tr(KEY_EMPTY), left + l.panelWidth / 2, footerTop() + 3, innerW, MUTED);
         }
-        StringBuilder sb = new StringBuilder(text);
-        while (sb.length() > 1 && font.width(sb.toString() + "…") > maxWidth) {
-            sb.setLength(sb.length() - 1);
+
+        int hintY = footerTop() + l.hintY;
+        for (int i = 0; i < l.hintLines.size(); i++) {
+            drawCentered(font, m, graphics, l.hintLines.get(i), left + l.panelWidth / 2,
+                    hintY + i * RecipeListLayout.LINE_H, innerW, MUTED);
         }
-        return sb + "…";
+    }
+
+    /** Draws the text left-aligned, cut to {@code maxWidth}. */
+    private static void drawTrimmed(Font font, TextMetrics m, GuiGraphics graphics, String text,
+            int x, int y, int maxWidth, int color) {
+        graphics.drawString(font, RecipeListLayout.trimToWidth(m, text, maxWidth), x, y, color, false);
+    }
+
+    /** Draws the text centred on {@code centerX}, cut to {@code maxWidth}. */
+    private static void drawCentered(Font font, TextMetrics m, GuiGraphics graphics, String text,
+            int centerX, int y, int maxWidth, int color) {
+        graphics.drawCenteredString(font, RecipeListLayout.trimToWidth(m, text, maxWidth), centerX, y, color);
+    }
+
+    private static String tr(String key) {
+        return Component.translatable(key).getString();
+    }
+
+    private static FitButton fitButton(int x, int y, int width, int height, Component label,
+            Button.OnPress onPress, Component tooltip) {
+        FitButton button = new FitButton(x, y, width, height, label, onPress);
+        if (tooltip != null) {
+            button.setTooltip(Tooltip.create(tooltip));
+        }
+        return button;
+    }
+
+    /**
+     * Vanilla button that trims its own label instead of scrolling it.
+     *
+     * <p>{@code AbstractButton} keeps an over-long label inside the widget with
+     * a scissor and animates it back and forth, which on a dense panel reads as
+     * "the text does not fit". Cutting the label with an ellipsis first makes
+     * the guarantee explicit: whatever width the layout ends up handing out, no
+     * label can leave its button.</p>
+     */
+    private static final class FitButton extends Button {
+
+        private FitButton(int x, int y, int width, int height, Component label, Button.OnPress onPress) {
+            super(x, y, width, height, label, onPress, DEFAULT_NARRATION);
+        }
+
+        @Override
+        public void renderString(GuiGraphics graphics, Font font, int color) {
+            String label = RecipeListLayout.trimToWidth(font::width, this.getMessage().getString(),
+                    this.getWidth() - 4);
+            graphics.drawCenteredString(font, label, this.getX() + this.getWidth() / 2,
+                    this.getY() + (this.getHeight() - RecipeListLayout.LINE_H) / 2 + 1, color);
+        }
     }
 
     @Override
@@ -354,22 +373,6 @@ public class RecipeListScreen extends Screen {
         return false;
     }
 
-    private long rawTypes() {
-        return requirements().size();
-    }
-
-    private long rawTotal() {
-        long total = 0;
-        for (Long amount : requirements().values()) {
-            total += amount;
-        }
-        return total;
-    }
-
-    private Map<ItemKey, Long> requirements() {
-        return PlannerState.graph().aggregateRequirements();
-    }
-
     /**
      * Rows that fit at once: the configured cap, the number of targets, and the
      * window height. The height limit matters because the panel is centred, so
@@ -377,8 +380,7 @@ public class RecipeListScreen extends Screen {
      * scale.
      */
     private int visibleRows() {
-        int byHeight = Math.max(1, (this.height - HEADER - FOOTER) / ROW_HEIGHT);
-        return Math.min(Math.min(MAX_VISIBLE_ROWS, this.roots.size()), byHeight);
+        return RecipeListLayout.visibleRows(this.height, this.layout.footerH, this.roots.size());
     }
 
     private int maxScroll() {
@@ -386,7 +388,7 @@ public class RecipeListScreen extends Screen {
     }
 
     private int panelHeight() {
-        return HEADER + visibleRows() * ROW_HEIGHT + FOOTER;
+        return RecipeListLayout.panelHeight(visibleRows(), this.layout.footerH);
     }
 
     /**
@@ -397,11 +399,11 @@ public class RecipeListScreen extends Screen {
      * would otherwise collide).
      */
     private int footerTop() {
-        return panelTop() + HEADER + visibleRows() * ROW_HEIGHT;
+        return panelTop() + RecipeListLayout.HEADER + visibleRows() * RecipeListLayout.ROW_HEIGHT;
     }
 
     private int panelLeft() {
-        return (this.width - PANEL_WIDTH) / 2;
+        return (this.width - this.layout.panelWidth) / 2;
     }
 
     private int panelTop() {

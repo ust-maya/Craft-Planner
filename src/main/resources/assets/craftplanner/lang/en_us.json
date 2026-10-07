@@ -12,8 +12,6 @@
   "screen.craftplanner.list.clear": "Clear all",
   "screen.craftplanner.list.close": "Close",
   "screen.craftplanner.list.empty": "No recipes added yet",
-  "screen.craftplanner.list.summary": "Raw: %1$s types / %2$s items",
-  "screen.craftplanner.list.missing": "Still needed: %1$s (%2$s types)",
   "overlay.craftplanner.title": "Craft Planner",
   "overlay.craftplanner.keys": "V — show/hide · K — recipe list",
   "overlay.craftplanner.keys.short": "V — hide · K — list",
