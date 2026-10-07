@@ -3,7 +3,10 @@ package com.craftplanner.graph;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.item.crafting.RecipeHolder;
 
 /**
@@ -15,6 +18,8 @@ import net.minecraft.world.item.crafting.RecipeHolder;
  */
 public final class RecipeNode {
     private final ItemKey item;
+    /** Non-null only for a display-only fluid ingredient leaf. */
+    private final Fluid fluidRequirement;
     private final int depth;
     private final List<RecipeEdge> children = new ArrayList<>();
     private final List<RecipeHolder<?>> alternatives = new ArrayList<>();
@@ -29,9 +34,23 @@ public final class RecipeNode {
 
     public RecipeNode(ItemKey item, long required, int depth, NodeKind kind) {
         this.item = item;
+        this.fluidRequirement = null;
         this.required = Math.max(1, required);
         this.depth = depth;
         this.kind = kind;
+    }
+
+    private RecipeNode(Fluid fluid, long required, int depth) {
+        this.item = ItemKey.of(Items.BUCKET);
+        this.fluidRequirement = fluid;
+        this.required = Math.max(1, required);
+        this.depth = depth;
+        this.kind = NodeKind.RAW;
+    }
+
+    /** A non-expandable fluid input displayed as a leaf in its parent recipe. */
+    public static RecipeNode fluidRequirement(Fluid fluid, long amount, int depth) {
+        return new RecipeNode(fluid, amount, depth);
     }
 
     public static RecipeNode root(ItemKey item, long required) {
@@ -40,6 +59,27 @@ public final class RecipeNode {
 
     public ItemKey item() {
         return item;
+    }
+
+    public boolean isFluidRequirement() {
+        return fluidRequirement != null;
+    }
+
+    /** The fluid represented by this synthetic ingredient row, or {@code null}. */
+    public Fluid fluidRequirement() {
+        return fluidRequirement;
+    }
+
+    /** Name used by tree rows for both ordinary items and fluid ingredients. */
+    public Component displayName() {
+        return isFluidRequirement()
+                ? Component.translatable(fluidRequirement.getFluidType().getDescriptionId())
+                : item.name();
+    }
+
+    /** Row quantity, with fluid amounts kept distinct from item counts. */
+    public String amountLabel() {
+        return isFluidRequirement() ? required + " mB" : "×" + required;
     }
 
     public int depth() {
@@ -180,6 +220,10 @@ public final class RecipeNode {
 
     /** Display stack, clamped to the item's max stack size. */
     public ItemStack displayStack() {
+        if (isFluidRequirement()) {
+            ItemStack bucket = new ItemStack(fluidRequirement.getBucket());
+            return bucket.isEmpty() ? new ItemStack(Items.BUCKET) : bucket;
+        }
         int max = item.toStack().getMaxStackSize();
         return item.toStack((int) Math.min(required, Math.max(1, max)));
     }

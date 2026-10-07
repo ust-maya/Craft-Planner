@@ -110,7 +110,7 @@ public final class PlanRows {
             ItemKey item = node.item();
             return new TreeRow<>(node, depth, branch, path, kindOf(node), statusOf(node, item),
                     badgeOf(node, item), node.recipe() == null ? 0 : node.alternatives().size() + 1,
-                    node.selectedRecipeIndex() + 1, item.name().getString(), node.required(), foldable);
+                    node.selectedRecipeIndex() + 1, node.displayName().getString(), node.required(), foldable);
         }
 
         private static TreeRow.Kind kindOf(RecipeNode node) {
@@ -128,6 +128,9 @@ public final class PlanRows {
          * something the plan does not ask.
          */
         private TreeRow.Status statusOf(RecipeNode node, ItemKey item) {
+            if (node.isFluidRequirement()) {
+                return TreeRow.Status.UNKNOWN;
+            }
             if (node.kind() != NodeKind.RAW && !node.isLeaf()) {
                 return TreeRow.Status.UNKNOWN;
             }
@@ -142,6 +145,9 @@ public final class PlanRows {
         }
 
         private static TreeRow.Badge badgeOf(RecipeNode node, ItemKey item) {
+            if (node.isFluidRequirement()) {
+                return TreeRow.Badge.NONE;
+            }
             if (PlannerState.isCut(item)) {
                 return TreeRow.Badge.CUT;
             }

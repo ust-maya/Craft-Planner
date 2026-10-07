@@ -112,7 +112,7 @@ public final class BatchPickerScreen extends Screen {
     public static List<RecipeNode> ambiguousNodes() {
         LinkedHashMap<ItemKey, RecipeNode> byItem = new LinkedHashMap<>();
         PlannerState.graph().forEachNode(node -> {
-            if (node.options().size() > 1) {
+            if (!node.isFluidRequirement() && node.options().size() > 1) {
                 byItem.putIfAbsent(node.item(), node);
             }
         });
@@ -187,7 +187,8 @@ public final class BatchPickerScreen extends Screen {
      */
     private int firstUncovered(ItemKey item, Set<Integer> shown) {
         for (int r = 0; r < this.plan.size(); r++) {
-            if (this.plan.get(r).node().item().equals(item) && !shown.contains(r)) {
+            if (!this.plan.get(r).node().isFluidRequirement()
+                    && this.plan.get(r).node().item().equals(item) && !shown.contains(r)) {
                 return r;
             }
         }
@@ -223,7 +224,7 @@ public final class BatchPickerScreen extends Screen {
         for (Line line : this.lines) {
             TreeRow<RecipeNode> row = this.plan.get(line.planRow());
             widest = Math.max(widest, TreeMetrics.labelX(depthOf(line))
-                    + this.font.width(row.node().item().name().getString())
+                    + this.font.width(row.name())
                     + TEXT_GAP + amountW
                     + (line.head() ? TEXT_GAP + counterW : 0));
         }
@@ -483,14 +484,14 @@ public final class BatchPickerScreen extends Screen {
         // A heading reserves room for the recipe button that ends it; the count that used
         // to be printed there lives in the tooltip now.
         int counterW = line.head() ? RECIPE_BTN : 0;
-        String amount = "×" + row.amount() + (row.hiddenRows() > 0
+        String amount = node.amountLabel() + (row.hiddenRows() > 0
                 ? " (+" + row.hiddenRows() + ")" : "");
         int nameX = contentLeft + TreeMetrics.labelX(depth);
         int nameRoom = contentRight - nameX - TEXT_GAP
                 - this.font.width(amount) - (counterW > 0 ? TEXT_GAP + counterW : 0);
 
         graphics.drawString(this.font,
-                RecipeListLayout.trimToWidth(this.font::width, node.item().name().getString(),
+                RecipeListLayout.trimToWidth(this.font::width, row.name(),
                         Math.max(0, nameRoom)),
                 nameX, textY, line.head() ? TEXT : lineInk(row), false);
         graphics.drawString(this.font, amount,

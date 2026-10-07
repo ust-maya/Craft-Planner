@@ -52,7 +52,8 @@ import org.slf4j.LoggerFactory;
  * ({@code RecipeCuts}) — nothing is cut automatically.</p>
  *
  * <p>Known cost model: only item inputs are counted. A machine's energy, fluid
- * and processing time are not part of the cost, and a recipe with several item
+ * and processing time are not part of recipe ranking, though fluid inputs are
+ * displayed as requirements in the tree. A recipe with several item
  * outputs is indexed under each guaranteed one (probabilistic outputs stay out
  * of the plan) — so a machine branch is planned as "these items at this cost",
  * not as a full cost sheet.</p>
@@ -91,6 +92,8 @@ public final class RecipeIndex {
      * choosing, so the answer is remembered here.
      */
     private final Map<RecipeHolder<?>, NonNullList<Ingredient>> inputs = new HashMap<>();
+    /** Guaranteed machine-fluid inputs, read once alongside item ingredients. */
+    private final Map<RecipeHolder<?>, List<RecipeFluids.Requirement>> fluidInputs = new HashMap<>();
     /**
      * Guaranteed item outputs per recipe: item key -> amount produced by one
      * operation. Read once at index time; the first entry is the recipe's
@@ -173,9 +176,11 @@ public final class RecipeIndex {
             }
             ItemStack result;
             NonNullList<Ingredient> ingredients;
+            List<RecipeFluids.Requirement> fluids;
             try {
                 result = recipe.getResultItem(registries);
                 ingredients = RecipeIngredients.of(recipe);
+                fluids = RecipeFluids.guaranteedInputs(recipe);
             } catch (RuntimeException | LinkageError e) {
                 // A mod is free to implement these however it likes, and a
                 // machine recipe that throws on inspection is not worth losing
@@ -192,7 +197,7 @@ public final class RecipeIndex {
             if (result.isEmpty()) {
                 continue;
             }
-            if (!vanilla && ingredients.isEmpty()) {
+            if (!vanilla && ingredients.isEmpty() && fluids.isEmpty()) {
                 // A modded type whose inputs are hidden in its own fields reads
                 // as an empty recipe. Planning it would expand the branch to
                 // nothing and leave the player with an item that looks craftable
@@ -201,6 +206,7 @@ public final class RecipeIndex {
                 continue;
             }
             index.inputs.put(holder, ingredients);
+            index.fluidInputs.put(holder, fluids);
             // A recipe is filed under every item it guarantees, not only the
             // first: an MI heat exchanger producing an ingot plus argon and
             // helium was previously visible only as "the ingot", so the byborn
@@ -505,6 +511,11 @@ public final class RecipeIndex {
     public NonNullList<Ingredient> inputsOf(RecipeHolder<?> holder) {
         NonNullList<Ingredient> ingredients = inputs.get(holder);
         return ingredients != null ? ingredients : RecipeIngredients.of(holder.value());
+    }
+
+    /** Guaranteed fluid ingredients of an indexed recipe, in mB per operation. */
+    public List<RecipeFluids.Requirement> fluidInputsOf(RecipeHolder<?> holder) {
+        return fluidInputs.getOrDefault(holder, List.of());
     }
 
     /** Recipes producing the given item, best candidate first. Never null. */

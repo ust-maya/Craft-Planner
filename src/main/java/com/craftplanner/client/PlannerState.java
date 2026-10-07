@@ -18,6 +18,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.level.material.Fluid;
 
 /**
  * Client-side planner state: the single {@link CraftGraph} the player builds
@@ -63,6 +64,8 @@ public final class PlannerState {
      */
     private static Boolean hideOresOverride;
     private static Map<ItemKey, Availability> availability = Collections.emptyMap();
+    /** Fluid requirements are separate from item inventory availability, in mB. */
+    private static Map<Fluid, Long> fluidRequirements = Collections.emptyMap();
     /**
      * Bumped on every {@link #rebuild()}, i.e. whenever the tree structure or
      * the amounts changed. Derived views (the overlay's {@code TreeLayout})
@@ -101,6 +104,11 @@ public final class PlannerState {
     /** Availability of the raw materials, refreshed by every rebuild. */
     public static Map<ItemKey, Availability> availability() {
         return availability;
+    }
+
+    /** Aggregated fluid requirements for the current plan, in millibuckets. */
+    public static Map<Fluid, Long> fluidRequirements() {
+        return fluidRequirements;
     }
 
     /** Adds (or merges) a target and rebuilds the tree. */
@@ -320,6 +328,7 @@ public final class PlannerState {
     public static void refreshAvailability() {
         LOCK.lock();
         try {
+            fluidRequirements = GRAPH.aggregateFluidRequirements();
             Minecraft mc = Minecraft.getInstance();
             LocalPlayer player = mc.player;
             if (player == null) {

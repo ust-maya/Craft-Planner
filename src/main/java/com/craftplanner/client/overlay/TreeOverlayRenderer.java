@@ -30,6 +30,9 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.material.Fluid;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -387,7 +390,7 @@ public final class TreeOverlayRenderer {
 
     /** The label of a row: what it is, how much of it, and what a fold is hiding. */
     private static String rowLabel(TreeRow<RecipeNode> row) {
-        return row.name() + " ×" + row.amount()
+        return row.name() + " " + row.node().amountLabel()
                 + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
     }
 
@@ -445,7 +448,7 @@ public final class TreeOverlayRenderer {
                 TreePanel.HUD_PAD);
         TreePanel.Plan rough = TreePanel.plan(withoutFooter, treeScroll);
 
-        Footer footer = buildFooter(availability, metrics, rough.contentW(),
+        Footer footer = buildFooter(availability, PlannerState.fluidRequirements(), metrics, rough.contentW(),
                 hotkeyLine(metrics, rough.contentW(), rough));
         int footerBlock = footer.height() > 0 ? footer.height() + FOOTER_GAP : 0;
         TreePanel.Plan sized = TreePanel.plan(new TreePanel.Request(
@@ -741,11 +744,11 @@ public final class TreeOverlayRenderer {
 
     /** Prepared footer block: wrapped shopping list plus the hotkey line. */
     private static final class Footer {
-        final List<List<Map.Entry<ItemKey, Availability>>> lines = new ArrayList<>();
+        final List<List<FooterMaterial>> lines = new ArrayList<>();
         /** Materials dropped because {@link #MAX_FOOTER_LINES} was reached. */
         int hidden;
         /** The dropped materials, as the tooltip content of the {@code +N} marker. */
-        List<Map.Entry<ItemKey, Availability>> hiddenEntries = List.of();
+        List<FooterMaterial> hiddenEntries = List.of();
         /**
          * Icons actually drawn, so hovering one can name the material behind it.
          * Filled while the footer is drawn, in layout pixels like {@link #tailX}.
@@ -776,7 +779,41 @@ public final class TreeOverlayRenderer {
     }
 
     /** One drawn shopping-list icon: what it stands for and where it was put. */
-    private record MaterialIcon(ItemKey key, Availability value, int x, int y) {
+    private record FooterMaterial(ItemKey item, Fluid fluid, long required, Availability availability) {
+        static FooterMaterial item(ItemKey key, Availability value) {
+            return new FooterMaterial(key, null, value.required(), value);
+        }
+
+        static FooterMaterial fluid(Fluid fluid, long amount) {
+            return new FooterMaterial(null, fluid, amount, null);
+        }
+
+        boolean isFluid() {
+            return fluid != null;
+        }
+
+        ItemStack icon() {
+            if (!isFluid()) {
+                return item.toStack();
+            }
+            ItemStack bucket = new ItemStack(fluid.getBucket());
+            return bucket.isEmpty() ? new ItemStack(Items.BUCKET) : bucket;
+        }
+
+        Component name() {
+            return isFluid() ? Component.translatable(fluid.getFluidType().getDescriptionId()) : item.name();
+        }
+
+        String amountLabel() {
+            return isFluid() ? required + " mB" : Long.toString(required);
+        }
+
+        int color() {
+            return availability == null ? NodeColors.RAW : NodeColors.forAvailability(availability);
+        }
+    }
+
+    private record MaterialIcon(FooterMaterial material, int x, int y) {
     }
 
     /**
@@ -789,11 +826,11 @@ public final class TreeOverlayRenderer {
      * test for that first, or {@code Font.width(null)} throws and takes the game
      * down with it.</p>
      */
-    private static Footer buildFooter(Map<ItemKey, Availability> availability, TextMetrics metrics,
-            int contentW, Component keys) {
+    private static Footer buildFooter(Map<ItemKey, Availability> availability, Map<Fluid, Long> fluids,
+            TextMetrics metrics, int contentW, Component keys) {
         Footer footer = new Footer(
                 keys != null && metrics.width(keys.getString()) <= contentW ? keys : null);
-        List<Map.Entry<ItemKey, Availability>> entries = shoppingList(availability);
+        List<FooterMaterial> entries = shoppingList(availability, fluids);
         wrapShoppingList(footer, entries, metrics, contentW, 0);
         if (footer.hidden > 0) {
             // Something was dropped: redo the wrap with room for the "+N" tail. The
@@ -808,20 +845,24 @@ public final class TreeOverlayRenderer {
     }
 
     /** Raw materials, worst shortage first, then largest demand. */
-    private static List<Map.Entry<ItemKey, Availability>> shoppingList(
-            Map<ItemKey, Availability> availability) {
-        List<Map.Entry<ItemKey, Availability>> entries = new ArrayList<>(availability.entrySet());
+    private static List<FooterMaterial> shoppingList(Map<ItemKey, Availability> availability,
+            Map<Fluid, Long> fluids) {
+        List<FooterMaterial> entries = new ArrayList<>();
+        availability.forEach((key, value) -> entries.add(FooterMaterial.item(key, value)));
+        fluids.forEach((fluid, amount) -> entries.add(FooterMaterial.fluid(fluid, amount)));
         entries.sort((a, b) -> {
-            int byShortage = Long.compare(b.getValue().missing(), a.getValue().missing());
+            long missingA = a.availability() == null ? 0 : a.availability().missing();
+            long missingB = b.availability() == null ? 0 : b.availability().missing();
+            int byShortage = Long.compare(missingB, missingA);
             return byShortage != 0
                     ? byShortage
-                    : Long.compare(b.getValue().required(), a.getValue().required());
+                    : Long.compare(b.required(), a.required());
         });
         return entries;
     }
 
-    private static int entryWidth(TextMetrics metrics, long amount) {
-        return TreeMetrics.ICON + 1 + metrics.width(Long.toString(amount)) + FOOTER_ENTRY_GAP;
+    private static int entryWidth(TextMetrics metrics, FooterMaterial material) {
+        return TreeMetrics.ICON + 1 + metrics.width(material.amountLabel()) + FOOTER_ENTRY_GAP;
     }
 
     /**
@@ -829,14 +870,14 @@ public final class TreeOverlayRenderer {
      * lines. {@code reserveLast} is the room kept free at the end of the last line
      * for the {@code +N} marker (0 on the first pass).
      */
-    private static void wrapShoppingList(Footer footer, List<Map.Entry<ItemKey, Availability>> entries,
+    private static void wrapShoppingList(Footer footer, List<FooterMaterial> entries,
             TextMetrics metrics, int contentW, int reserveLast) {
-        List<Map.Entry<ItemKey, Availability>> current = new ArrayList<>();
+        List<FooterMaterial> current = new ArrayList<>();
         int used = 0;
         int index = 0;
         while (index < entries.size()) {
-            Map.Entry<ItemKey, Availability> entry = entries.get(index);
-            int width = entryWidth(metrics, entry.getValue().required());
+            FooterMaterial entry = entries.get(index);
+            int width = entryWidth(metrics, entry);
             boolean lastLine = footer.lines.size() == MAX_FOOTER_LINES - 1;
             int capacity = (lastLine ? contentW - reserveLast : contentW) - FOOTER_SAFE;
             if (!current.isEmpty() && used + width > capacity) {
@@ -889,16 +930,16 @@ public final class TreeOverlayRenderer {
      *         the line has no marker (used to hover-test the tail tooltip)
      */
     private static int drawShoppingLine(GuiGraphics graphics, Font font, Footer footer,
-            List<Map.Entry<ItemKey, Availability>> line, int y, int hidden) {
+            List<FooterMaterial> line, int y, int hidden) {
         int textY = y + (TreeMetrics.ICON - font.lineHeight) / 2 + 1;
         int x = 0;
-        for (Map.Entry<ItemKey, Availability> entry : line) {
-            graphics.renderItem(entry.getKey().toStack(), x, y);
-            footer.icons.add(new MaterialIcon(entry.getKey(), entry.getValue(), x, y));
-            String amount = Long.toString(entry.getValue().required());
-            graphics.drawString(font, amount, x + TreeMetrics.ICON + 1, textY,
-                    NodeColors.forAvailability(entry.getValue()), false);
-            x += entryWidth(font::width, entry.getValue().required());
+        for (FooterMaterial entry : line) {
+            graphics.renderItem(entry.icon(), x, y);
+            footer.icons.add(new MaterialIcon(entry, x, y));
+            String amount = entry.amountLabel();
+                graphics.drawString(font, amount, x + TreeMetrics.ICON + 1, textY,
+                    entry.color(), false);
+            x += entryWidth(font::width, entry);
         }
         if (hidden > 0) {
             graphics.drawString(font, "+" + hidden, x, textY, MUTED, false);
@@ -933,9 +974,9 @@ public final class TreeOverlayRenderer {
             return false;
         }
         List<Component> lines = new ArrayList<>();
-        for (Map.Entry<ItemKey, Availability> entry : footer.hiddenEntries) {
-            lines.add(entry.getKey().name().copy()
-                    .append(Component.literal(" ×" + entry.getValue().required())));
+        for (FooterMaterial entry : footer.hiddenEntries) {
+                lines.add(entry.name().copy().append(Component.literal(" "
+                    + (entry.isFluid() ? entry.amountLabel() : "×" + entry.amountLabel()))));
         }
         showTooltip(graphics, font, mc, lines);
         return true;
@@ -972,7 +1013,7 @@ public final class TreeOverlayRenderer {
             if (mx < x1 || mx > x2 || my < y1 || my > y2) {
                 continue;
             }
-            showTooltip(graphics, font, mc, materialLines(icon.key(), icon.value()));
+            showTooltip(graphics, font, mc, materialLines(icon.material()));
             return;
         }
     }
@@ -982,16 +1023,18 @@ public final class TreeOverlayRenderer {
      * prints, plus the part the inventory already covers. Only a shortfall gets its
      * own line — a material already in stock has nothing left to report.
      */
-    private static List<Component> materialLines(ItemKey key, Availability value) {
+    private static List<Component> materialLines(FooterMaterial material) {
         List<Component> lines = new ArrayList<>();
-        lines.add(key.name().copy());
+        lines.add(material.name().copy());
         lines.add(Component.translatable("overlay.craftplanner.material.required",
-                Long.toString(value.required())));
-        lines.add(Component.translatable("overlay.craftplanner.material.have",
-                Long.toString(value.available())));
-        if (value.missing() > 0) {
-            lines.add(Component.translatable("overlay.craftplanner.material.missing",
-                    Long.toString(value.missing())));
+                material.amountLabel()));
+        if (material.availability() != null) {
+            lines.add(Component.translatable("overlay.craftplanner.material.have",
+                    Long.toString(material.availability().available())));
+            if (material.availability().missing() > 0) {
+                lines.add(Component.translatable("overlay.craftplanner.material.missing",
+                        Long.toString(material.availability().missing())));
+            }
         }
         return lines;
     }
@@ -1133,7 +1176,7 @@ public final class TreeOverlayRenderer {
         Map<ItemKey, Availability> availability = PlannerState.availability();
         int footerLayoutW = Math.max(1, (int) ((panelWidth - 2 * G_PADDING) / density));
         TextMetrics metrics = font::width;
-        Footer footer = buildFooter(availability, metrics, footerLayoutW,
+        Footer footer = buildFooter(availability, PlannerState.fluidRequirements(), metrics, footerLayoutW,
                 graphKeysHint(metrics, footerLayoutW));
         int footerSpace = Math.max(G_FOOTER_SPACE, (int) Math.round(footer.height() * density) + 2);
 
@@ -1322,7 +1365,7 @@ public final class TreeOverlayRenderer {
             graphics.fill(x - 1, y - 1, x + TreeLayout.ICON_SIZE + 1, y + TreeLayout.ICON_SIZE + 1,
                     0x40000000 | (color & 0x00FFFFFF));
             graphics.renderItem(node.displayStack(), x, y);
-            graphics.drawString(font, Long.toString(node.required()),
+                graphics.drawString(font, node.amountLabel(),
                     x, y + TreeLayout.ICON_SIZE + 1, color, false);
         }
     }
