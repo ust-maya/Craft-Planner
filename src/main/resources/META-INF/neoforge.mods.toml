@@ -8,7 +8,7 @@ modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
 authors="Igor"
-description='''Craft Planner — визуализатор дерева крафта. Добавляй рецепты из EMI/JEI или инвентаря хоткеем и смотри дерево крафта с подсветкой дефицита ресурсов.'''
+description='''Craft Planner — визуализатор дерева крафта. Добавляйте рецепты из EMI/JEI или инвентаря горячей клавишей и смотрите дерево с подсветкой дефицита ресурсов.'''
 
 [[dependencies.${mod_id}]]
 modId="minecraft"
@@ -25,16 +25,21 @@ ordering="NONE"
 side="BOTH"
 
 # Soft, client-side integrations: the mod works without them (Stage 5).
+# The version ranges pin the major each API was written against: EMI
+# (EmiApi.getHoveredStack) and JEI (IModPlugin) have changed signatures
+# across majors before, and an unbounded range would let a future
+# incompatible release pass the dependency check. Bump these deliberately
+# when the integration is re-verified.
 [[dependencies.${mod_id}]]
 modId="emi"
 type="optional"
-versionRange="[0,)"
+versionRange="[1.0.0,2.0.0)"
 ordering="NONE"
 side="CLIENT"
 
 [[dependencies.${mod_id}]]
 modId="jei"
 type="optional"
-versionRange="[0,)"
+versionRange="[19.0.0,20.0.0)"
 ordering="NONE"
 side="CLIENT"
