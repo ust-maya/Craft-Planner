@@ -64,6 +64,9 @@ public final class PlannerState {
      */
     private static Boolean hideOresOverride;
     private static Map<ItemKey, Availability> availability = Collections.emptyMap();
+    private static boolean inventoryScanned;
+    /** Changes only when a refreshed inventory changes material availability. */
+    private static long availabilityVersion;
     /** Fluid requirements are separate from item inventory availability, in mB. */
     private static Map<Fluid, Long> fluidRequirements = Collections.emptyMap();
     /**
@@ -104,6 +107,16 @@ public final class PlannerState {
     /** Availability of the raw materials, refreshed by every rebuild. */
     public static Map<ItemKey, Availability> availability() {
         return availability;
+    }
+
+    /** Monotonic counter for views that need to refresh inventory-derived rows. */
+    public static long availabilityVersion() {
+        return availabilityVersion;
+    }
+
+    /** Whether the latest availability state came from a live player inventory. */
+    public static boolean inventoryScanned() {
+        return inventoryScanned;
     }
 
     /** Aggregated fluid requirements for the current plan, in millibuckets. */
@@ -332,13 +345,21 @@ public final class PlannerState {
             Minecraft mc = Minecraft.getInstance();
             LocalPlayer player = mc.player;
             if (player == null) {
-                availability = Collections.emptyMap();
+                replaceAvailability(Collections.emptyMap(), false);
                 return;
             }
-            availability = ResourceCheck.evaluate(
-                    GRAPH.aggregateRequirements(), InventorySnapshot.of(player));
+            replaceAvailability(ResourceCheck.evaluate(
+                    GRAPH.aggregateRequirements(), InventorySnapshot.of(player)), true);
         } finally {
             LOCK.unlock();
+        }
+    }
+
+    private static void replaceAvailability(Map<ItemKey, Availability> next, boolean scanned) {
+        if (!availability.equals(next) || inventoryScanned != scanned) {
+            availability = next;
+            inventoryScanned = scanned;
+            availabilityVersion++;
         }
     }
 }

@@ -10,13 +10,16 @@ import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.overlay.NodeColors;
 import com.craftplanner.client.overlay.TreeCollapse;
 import com.craftplanner.client.resource.Availability;
+import com.craftplanner.client.resource.ResourceCheck;
 import com.craftplanner.client.tree.TreeFlatten;
 import com.craftplanner.client.tree.TreeMetrics;
 import com.craftplanner.client.tree.TreePanel;
 import com.craftplanner.client.tree.TreeRow;
+import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.RecipeNode;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
@@ -95,6 +98,7 @@ public final class CraftTreeScreen extends Screen {
     private Button recipeButton;
     private boolean thumbDrag;
     private long seenGraphVersion = -1;
+    private long seenAvailabilityVersion = -1;
     private int seenFoldCount = -1;
 
     public CraftTreeScreen() {
@@ -114,12 +118,16 @@ public final class CraftTreeScreen extends Screen {
         if (PlannerState.graphVersion() != this.seenGraphVersion
                 || TreeCollapse.foldCount() != this.seenFoldCount) {
             rebuild();
+        } else if (PlannerState.availabilityVersion() != this.seenAvailabilityVersion) {
+            this.seenAvailabilityVersion = PlannerState.availabilityVersion();
+            this.rows = PlanRows.rows();
         }
     }
 
     /** Re-reads the plan, measures the columns, sizes the panel and re-places widgets. */
     private void rebuild() {
         this.seenGraphVersion = PlannerState.graphVersion();
+        this.seenAvailabilityVersion = PlannerState.availabilityVersion();
         this.seenFoldCount = TreeCollapse.foldCount();
         this.rows = PlanRows.rows();
         measure(this.font::width);
@@ -172,7 +180,7 @@ public final class CraftTreeScreen extends Screen {
 
     /** Legend, two hint lines and the button row. */
     private int footerH() {
-        return 3 + LINE_H + 2 + 2 * LINE_H + 4 + BUTTON_H + 4;
+        return 3 + 2 * LINE_H + 2 + LINE_H + 2 * LINE_H + 4 + BUTTON_H + 4;
     }
 
     private void buildWidgets() {
@@ -490,7 +498,8 @@ public final class CraftTreeScreen extends Screen {
         UiShapes.divider(graphics, left + 2, left + this.plan.panelW() - 2, y - 2,
                 UiPalette.SECTION_DIVIDER);
         drawLegend(graphics, left + PAD, y + 3);
-        int hintY = y + 3 + LINE_H + 2;
+        drawMaterialSummary(graphics, left + PAD, y + 3 + 2 * LINE_H + 2);
+        int hintY = y + 3 + 3 * LINE_H + 4;
         List<String> hint = RecipeListLayout.wrapText(this.font::width, hint(),
                 this.plan.panelW() - 2 * PAD, 2);
         for (int i = 0; i < hint.size(); i++) {
@@ -510,24 +519,63 @@ public final class CraftTreeScreen extends Screen {
                 Keybinds.TOGGLE_OVERLAY.getKey().getDisplayName()).getString();
     }
 
-    /** The four label colours, each named: the encoding the rows actually use. */
+    /** The material and plan colours, each named: the encoding the rows use. */
     private void drawLegend(GuiGraphics graphics, int x, int y) {
-        int[] colors = {NodeColors.HAVE, NodeColors.MISSING, NodeColors.INTERMEDIATE, NodeColors.ROOT};
-        String[] keys = {"overlay.craftplanner.legend.have", "overlay.craftplanner.legend.missing",
-                "overlay.craftplanner.legend.intermediate", "overlay.craftplanner.legend.root"};
+        int[] colors = {NodeColors.HAVE, NodeColors.PARTIAL, NodeColors.MISSING,
+                NodeColors.INTERMEDIATE, NodeColors.ROOT};
+        String[] keys = {"overlay.craftplanner.legend.have", "overlay.craftplanner.legend.partial",
+                "overlay.craftplanner.legend.missing", "overlay.craftplanner.legend.intermediate",
+                "overlay.craftplanner.legend.root"};
         int room = this.plan.panelW() - 2 * PAD;
         int used = 0;
+        int line = 0;
         for (int i = 0; i < keys.length; i++) {
             String label = tr(keys[i]).getString();
-            used += 8 + this.font.width(label) + 8;
-            if (used > room) {
-                // Two entries named beat four silently overlapping the hint below.
+            int entryW = 8 + this.font.width(label) + 8;
+            if (used + entryW > room && used > 0) {
+                line++;
+                used = 0;
+            }
+            if (line > 1) {
                 return;
             }
-            graphics.fill(x, y + 2, x + 6, y + 8, colors[i]);
-            graphics.drawString(this.font, label, x + 8, y, UiPalette.TEXT, false);
-            x += 8 + this.font.width(label) + 8;
+            int entryX = x + used;
+            graphics.fill(entryX, y + line * LINE_H + 2, entryX + 6,
+                    y + line * LINE_H + 8, colors[i]);
+            graphics.drawString(this.font, label, entryX + 8, y + line * LINE_H,
+                    UiPalette.TEXT, false);
+            used += entryW;
         }
+    }
+
+    private void drawMaterialSummary(GuiGraphics graphics, int x, int y) {
+        Map<ItemKey, Availability> availability = PlannerState.availability();
+        long missingTypes = ResourceCheck.deficitTypes(availability);
+        boolean fluidNeedsUntracked = !PlannerState.fluidRequirements().isEmpty();
+        String key;
+        int color;
+        if (!PlannerState.inventoryScanned()) {
+            key = fluidNeedsUntracked
+                    ? "screen.craftplanner.tree.materials.unknown.fluid_unknown"
+                    : "screen.craftplanner.tree.materials.unknown";
+            color = NodeColors.PARTIAL;
+        } else if (missingTypes == 0) {
+            key = fluidNeedsUntracked
+                    ? "screen.craftplanner.tree.materials.ready.fluid_unknown"
+                    : "screen.craftplanner.tree.materials.ready";
+            color = fluidNeedsUntracked ? NodeColors.PARTIAL : NodeColors.HAVE;
+        } else {
+            key = fluidNeedsUntracked
+                    ? "screen.craftplanner.tree.materials.missing.fluid_unknown"
+                    : "screen.craftplanner.tree.materials.missing";
+            color = NodeColors.MISSING;
+        }
+        Component summary = !PlannerState.inventoryScanned() || missingTypes == 0
+                ? Component.translatable(key)
+                : Component.translatable(key, missingTypes, ResourceCheck.totalMissing(availability));
+        String text = RecipeListLayout.trimToWidth(this.font::width, summary.getString(),
+                this.plan.panelW() - 2 * PAD);
+        graphics.drawString(this.font, text, x, y, color, false);
     }
 
     // --- coordinates --------------------------------------------------------

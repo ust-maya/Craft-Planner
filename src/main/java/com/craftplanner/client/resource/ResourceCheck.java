@@ -1,5 +1,6 @@
 package com.craftplanner.client.resource;
 
+import com.craftplanner.graph.CraftMath;
 import com.craftplanner.graph.ItemKey;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -27,9 +28,13 @@ public final class ResourceCheck {
 
     /** Sum of everything that is still missing. */
     public static long totalMissing(Map<ItemKey, Availability> availability) {
+        return totalMissing(availability.values());
+    }
+
+    static long totalMissing(Iterable<Availability> availability) {
         long total = 0;
-        for (Availability value : availability.values()) {
-            total += value.missing();
+        for (Availability value : availability) {
+            total = CraftMath.saturatingAdd(total, value.missing());
         }
         return total;
     }

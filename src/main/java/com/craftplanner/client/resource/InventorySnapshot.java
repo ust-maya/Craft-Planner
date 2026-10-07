@@ -51,18 +51,19 @@ public final class InventorySnapshot {
     /**
      * Amount carried that can satisfy the requirement.
      *
-     * <p>Stacks matching the key exactly (item + components) are counted
-     * first. Only when the requirement is a plain item and nothing plain is
-     * carried does the coarse per-{@link Item} count kick in — a damaged or
-     * enchanted pickaxe still satisfies "an iron pickaxe". A requirement that
-     * carries components is never satisfied by plain stacks.</p>
+     * <p>A component-bearing requirement needs an exact item + component
+     * match. A plain-item requirement accepts all stacks of that item, even
+     * when they carry components; this keeps the count monotonic as compatible
+     * variants are added. Recipe-specific ingredient predicates are not
+     * available at this aggregation stage.</p>
      */
     public long available(ItemKey key) {
-        long exactAmount = exact.getOrDefault(key, 0L);
-        if (exactAmount > 0 || key.hasComponents()) {
-            return exactAmount;
-        }
-        return byItem.getOrDefault(key.item(), 0L);
+        return available(key.hasComponents(), exact.getOrDefault(key, 0L),
+                byItem.getOrDefault(key.item(), 0L));
+    }
+
+    static long available(boolean componentSpecific, long exactAmount, long itemAmount) {
+        return componentSpecific ? exactAmount : itemAmount;
     }
 
     public boolean isEmpty() {
