@@ -50,8 +50,8 @@ public final class PlannerState {
      */
     private static final Set<ItemKey> CUTS = new LinkedHashSet<>();
     /**
-     * Whether {@link RecipeChoices} and {@link RecipeCuts} have been merged into
-     * the live maps.
+        * Whether the saved plan, {@link RecipeChoices} and {@link RecipeCuts} have
+        * been merged into live state.
      * Loaded on the first rebuild rather than at mod construction: at that point
      * the item registry still does not know about the items of the other mods,
      * and every saved choice would read as "item no longer exists".
@@ -128,7 +128,9 @@ public final class PlannerState {
     public static void add(ItemStack stack, long amount) {
         LOCK.lock();
         try {
+            ensureChoicesLoaded();
             GRAPH.addRoot(ItemKey.of(stack), Math.max(1, amount));
+            PlanStore.write(GRAPH.roots());
             rebuild();
         } finally {
             LOCK.unlock();
@@ -138,7 +140,9 @@ public final class PlannerState {
     public static void setAmount(ItemKey key, long amount) {
         LOCK.lock();
         try {
+            ensureChoicesLoaded();
             GRAPH.setRootAmount(key, Math.max(1, amount));
+            PlanStore.write(GRAPH.roots());
             rebuild();
         } finally {
             LOCK.unlock();
@@ -154,6 +158,7 @@ public final class PlannerState {
             CUTS.remove(key);
             RecipeChoices.write(PREFERENCES);
             RecipeCuts.write(CUTS);
+            PlanStore.write(GRAPH.roots());
             rebuild();
         } finally {
             LOCK.unlock();
@@ -169,6 +174,7 @@ public final class PlannerState {
             CUTS.clear();
             RecipeChoices.write(PREFERENCES);
             RecipeCuts.write(CUTS);
+            PlanStore.write(GRAPH.roots());
             rebuild();
         } finally {
             LOCK.unlock();
@@ -321,14 +327,17 @@ public final class PlannerState {
     }
 
     /**
-     * Merges the saved recipe choices and tree cuts once, before a tree is ever
-     * expanded against them.
+        * Loads the saved roots, recipe choices and tree cuts once, before a tree
+        * is ever expanded against them.
      */
     private static void ensureChoicesLoaded() {
         if (choicesLoaded) {
             return;
         }
         choicesLoaded = true;
+        for (PlanStore.Goal goal : PlanStore.read()) {
+            GRAPH.addRoot(goal.item(), goal.amount());
+        }
         PREFERENCES.putAll(RecipeChoices.read());
         CUTS.addAll(RecipeCuts.read());
     }

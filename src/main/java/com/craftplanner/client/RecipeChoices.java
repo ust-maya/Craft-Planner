@@ -35,8 +35,8 @@ import org.slf4j.LoggerFactory;
  * longer exists in the new session is dropped on read, so removing a mod does
  * not leave a choice pointing at nothing.</p>
  *
- * <p>The plan itself is still not saved anywhere: the choices outlive a restart,
- * the list of targets does not.</p>
+ * <p>The target list is stored separately by {@link PlanStore}; this file only
+ * contains the player's recipe variants.</p>
  */
 public final class RecipeChoices {
 
