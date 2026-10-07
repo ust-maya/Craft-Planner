@@ -2,9 +2,7 @@ package com.craftplanner.client.screen;
 
 import com.craftplanner.client.Keybinds;
 import com.craftplanner.client.overlay.OverlayPlacement;
-import com.craftplanner.client.overlay.TreeCollapse;
 import com.craftplanner.client.overlay.TreeOverlayRenderer;
-import com.craftplanner.graph.RecipeNode;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -28,7 +26,9 @@ import org.lwjgl.glfw.GLFW;
  * press {@code +} or {@code -} for the text size, and scroll the plan with the
  * wheel or by holding the scrollbar at the panel's right edge. A click outside or
  * {@code Esc} keeps the result — {@link #removed()} commits it whichever way the
- * screen is left — and right click restores the automatic layout.</p>
+ * screen is left — and {@code Shift} with the right button restores the automatic
+ * layout, the modifier keeping an ordinary right click from wiping a sized panel.
+ * The plan's own controls are not here: they are in {@link CraftTreeScreen}.</p>
  */
 public final class OverlayLayoutScreen extends Screen {
 
@@ -55,8 +55,13 @@ public final class OverlayLayoutScreen extends Screen {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-            OverlayPlacement.resetAndSave();
-            this.minecraft.setScreen(null);
+            // The reset throws away the size and position the player dragged, so
+            // it asks for a modifier: an ordinary right click used to wipe a whole
+            // layout on the way to the panel's corner.
+            if (hasShiftDown()) {
+                OverlayPlacement.resetAndSave();
+                this.minecraft.setScreen(null);
+            }
             return true;
         }
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
@@ -64,27 +69,15 @@ public final class OverlayLayoutScreen extends Screen {
         }
         int mx = (int) mouseX;
         int my = (int) mouseY;
-        // The panel drawn behind this screen keeps its affordances clickable:
-        // a badge opens the recipe picker, a marker folds the branch. Both are
-        // HUD geometry, so the hit boxes come from the renderer.
-        RecipeNode choice = TreeOverlayRenderer.hitChoice(mx, my);
-        if (choice != null) {
-            this.minecraft.setScreen(new RecipePickerScreen(choice.item(), this));
-            return true;
-        }
-        String fold = TreeOverlayRenderer.hitFold(mx, my);
-        if (fold != null) {
-            TreeCollapse.toggle(fold);
-            return true;
-        }
+        // The panel drawn behind this screen keeps its one HUD affordance
+        // clickable: the scrollbar at its right edge is HUD geometry, and holding
+        // it scrolls the plan instead of dragging the window out from under the
+        // cursor. The resize corner above keeps priority where the two meet, or
+        // the bar would steal the grip it is drawn next to.
         if (OverlayPlacement.overGrip(mx, my)) {
             OverlayPlacement.startSize(mx, my);
         } else if (TreeOverlayRenderer.grabScroll(mx, my)) {
-            // The scrollbar at the panel's right edge is HUD geometry as well, and
-            // takes the click before the panel body does: holding it scrolls the plan
-            // instead of dragging the window out from under the cursor. The resize
-            // corner above keeps priority where the two meet, or the bar would steal
-            // the grip it is drawn next to.
+            // The grab took the click; the drag follows in mouseDragged.
         } else if (OverlayPlacement.overPanel(mx, my)) {
             OverlayPlacement.startMove(mx, my);
         } else {

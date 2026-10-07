@@ -2,6 +2,7 @@ package com.craftplanner.client.screen;
 
 import com.craftplanner.Config;
 import com.craftplanner.client.PlannerState;
+import com.craftplanner.client.TextMetrics;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
 import java.util.List;

@@ -1,10 +1,9 @@
 package com.craftplanner.client.screen;
 
 import com.craftplanner.client.PlannerState;
+import com.craftplanner.client.TextMetrics;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
-import com.craftplanner.client.overlay.TreeCollapse;
-import com.craftplanner.client.overlay.TreeOverlayRenderer;
 import com.craftplanner.graph.RecipeNode;
 import java.util.ArrayList;
 import java.util.List;
@@ -396,36 +395,47 @@ public class RecipeListScreen extends Screen {
     }
 
     /**
-     * The tree panel behind this window stays usable: its − / + markers fold a
-     * branch and its badges open the recipe picker, because this is one of the
-     * two screens that own the mouse. Clicks inside this window's own panel are
-     * left to its widgets.
+     * A click on this window's own panel pages its list; everything else is left
+     * to its widgets. The overlay behind it is no longer clickable from here: a
+     * HUD row cannot be aimed at reliably, which is why the tree's controls moved
+     * to {@link CraftTreeScreen}.
      */
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.layout != null
-                && !overPanel((int) mouseX, (int) mouseY)) {
-            int mx = (int) mouseX;
-            int my = (int) mouseY;
-            RecipeNode choice = TreeOverlayRenderer.hitChoice(mx, my);
-            if (choice != null) {
-                this.minecraft.setScreen(new RecipePickerScreen(choice.item(), this));
-                return true;
-            }
-            String fold = TreeOverlayRenderer.hitFold(mx, my);
-            if (fold != null) {
-                TreeCollapse.toggle(fold);
-                return true;
-            }
+                && overPanel((int) mouseX, (int) mouseY)
+                && scrollTrackClick((int) mouseX, (int) mouseY)) {
+            return true;
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    /**
+     * A click on the thin track at the panel's right edge jumps the list to
+     * that position. The HUD bar is draggable; here one click is the whole
+     * gesture — the same browser-style jump the HUD track answers with.
+     */
+    private boolean scrollTrackClick(int mx, int my) {
+        if (maxScroll() <= 0) {
+            return false;
+        }
+        RecipeListLayout l = this.layout;
+        int right = panelLeft() + l.panelWidth;
+        int trackTop = panelTop() + RecipeListLayout.HEADER;
+        int trackHeight = visibleRows() * RecipeListLayout.ROW_HEIGHT;
+        if (mx < right - 6 || mx > right || my < trackTop || my >= trackTop + trackHeight) {
+            return false;
+        }
+        this.scroll = Math.max(0, Math.min(maxScroll(),
+                (int) ((long) (my - trackTop) * maxScroll() / trackHeight)));
+        refresh();
+        return true;
     }
 
     private boolean overPanel(int mx, int my) {
         int left = panelLeft();
         int top = panelTop();
-        return mx >= left && mx <= left + this.layout.panelWidth
-                && my >= top && my <= top + panelHeight();
+        return mx >= left && mx <= left + this.layout.panelWidth                && my >= top && my <= top + panelHeight();
     }
 
     @Override

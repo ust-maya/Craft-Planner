@@ -1,5 +1,6 @@
 package com.craftplanner.client.screen;
 
+import com.craftplanner.client.TextMetrics;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -38,7 +39,12 @@ final class RecipeListLayout {
     static final int BUTTON_H = 14;
     /** Cap on visible rows; the window height can lower it further. */
     static final int MAX_VISIBLE_ROWS = 16;
-    static final int SCROLL_GUTTER = 5;
+    /**
+     * Air at the panel's right edge holding the scrollbar — wide enough that the
+     * row buttons do not touch the bar's hit band: the click that misses a
+     * button must not steal a scroll jump from the same pixel row.
+     */
+    static final int SCROLL_GUTTER = 9;
     /** Left edge of the name column: the panel padding plus the item icon. */
     static final int NAME_LEFT = PAD + 20;
     /** Vanilla line height; the footer rows are spaced by it. */
@@ -258,18 +264,7 @@ final class RecipeListLayout {
 
     /** Cuts the text with an ellipsis so it fits the given pixel width. */
     static String trimToWidth(TextMetrics metrics, String text, int maxWidth) {
-        if (metrics.width(text) <= maxWidth) {
-            return text;
-        }
-        int ellipsisWidth = metrics.width("…");
-        if (maxWidth < ellipsisWidth) {
-            return "";
-        }
-        StringBuilder sb = new StringBuilder(text);
-        while (sb.length() > 0 && metrics.width(sb.toString()) + ellipsisWidth > maxWidth) {
-            sb.setLength(sb.length() - 1);
-        }
-        return sb + "…";
+        return metrics.trim(text, maxWidth);
     }
 
     /**

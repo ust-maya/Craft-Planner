@@ -3,6 +3,7 @@ package com.craftplanner;
 import com.craftplanner.client.OverlayState;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.overlay.OverlayPlacement;
+import com.craftplanner.client.tree.TreeMetrics;
 import com.craftplanner.engine.CraftTreeBuilder;
 import com.craftplanner.engine.RecipeIndex;
 import java.util.Arrays;
@@ -32,9 +33,17 @@ public final class Config {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
     /** Density the layout editor resets to, and the range it may wheel through. */
-    private static final double OVERLAY_SCALE_DEFAULT = 0.23;
-    private static final double OVERLAY_SCALE_MIN = 0.1;
-    private static final double OVERLAY_SCALE_MAX = 1.0;
+    private static final double OVERLAY_SCALE_DEFAULT = 0.85;
+    /**
+     * Floor of the range, and it is a readability floor, not a stylistic one:
+     * Minecraft's font is a 9 px bitmap, so below 0.65 a row's text is under six
+     * pixel rows and the panel stops being readable. The old default of 0.23 drew
+     * it at two — that, not the tree itself, is what users objected to. Taken from
+     * the layout's own constant so the config cannot offer a density the renderer
+     * would refuse.
+     */
+    private static final double OVERLAY_SCALE_MIN = TreeMetrics.MIN_READABLE_SCALE;
+    private static final double OVERLAY_SCALE_MAX = TreeMetrics.MAX_SCALE;
     /** Unset marker of the geometry keys; must match {@code OverlayPlacement.AUTO}. */
     private static final int GEOMETRY_AUTO = -1;
 
@@ -66,13 +75,15 @@ public final class Config {
             .define("overlay.mode", "tree");
 
     private static final ModConfigSpec.DoubleValue OVERLAY_SCALE = BUILDER
-            .comment("Density of the overlay: 1.0 keeps the full-size item icons and text, 0.23 is the",
-                    "compact default (a third of the old 0.7). Icons, text (including the title and",
-                    "the footer) and connector lines are scaled together, so the tree keeps its",
-                    "proportions and simply gets smaller. Lower values fit more rows on screen but",
-                    "make the glyphs and item icons softer, because both are bitmaps. A panel that is",
-                    "too wide for the screen is scaled down further instead of being clipped.",
-                    "This is also what the mouse wheel changes while the overlay is being moved.")
+            .comment("Density of the overlay: 1.0 keeps the full-size item icons and text, 0.85 is the",
+                    "default, and 0.65 is the floor. Icons, text (including the title and the footer)",
+                    "and connector lines are scaled together, so the tree keeps its proportions.",
+                    "The floor exists because the font is a 9 pixel bitmap: below it a row's text is",
+                    "less than six pixels tall and the panel is no longer readable — the compact old",
+                    "default of 0.23 drew it at two, which is what made the tree look broken.",
+                    "A plan that does not fit at the chosen density is trimmed and clipped, and the",
+                    "footer then points at the tree window (G) where the whole plan is scrollable.",
+                    "This is also what the plus and minus keys change while the overlay is being moved.")
             .defineInRange("overlay.scale", OVERLAY_SCALE_DEFAULT, OVERLAY_SCALE_MIN, OVERLAY_SCALE_MAX);
 
     private static final ModConfigSpec.IntValue OVERLAY_X = BUILDER

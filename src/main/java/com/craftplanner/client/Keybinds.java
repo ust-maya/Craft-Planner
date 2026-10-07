@@ -18,6 +18,7 @@ import org.lwjgl.glfw.GLFW;
  *   <li>{@code ADD_RECIPE} (N)  — capture hovered item and open quantity popup</li>
  *   <li>{@code TOGGLE_OVERLAY} (V) — show/hide the craft-tree overlay</li>
  *   <li>{@code OPEN_RECIPES} (K) — open the recipes-list screen</li>
+ *   <li>{@code OPEN_TREE} (G) — open the craft tree as a window</li>
  *   <li>{@code EDIT_LAYOUT} (O) — drag, resize and rescale the overlay panel</li>
  * </ul>
  *
@@ -61,6 +62,21 @@ public class Keybinds {
             CATEGORY);
 
     /**
+     * Opens the craft tree as a window ({@code CraftTreeScreen}) — the surface
+     * where the plan can be folded, scrolled and chosen with a cursor and a
+     * keyboard, which the HUD overlay cannot offer. {@code G} is free in vanilla
+     * (unlike {@code T}, which is chat), and the letter is a mnemonic for the goal
+     * the tree is built around.
+     */
+    public static final KeyMapping OPEN_TREE = new KeyMapping(
+            "key.craftplanner.tree",
+            KeyConflictContext.UNIVERSAL,
+            KeyModifier.NONE,
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_G,
+            CATEGORY);
+
+    /**
      * Enters and leaves the in-game layout editor of the overlay panel (drag to
      * move, corner to resize, wheel for the text size).
      */
@@ -77,6 +93,7 @@ public class Keybinds {
         event.register(ADD_RECIPE);
         event.register(TOGGLE_OVERLAY);
         event.register(OPEN_RECIPES);
+        event.register(OPEN_TREE);
         event.register(EDIT_LAYOUT);
     }
 }
