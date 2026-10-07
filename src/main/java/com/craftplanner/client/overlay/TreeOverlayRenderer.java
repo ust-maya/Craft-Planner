@@ -134,6 +134,82 @@ public final class TreeOverlayRenderer {
     private static final int SCROLL_HIT = 3;
 
     /**
+     * Edge of the recipe button at the end of a row, in layout pixels.
+     *
+     * <p>A 16 px icon with a pixel of air around it, which is the smallest square
+     * that still reads as a control rather than as a smudge at the label's edge —
+     * and it is fixed, so the column does not resize as a count changes.</p>
+     */
+    private static final int BADGE = 18;
+
+    /**
+     * The fold toggles and recipe badges of the last drawn frame, in screen
+     * pixels.
+     *
+     * <p>A HUD cannot be clicked: while no screen is open the game grabs the
+     * mouse and turns movement into camera yaw. The layout editor ({@code O}) is
+     * a screen, it is transparent, and the panel stays visible behind it — so
+     * that is the one place these markers are reachable. They are therefore
+     * collected as they are drawn, exactly like {@link #scrollTrack}, and a
+     * marker left over from a previous frame would keep answering a click for a
+     * panel that is no longer on screen.</p>
+     */
+    private static final List<Hotspot> HOTSPOTS = new ArrayList<>();
+
+    /**
+     * One drawn control of the tree panel: which row it belongs to, where the tree
+     * was drawn, and what it acts on. Exactly one of the two payloads is set.
+     *
+     * <p>The row is stored as an index into the plan rather than as a rectangle,
+     * because the band is rebuilt against {@link #treeScroll} when it is asked
+     * about, not against the scroll the frame was drawn with. Input is handled
+     * before the frame is drawn, so a wheel notch and a click landing in the same
+     * tick would otherwise fold the row the player was looking at before the
+     * wheel, not the one under the cursor.</p>
+     *
+     * @param fold  branch key to toggle, {@code null} for a recipe badge
+     * @param node  item whose recipes the badge would open, {@code null} for a fold
+     * @param badge the badge's box in layout pixels, {@code null} for a fold
+     */
+    private record Hotspot(int originX, int originY, double scale, String fold, RecipeNode node,
+            int depth, int row, TreeMetrics.Rect badge) {
+
+        boolean contains(int mx, int my) {
+            return this.badge != null
+                    ? TreeMetrics.toScreen(this.badge, this.scale, this.originX, this.originY)
+                            .contains(mx, my)
+                    : TreeMetrics.toggleHit(this.depth, this.row, treeScroll, this.scale,
+                            this.originX, this.originY).contains(mx, my);
+        }
+    }
+
+    /**
+     * The branch folded by a click at this point, or {@code null}.
+     *
+     * <p>Callers must only ask while the layout editor is open: the panel behind
+     * it is the only place a HUD row can be aimed at, which is why the markers
+     * stopped being interactive in the overlay itself.</p>
+     */
+    public static String hitFold(int mx, int my) {
+        for (Hotspot spot : HOTSPOTS) {
+            if (spot.fold() != null && spot.contains(mx, my)) {
+                return spot.fold();
+            }
+        }
+        return null;
+    }
+
+    /** The item whose recipe picker a click on a badge should open, or {@code null}. */
+    public static RecipeNode hitChoice(int mx, int my) {
+        for (Hotspot spot : HOTSPOTS) {
+            if (spot.node() != null && spot.contains(mx, my)) {
+                return spot.node();
+            }
+        }
+        return null;
+    }
+
+    /**
      * The scrollbar in screen pixels, with the mapping from a cursor row back to a
      * scroll offset.
      */
@@ -205,6 +281,10 @@ public final class TreeOverlayRenderer {
         // from a previous frame would keep answering clicks for a panel that is no
         // longer on screen.
         scrollTrack = null;
+        // Same two reasons for the tree's own markers: a fold toggle or a recipe
+        // badge left over from a previous frame would keep answering a click
+        // where no panel is.
+        HOTSPOTS.clear();
         // Same reason for the drawn rectangle: a panel left over from a previous
         // frame would keep answering the wheel where no panel is.
         OverlayPlacement.reportDrawn(0, 0, 0, 0);
@@ -276,11 +356,33 @@ public final class TreeOverlayRenderer {
         for (TreeRow<RecipeNode> row : rows) {
             widest = Math.max(widest, TreeMetrics.rowWidth(row.depth(), metrics.width(rowLabel(row))));
         }
+        // The recipe-button column is right-aligned across every row, so it is
+        // added once to the widest row rather than to each of them.
+        widest += badgeLayoutW(rows);
         cachedNaturalW = widest;
         cachedNaturalVersion = version;
         cachedNaturalFolds = folds;
         cachedNaturalFont = font;
         return widest;
+    }
+
+    /**
+     * Width the recipe-button column needs, in layout pixels; zero when no row of
+     * the plan has a recipe to open, which is what keeps the column out of the
+     * panel entirely for a plan with nothing to pick.
+     *
+     * <p>The button is a square of fixed size rather than a measured string, so the
+     * column does not jump when a row's count changes from {@code 1/2} to
+     * {@code 1/12} — and it is in layout pixels because it is drawn inside the
+     * same scaled pose as the label it is subtracted from.</p>
+     */
+    private static int badgeLayoutW(List<TreeRow<RecipeNode>> rows) {
+        for (TreeRow<RecipeNode> row : rows) {
+            if (row.badge() != TreeRow.Badge.NONE) {
+                return BADGE + TreeMetrics.LABEL_GAP;
+            }
+        }
+        return 0;
     }
 
     /** The label of a row: what it is, how much of it, and what a fold is hiding. */
@@ -427,6 +529,8 @@ public final class TreeOverlayRenderer {
             Map<ItemKey, Availability> availability) {
         int first = panel.scroll();
         int last = Math.min(rows.size() - 1, first + panel.visibleRows() - 1);
+        int badgeW = badgeLayoutW(rows);
+        int labelW = contentW - badgeW;
 
         for (int r = first; r <= last; r++) {
             TreeRow<RecipeNode> row = rows.get(r);
@@ -463,12 +567,15 @@ public final class TreeOverlayRenderer {
             if (!row.foldable()) {
                 continue;
             }
-            // A state mark, not a button: the HUD has no cursor to click it with.
-            int size = TreeMetrics.caretSize();
-            int centerY = TreeMetrics.rowCenter(r, first);
-            UiShapes.caret(graphics, TreeMetrics.toggleX(row.depth())
-                    + (TreeMetrics.TOGGLE_W - size) / 2, centerY - size / 2, size,
-                    row.folded(), row.folded() ? UiPalette.MARK_FOLDED : UiPalette.MARK_NEUTRAL);
+            // A state mark in the HUD — the HUD has no cursor — and a button in the
+            // layout editor, which is the one place these are reachable. Either way
+            // the hit box is the whole row height, so a click does not have to
+            // land on the few pixels of the mark itself.
+            TreeMetrics.Rect plate = TreeMetrics.toggleRect(row.depth(), r, first);
+            UiShapes.foldButton(graphics, plate.x(), plate.y(), plate.w(), plate.h(),
+                    row.folded(), false);
+            HOTSPOTS.add(new Hotspot(panel.contentLeft(), panel.contentTop(), panel.scale(),
+                    row.path(), null, row.depth(), r, null));
         }
 
         for (int r = first; r <= last; r++) {
@@ -477,10 +584,37 @@ public final class TreeOverlayRenderer {
             graphics.renderItem(row.node().displayStack(), TreeMetrics.iconX(depth),
                     TreeMetrics.iconY(r, first));
             String label = metrics.trim(rowLabel(row),
-                    TreeMetrics.labelRoom(contentW, depth));
+                    TreeMetrics.labelRoom(labelW, depth));
             graphics.drawString(font, label, TreeMetrics.labelX(depth),
                     TreeMetrics.textY(r, first, font.lineHeight), ink(row, availability), false);
+            drawBadge(graphics, font, row, r, first, labelW, badgeW, panel);
         }
+    }
+
+    /**
+     * The recipe button at the right end of a row's label, and the hit box that
+     * opens the picker for it.
+     *
+     * <p>The same button the tree window draws, which is also why it survives the
+     * density: the panel is never drawn below {@link TreeMetrics#MIN_READABLE_SCALE},
+     * so a 16 px icon is never smaller than about ten pixels — while the
+     * {@code 1/4 ▾} it replaced was a string measured in font pixels and could
+     * promise nothing of the kind.</p>
+     */
+    private static void drawBadge(GuiGraphics graphics, Font font, TreeRow<RecipeNode> row, int r,
+            int first, int labelW, int badgeW, TreePanel.Plan panel) {
+        if (row.badge() == TreeRow.Badge.NONE || badgeW == 0) {
+            return;
+        }
+        int x = labelW + TreeMetrics.LABEL_GAP;
+        int y = TreeMetrics.rowCenter(r, first) - BADGE / 2;
+        boolean switchable = row.badge() == TreeRow.Badge.MULTIPLE;
+        UiShapes.recipeButton(graphics, x, y, BADGE,
+                switchable ? UiPalette.FOLD_BTN_BG : UiPalette.CHIP_BG,
+                row.badge() == TreeRow.Badge.CUT ? UiPalette.MARK_CUT
+                        : switchable ? UiPalette.FOLD_BTN_BORDER : UiPalette.CHIP_BORDER);
+        HOTSPOTS.add(new Hotspot(panel.contentLeft(), panel.contentTop(), panel.scale(),
+                null, row.node(), 0, 0, new TreeMetrics.Rect(x, y, BADGE, BADGE)));
     }
 
     /** The row's label colour, from the same availability the shopping list uses. */

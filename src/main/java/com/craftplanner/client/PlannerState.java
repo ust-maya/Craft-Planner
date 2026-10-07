@@ -209,6 +209,35 @@ public final class PlannerState {
     }
 
     /**
+     * The recipe choices, as a copy.
+     *
+     * <p>A what-if expansion of some <em>other</em> recipe has to start from the
+     * choices the player actually made — otherwise the preview would silently
+     * fall back to the engine's ranking for every item below the one being
+     * compared, and would contradict the plan it sits next to.</p>
+     */
+    public static Map<ItemKey, ResourceLocation> preferences() {
+        LOCK.lock();
+        try {
+            ensureChoicesLoaded();
+            return Map.copyOf(PREFERENCES);
+        } finally {
+            LOCK.unlock();
+        }
+    }
+
+    /** The cut items, as a copy; see {@link #preferences()} for why a what-if needs them. */
+    public static Set<ItemKey> cuts() {
+        LOCK.lock();
+        try {
+            ensureChoicesLoaded();
+            return Set.copyOf(CUTS);
+        } finally {
+            LOCK.unlock();
+        }
+    }
+
+    /**
      * Whether ore-like resources are currently kept out of the tree: the
      * runtime switch when the player used the K window, the config value
      * otherwise.

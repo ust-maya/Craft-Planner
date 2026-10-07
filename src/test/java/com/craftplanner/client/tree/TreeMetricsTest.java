@@ -93,6 +93,45 @@ class TreeMetricsTest {
     }
 
     @Test
+    void theFoldToggleHitBoxCoversEveryPixelOfThePlateItDraws() {
+        // The reason "collapse does nothing": the caret was drawn from
+        // toggleRect while clicks were tested against a band computed from a
+        // different origin, so the aimable area sat beside the visible mark
+        // instead of under it. Whichever density, scaling the same plate and the
+        // same band has to leave the mark inside the band.
+        for (double density : ALL_DENSITIES) {
+            double scale = TreeMetrics.readableScale(density);
+            int originX = 12;
+            int originY = 40;
+            for (int depth = 0; depth < 8; depth++) {
+                for (int row = 0; row < 4; row++) {
+                    TreeMetrics.Rect plate = TreeMetrics.toScreen(
+                            TreeMetrics.toggleRect(depth, row, 0), scale, originX, originY);
+                    TreeMetrics.Rect hit = TreeMetrics.toggleHit(depth, row, 0, scale, originX, originY);
+                    assertTrue(hit.contains(plate.x(), plate.y()),
+                            "density " + density + " depth " + depth + ": band misses the plate's first pixel");
+                    assertTrue(hit.contains(plate.x() + plate.w() - 1, plate.y() + plate.h() - 1),
+                            "density " + density + " depth " + depth + ": band misses the plate's last pixel");
+                }
+            }
+        }
+    }
+
+    @Test
+    void theFoldToggleHitBoxStartsWhereThePlateDoes() {
+        // A band wider than its plate is fine — a taller row band is easier to
+        // aim at — but one that starts to the left of the mark would swallow the
+        // icon column and make a label click fold the row above it.
+        double scale = TreeMetrics.readableScale(0.65);
+        for (int depth = 0; depth < 8; depth++) {
+            TreeMetrics.Rect plate = TreeMetrics.toScreen(
+                    TreeMetrics.toggleRect(depth, 0, 0), scale, 10, 20);
+            TreeMetrics.Rect hit = TreeMetrics.toggleHit(depth, 0, 0, scale, 10, 20);
+            assertEquals(plate.x(), hit.x(), "depth " + depth);
+        }
+    }
+
+    @Test
     void platesOfFoldToggleAndIconNeverLandOnEachOther() {
         // The control rail placed the badge plate right-aligned while measuring
         // its column as centred, so the hovered row's two plates overlapped.

@@ -2,7 +2,9 @@ package com.craftplanner.client.screen;
 
 import com.craftplanner.client.Keybinds;
 import com.craftplanner.client.overlay.OverlayPlacement;
+import com.craftplanner.client.overlay.TreeCollapse;
 import com.craftplanner.client.overlay.TreeOverlayRenderer;
+import com.craftplanner.graph.RecipeNode;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -24,11 +26,13 @@ import org.lwjgl.glfw.GLFW;
  *
  * <p>Drag inside the panel to move it, its bottom-right corner to resize it,
  * press {@code +} or {@code -} for the text size, and scroll the plan with the
- * wheel or by holding the scrollbar at the panel's right edge. A click outside or
- * {@code Esc} keeps the result — {@link #removed()} commits it whichever way the
- * screen is left — and {@code Shift} with the right button restores the automatic
- * layout, the modifier keeping an ordinary right click from wiping a sized panel.
- * The plan's own controls are not here: they are in {@link CraftTreeScreen}.</p>
+ * wheel or by holding the scrollbar at the panel's right edge. A fold mark folds
+ * or unfolds its branch and a recipe badge opens the picker for that row — the
+ * HUD cannot be clicked at all, so this screen is where its tree stays usable.
+ * A click outside or {@code Esc} keeps the result — {@link #removed()} commits it
+ * whichever way the screen is left — and {@code Shift} with the right button
+ * restores the automatic layout, the modifier keeping an ordinary right click from
+ * wiping a sized panel.</p>
  */
 public final class OverlayLayoutScreen extends Screen {
 
@@ -78,6 +82,14 @@ public final class OverlayLayoutScreen extends Screen {
             OverlayPlacement.startSize(mx, my);
         } else if (TreeOverlayRenderer.grabScroll(mx, my)) {
             // The grab took the click; the drag follows in mouseDragged.
+        } else if (TreeOverlayRenderer.hitFold(mx, my) != null) {
+            // A fold mark of the panel behind this screen. This editor is a screen,
+            // so it is the one place HUD geometry can be aimed at — which is what
+            // keeps a fold mark from being a mark that leads nowhere.
+            TreeCollapse.toggle(TreeOverlayRenderer.hitFold(mx, my));
+        } else if (TreeOverlayRenderer.hitChoice(mx, my) != null) {
+            RecipeNode node = TreeOverlayRenderer.hitChoice(mx, my);
+            this.minecraft.setScreen(new RecipePickerScreen(node.item(), this));
         } else if (OverlayPlacement.overPanel(mx, my)) {
             OverlayPlacement.startMove(mx, my);
         } else {

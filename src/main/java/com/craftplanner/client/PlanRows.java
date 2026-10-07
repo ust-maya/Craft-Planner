@@ -37,6 +37,19 @@ public final class PlanRows {
     private static final Adapter ADAPTER = new Adapter();
 
     /**
+     * How the layout reads a node, for a tree that is not the plan's own.
+     *
+     * <p>The recipe picker expands one <em>alternative</em> recipe into a tree of
+     * its own so its dependencies can be read. That tree is not in
+     * {@link #rows()}, but it is drawn by the same geometry and has to mean the
+     * same thing, so it is read through the same adapter rather than a second one
+     * that could drift from it.</p>
+     */
+    public static TreeSource<RecipeNode> source() {
+        return ADAPTER;
+    }
+
+    /**
      * The flattened plan, plus the three things it was derived from. The overlay
      * draws sixty times a second and the graph only moves when the plan changes,
      * so the rows are rebuilt on a change instead of per frame. A fold is the

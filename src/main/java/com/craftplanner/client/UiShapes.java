@@ -1,6 +1,8 @@
 package com.craftplanner.client;
 
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 /**
  * Shape recipes shared by every Craft Planner surface.
@@ -57,28 +59,6 @@ public final class UiShapes {
         graphics.fill(fromX, y, toX, y + BORDER_PX, color);
     }
 
-    /**
-     * Filled caret: {@code right} makes it point right (a closed branch), else it
-     * points down (an open one). 1.21.1 draws no polygons, so the triangle is a
-     * stack of horizontal fills — which is also why a shape rather than a glyph
-     * carries the state: two pixel rows of the bitmap font are an unreadable
-     * dash, two pixel rows of a filled triangle are still a triangle.
-     */
-    public static void caret(GuiGraphics graphics, int left, int top, int size, boolean right,
-            int color) {
-        float middle = (size - 1) / 2f;
-        for (int i = 0; i < size; i++) {
-            if (right) {
-                int len = Math.max(1, Math.round(size - Math.abs(i - middle) * 2));
-                graphics.fill(left, top + i, left + len, top + i + 1, color);
-            } else {
-                int len = Math.max(1, size - i);
-                int x = left + (size - len) / 2;
-                graphics.fill(x, top + i, x + len, top + i + 1, color);
-            }
-        }
-    }
-
     /** Hollow 1 px rectangle. */
     public static void ring(GuiGraphics graphics, int left, int top, int width, int height,
             int color) {
@@ -87,4 +67,68 @@ public final class UiShapes {
         graphics.fill(left, top, left + BORDER_PX, top + height, color);
         graphics.fill(left + width - BORDER_PX, top, left + width, top + height, color);
     }
+
+    // --- the two tree controls ----------------------------------------------
+
+    /**
+     * The fold control of a tree row, as it is drawn everywhere.
+     *
+     * <p>Three surfaces needed this — the tree window, the recipe window and the
+     * alternatives window — and three copies of it is how they would have drifted
+     * into three different buttons.</p>
+     *
+     * <p>The mark is drawn as rules rather than as a {@code -} and {@code +} from
+     * the font. A bitmap glyph is four or five pixels of it and shrinks with the
+     * density, which is what made the control hard to find in the first place; two
+     * rules are the same size at every density and need no metrics.</p>
+     */
+    public static void foldButton(GuiGraphics graphics, int left, int top, int width, int height,
+            boolean folded, boolean aimed) {
+        chip(graphics, left, top, width, height,
+                folded ? UiPalette.MARKER_FOLDED_BG
+                        : aimed ? UiPalette.FOLD_BTN_HOVER_BG : UiPalette.FOLD_BTN_BG,
+                aimed ? UiPalette.FOLD_BTN_HOVER_BORDER : UiPalette.FOLD_BTN_BORDER);
+
+        int ink = folded ? UiPalette.MARKER_FOLDED_TEXT : UiPalette.FOLD_BTN_TEXT;
+        int centreY = top + height / 2;
+        graphics.hLine(left + 2, left + width - 3, centreY, ink);
+        if (folded) {
+            graphics.vLine(left + width / 2, top + 3, top + height - 4, ink);
+        }
+    }
+
+    /**
+     * The recipe choice of a tree row: a button with the crafting table on it.
+     *
+     * <p>It used to read {@code 1/2 ▾} or {@code 2/3 ▾}, which said which
+     * alternative was in use and nothing about what clicking would do — the one
+     * thing the player has to know before aiming at it. The icon says that, in a
+     * shape every player already reads as "crafting", and it does it at any
+     * density; the count moves to the tooltip, where it belongs, because "which
+     * one" is something you look up rather than something you scan for.</p>
+     *
+     * <p>The plate is the caller's: an amber ring means the row offers a real
+     * choice, the cut mark's red means the branch is stopped, and a plain ring
+     * means there is only the one recipe.</p>
+     */
+    public static void recipeButton(GuiGraphics graphics, int left, int top, int size,
+            int background, int border) {
+        chip(graphics, left, top, size, size, background, border);
+        graphics.renderItem(recipeIcon(), left + (size - 16) / 2, top + (size - 16) / 2);
+    }
+
+    /**
+     * Built on first use rather than in a static initialiser: this class is
+     * loaded from a client's render path, and an {@code ItemStack} made at class
+     * load would ask the item registry for an item before it has finished
+     * bootstrapping.
+     */
+    private static ItemStack recipeIcon() {
+        if (recipeIcon == null) {
+            recipeIcon = new ItemStack(Items.CRAFTING_TABLE);
+        }
+        return recipeIcon;
+    }
+
+    private static ItemStack recipeIcon;
 }

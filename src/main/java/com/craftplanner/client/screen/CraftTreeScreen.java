@@ -18,6 +18,8 @@ import com.craftplanner.graph.RecipeNode;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -58,6 +60,7 @@ public final class CraftTreeScreen extends Screen {
     private static final String KEY_COLLAPSE = "screen.craftplanner.tree.collapse.all";
     private static final String KEY_EXPAND = "screen.craftplanner.tree.expand.all";
     private static final String KEY_LIST = "screen.craftplanner.tree.list";
+    private static final String KEY_RECIPE = "screen.craftplanner.tree.recipe";
     private static final String KEY_CLOSE = "screen.craftplanner.tree.close";
     private static final String KEY_HINT = "screen.craftplanner.tree.hint";
     private static final String KEY_HIDDEN = "screen.craftplanner.tree.hidden.rows";
@@ -69,6 +72,8 @@ public final class CraftTreeScreen extends Screen {
     private static final int LINE_H = RecipeListLayout.LINE_H;
     private static final int MIN_NAME_W = 70;
     private static final int MAX_NAME_W = 320;
+    /** Edge of the square recipe button: a 16 px icon with a pixel of air around it. */
+    private static final int RECIPE_BTN = 18;
     /** Rows one wheel notch moves: at one row per notch a long plan barely stirred. */
     private static final int WHEEL_ROWS = 3;
 
@@ -86,6 +91,8 @@ public final class CraftTreeScreen extends Screen {
 
     private int scroll;
     private int focus = -1;
+    /** The explicit "choose this row's recipe" button, kept so its state can follow the focus. */
+    private Button recipeButton;
     private boolean thumbDrag;
     private long seenGraphVersion = -1;
     private int seenFoldCount = -1;
@@ -139,20 +146,21 @@ public final class CraftTreeScreen extends Screen {
     private void measure(TextMetrics metrics) {
         int widestName = 0;
         long maxAmount = 1;
-        int widestChip = 0;
+        boolean anyChoice = false;
         this.maxDepth = 0;
         for (TreeRow<RecipeNode> row : this.rows) {
             widestName = Math.max(widestName, metrics.width(row.name()));
             maxAmount = Math.max(maxAmount, row.amount());
             this.maxDepth = Math.max(this.maxDepth, row.depth());
-            String chip = chipText(row);
-            if (chip != null) {
-                widestChip = Math.max(widestChip, metrics.width(chip));
-            }
+            anyChoice |= row.badge() != TreeRow.Badge.NONE;
         }
         this.nameW = Math.min(MAX_NAME_W, Math.max(MIN_NAME_W, widestName + 2));
         this.amountW = Math.max(metrics.width(Long.toString(maxAmount)) + 8, metrics.width("×9999"));
-        this.recipeW = widestChip == 0 ? 0 : widestChip + 2 * 3;
+        // The recipe column is a square button, so it is measured rather than
+        // fitted to text — and it is reserved whenever any row has a recipe at all,
+        // not only when some row offers a choice, so the column a player learns to
+        // look in is the column that is there.
+        this.recipeW = anyChoice ? RECIPE_BTN + 2 * 3 : 0;
     }
 
     private int naturalContentW() {
@@ -173,6 +181,7 @@ public final class CraftTreeScreen extends Screen {
         int gap = 4;
         int collapseW = Math.max(60, this.font.width(tr(KEY_COLLAPSE)) + PAD);
         int expandW = Math.max(60, this.font.width(tr(KEY_EXPAND)) + PAD);
+        int recipeW = Math.max(60, this.font.width(tr(KEY_RECIPE)) + PAD);
         int listW = Math.max(60, this.font.width(tr(KEY_LIST)) + PAD);
         int closeW = Math.max(48, this.font.width(tr(KEY_CLOSE)) + PAD);
         int right = this.panelLeft + this.plan.panelW() - PAD;
@@ -185,6 +194,16 @@ public final class CraftTreeScreen extends Screen {
                     tr(KEY_EXPAND), button -> foldAll(false),
                     Component.translatable("screen.craftplanner.tree.expand.tooltip")));
         }
+        // "There is no button for choosing a recipe" is what a per-row badge costs
+        // when the column only appears once a row happens to offer a choice: the
+        // affordance is then invisible on every plan that is already decided, and
+        // absent entirely on one where no item has a recipe to change. A button
+        // that acts on the focused row is always there, greys out with nothing to
+        // pick, and names the item it will act on.
+        this.recipeButton = FitButton.create(right - closeW - gap - listW - gap - recipeW,
+                buttonsY, recipeW, BUTTON_H, tr(KEY_RECIPE), button -> openPicker(focusedRow()),
+                Component.translatable("screen.craftplanner.tree.recipe.none"));
+        addRenderableWidget(this.recipeButton);
         // The two navigation buttons stay pinned to the right edge, so they are
         // always in the same place however few goals the plan holds.
         addRenderableWidget(FitButton.create(right - closeW - gap - listW, buttonsY, listW, BUTTON_H,
@@ -192,6 +211,11 @@ public final class CraftTreeScreen extends Screen {
                 Component.translatable("screen.craftplanner.tree.list.tooltip")));
         addRenderableWidget(FitButton.create(right - closeW, buttonsY, closeW, BUTTON_H,
                 tr(KEY_CLOSE), button -> onClose(), null));
+    }
+
+    /** The row the keyboard is on, or {@code null} when the plan is empty or nothing is picked. */
+    private TreeRow<RecipeNode> focusedRow() {
+        return this.focus >= 0 && this.focus < this.rows.size() ? this.rows.get(this.focus) : null;
     }
 
     private void foldAll(boolean collapse) {
@@ -215,6 +239,10 @@ public final class CraftTreeScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         graphics.fill(0, 0, this.width, this.height, UiPalette.MODAL_SCRIM);
+        // The recipe button acts on whatever the focus is on, and the focus moves
+        // on a click, on a key and on a rebuild — asking once per frame is cheaper
+        // than remembering to update it in all three.
+        syncRecipeButton();
         UiShapes.panel(graphics, this.panelLeft, this.panelTop, this.plan.panelW(), this.plan.panelH(),
                 UiPalette.MODAL_PANEL_BG, UiPalette.MODAL_BORDER_OUTER, UiPalette.MODAL_PANEL_BORDER);
         UiShapes.headerBand(graphics, this.panelLeft, this.panelTop, this.plan.panelW(),
@@ -329,19 +357,8 @@ public final class CraftTreeScreen extends Screen {
         }
 
         if (row.foldable()) {
-            TreeMetrics.Rect plate = TreeMetrics.toScreen(
-                    TreeMetrics.toggleRect(row.depth(), r, this.scroll), 1.0, left, contentTop());
-            boolean aimed = hovered && TreeMetrics.toggleHit(row.depth(), r, this.scroll, 1.0,
-                    left, contentTop()).contains(mouseX, mouseY);
-            // A folded branch keeps the amber plate: a plan with collapsed parts has
-            // to be obvious at a glance, since what it hides is still being planned.
-            UiShapes.chip(graphics, plate.x(), plate.y(), plate.w(), plate.h(),
-                    row.folded() ? UiPalette.MARKER_FOLDED_BG
-                            : aimed ? UiPalette.CHIP_HOVER_BG : UiPalette.CHIP_BG,
-                    aimed ? UiPalette.CHIP_HOVER_BORDER : UiPalette.CHIP_BORDER);
-            graphics.drawCenteredString(this.font, row.folded() ? "+" : "-",
-                    plate.x() + plate.w() / 2, plate.y() + 1,
-                    row.folded() ? UiPalette.MARKER_FOLDED_TEXT : UiPalette.TEXT);
+            drawFoldButton(graphics, row, yTop, left, hovered && TreeMetrics.toggleHit(
+                    row.depth(), r, this.scroll, 1.0, left, contentTop()).contains(mouseX, mouseY));
         }
 
         TreeMetrics.Rect icon = TreeMetrics.toScreen(
@@ -361,15 +378,8 @@ public final class CraftTreeScreen extends Screen {
             graphics.drawString(this.font, shown, nameRightEdge() - this.font.width(shown),
                     textY(r), ink, false);
         }
-        String chip = chipText(row);
-        if (chip != null && this.recipeW > 0) {
-            TreeMetrics.Rect box = chipRect(r);
-            UiShapes.chip(graphics, box.x(), box.y(), box.w(), box.h(),
-                    UiPalette.CHIP_BG, UiPalette.CHIP_BORDER);
-            graphics.drawString(this.font, chip, box.x() + 3, box.y() + (box.h() - LINE_H) / 2,
-                    row.badge() == TreeRow.Badge.CUT ? UiPalette.MARK_CUT
-                            : NodeColors.branch(row.branch()), false);
-        }
+        drawRecipeButton(graphics, row, r,
+                recipeRect(r).contains(mouseX, mouseY));
     }
 
     /** The row's label colour: how far the inventory covers what the plan asks. */
@@ -387,19 +397,59 @@ public final class CraftTreeScreen extends Screen {
         };
     }
 
-    /** {@code 2/3 ▾} for a switchable recipe, {@code ▾} for the only one, {@code ✂} for a cut. */
-    private static String chipText(TreeRow<RecipeNode> row) {
-        return switch (row.badge()) {
-            case CUT -> "✂";
-            case MULTIPLE -> row.selected() + "/" + row.options() + " ▾";
-            case SINGLE -> "▾";
-            case NONE -> null;
-        };
+    /**
+ * What the recipe button on a row means, said where the row can be looked up.
+ *
+ * <p>The button itself is an icon now: it has to answer "what does clicking this
+ * do?" at a glance, and it cannot also answer "which one is in use?" without
+ * becoming a sentence. The count is the second question, so it went to the
+ * tooltip.</p>
+ */
+    private static Component recipeHint(TreeRow<RecipeNode> row) {
+        return row.badge() == TreeRow.Badge.CUT
+                ? Component.translatable("screen.craftplanner.tree.recipe.cut")
+                : row.options() > 1
+                        ? Component.translatable("screen.craftplanner.tree.recipe.chosen",
+                                row.selected(), row.options())
+                        : Component.translatable("screen.craftplanner.tree.recipe.only");
     }
 
-    private TreeMetrics.Rect chipRect(int r) {
+/**
+     * The fold control of a branch: the shared tree button, placed where the row's
+     * depth puts it and sized to fill the row.
+     *
+     * <p>A folded branch keeps the amber plate: a plan with collapsed parts has to be
+     * obvious at a glance, since what it hides is still being planned.</p>
+     */
+    private void drawFoldButton(GuiGraphics graphics, TreeRow<RecipeNode> row, int yTop,
+            int left, boolean aimed) {
+        int height = this.plan.pitch() - 4;
+        UiShapes.foldButton(graphics, left + TreeMetrics.toggleX(row.depth()),
+                yTop + (this.plan.pitch() - height) / 2,
+                TreeMetrics.TOGGLE_W, height, row.folded(), aimed);
+    }
+
+    /**
+     * The recipe choice of a row: a crafting-table button, amber-ringed when the
+     * row really can be switched and the cut mark's red when it is stopped.
+     */
+    private void drawRecipeButton(GuiGraphics graphics, TreeRow<RecipeNode> row, int r,
+            boolean aimed) {
+        if (row.badge() == TreeRow.Badge.NONE) {
+            return;
+        }
+        TreeMetrics.Rect box = recipeRect(r);
+        boolean switchable = row.badge() == TreeRow.Badge.MULTIPLE;
+        UiShapes.recipeButton(graphics, box.x(), box.y(), RECIPE_BTN,
+                switchable ? UiPalette.FOLD_BTN_BG : UiPalette.CHIP_BG,
+                row.badge() == TreeRow.Badge.CUT ? UiPalette.MARK_CUT
+                        : switchable ? UiPalette.FOLD_BTN_BORDER
+                                : aimed ? UiPalette.FOLD_BTN_HOVER_BORDER : UiPalette.CHIP_BORDER);
+    }
+
+    private TreeMetrics.Rect recipeRect(int r) {
         return new TreeMetrics.Rect(nameRightEdge() + COL_GAP + this.amountW + COL_GAP,
-                textY(r) - (BUTTON_H - LINE_H) / 2, this.recipeW, BUTTON_H);
+                rowCenter(r) - RECIPE_BTN / 2, RECIPE_BTN, RECIPE_BTN);
     }
 
     private int rowTop(int r) {
@@ -530,7 +580,7 @@ public final class CraftTreeScreen extends Screen {
             rebuild();
             return true;
         }
-        if (this.recipeW > 0 && chipRect(r).contains((int) mouseX, (int) mouseY)) {
+        if (this.recipeW > 0 && recipeRect(r).contains((int) mouseX, (int) mouseY)) {
             openPicker(row);
             return true;
         }
@@ -550,10 +600,28 @@ public final class CraftTreeScreen extends Screen {
     }
 
     private void openPicker(TreeRow<RecipeNode> row) {
-        if (row.badge() == TreeRow.Badge.NONE) {
+        if (row == null || row.badge() == TreeRow.Badge.NONE) {
             return;
         }
         this.minecraft.setScreen(new RecipePickerScreen(row.node().item(), this));
+    }
+
+    /**
+     * The footer button follows the focused row: the label stays "Рецепт" so the
+     * button never changes width under the cursor, but its tooltip names the item
+     * it will act on, and the button greys out whenever that row has no recipe to
+     * change.
+     */
+    private void syncRecipeButton() {
+        if (this.recipeButton == null) {
+            return;
+        }
+        TreeRow<RecipeNode> row = focusedRow();
+        boolean pickable = row != null && row.badge() != TreeRow.Badge.NONE;
+        this.recipeButton.active = pickable;
+        this.recipeButton.setTooltip(Tooltip.create(pickable
+                ? Component.translatable("screen.craftplanner.tree.recipe.tooltip", row.node().item().name())
+                : Component.translatable("screen.craftplanner.tree.recipe.none")));
     }
 
     @Override
@@ -719,6 +787,13 @@ public final class CraftTreeScreen extends Screen {
         if (row.foldable() && toggle.contains(mouseX, mouseY)) {
             this.setTooltipForNextRenderPass(Component.translatable(row.folded()
                     ? "overlay.craftplanner.fold.expand" : "overlay.craftplanner.fold.collapse"));
+            return;
+        }
+        // The recipe button is an icon now, so the count that used to be printed on
+        // it has to be said somewhere: aiming at the button answers what the button
+        // does, which is the question the row behind it does not.
+        if (this.recipeW > 0 && recipeRect(r).contains(mouseX, mouseY)) {
+            this.setTooltipForNextRenderPass(recipeHint(row));
             return;
         }
         List<Component> lines = rowTooltip(row);
