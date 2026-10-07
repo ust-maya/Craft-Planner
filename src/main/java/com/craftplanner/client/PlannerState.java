@@ -10,6 +10,7 @@ import com.craftplanner.graph.ItemKey;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.resources.ResourceLocation;
@@ -42,6 +43,33 @@ public final class PlannerState {
      */
     private static Boolean hideOresOverride;
     private static Map<ItemKey, Availability> availability = Collections.emptyMap();
+    /**
+     * Bumped on every {@link #rebuild()}, i.e. whenever the tree structure or
+     * the amounts changed. Derived views (the overlay's {@code TreeLayout})
+     * cache against it instead of recomputing each frame.
+     */
+    private static long graphVersion;
+    /**
+     * Trailing-edge debounce for {@link #selectRecipe}: rapid cycling through
+     * the alternatives of one item must not rebuild the whole tree once per
+     * click. {@code 0} means no rebuild is pending.
+     */
+    private static long pendingRebuildAt;
+    private static final long REBUILD_DEBOUNCE_MS = 200L;
+    /**
+     * Every mutation today runs on the client thread, but the tick handler,
+     * screen widgets and config events all reach this class from different
+     * callbacks; the lock is a cheap insurance against a future path that
+     * iterates {@code PREFERENCES} while another rebuilds the graph.
+     */
+    private static final ReentrantLock LOCK = new ReentrantLock();
+    /**
+     * Whether the K-window onboarding hint ("hover an item and press N") has
+     * already been shown once. The hint is only useful before the player has
+     * added their first recipe by following it, so the first closing of the
+     * window retires it for the session.
+     */
+    private static boolean listHintSeen;
 
     private PlannerState() {
     }
@@ -57,35 +85,72 @@ public final class PlannerState {
 
     /** Adds (or merges) a target and rebuilds the tree. */
     public static void add(ItemStack stack, long amount) {
-        GRAPH.addRoot(ItemKey.of(stack), Math.max(1, amount));
-        rebuild();
+        LOCK.lock();
+        try {
+            GRAPH.addRoot(ItemKey.of(stack), Math.max(1, amount));
+            rebuild();
+        } finally {
+            LOCK.unlock();
+        }
     }
 
     public static void setAmount(ItemKey key, long amount) {
-        GRAPH.setRootAmount(key, Math.max(1, amount));
-        rebuild();
+        LOCK.lock();
+        try {
+            GRAPH.setRootAmount(key, Math.max(1, amount));
+            rebuild();
+        } finally {
+            LOCK.unlock();
+        }
     }
 
     public static void remove(ItemKey key) {
-        GRAPH.removeRoot(key);
-        PREFERENCES.remove(key);
-        rebuild();
+        LOCK.lock();
+        try {
+            GRAPH.removeRoot(key);
+            PREFERENCES.remove(key);
+            rebuild();
+        } finally {
+            LOCK.unlock();
+        }
     }
 
     public static void clear() {
-        GRAPH.clear();
-        PREFERENCES.clear();
-        rebuild();
+        LOCK.lock();
+        try {
+            GRAPH.clear();
+            PREFERENCES.clear();
+            rebuild();
+        } finally {
+            LOCK.unlock();
+        }
     }
 
-    /** Picks another recipe for an item (Stage 6) and re-expands the tree. */
+    /** True once the K window has been closed at least this session. */
+    public static boolean listHintSeen() {
+        return listHintSeen;
+    }
+
+    public static void markListHintSeen() {
+        listHintSeen = true;
+    }
+
+    /**
+     * Picks another recipe for an item (Stage 6). The re-expansion is debounced
+     * by {@link #REBUILD_DEBOUNCE_MS} — see {@link #tick()}.
+     */
     public static void selectRecipe(ItemKey key, RecipeHolder<?> recipe) {
-        if (recipe == null) {
-            PREFERENCES.remove(key);
-        } else {
-            PREFERENCES.put(key, recipe.id());
+        LOCK.lock();
+        try {
+            if (recipe == null) {
+                PREFERENCES.remove(key);
+            } else {
+                PREFERENCES.put(key, recipe.id());
+            }
+            pendingRebuildAt = System.currentTimeMillis() + REBUILD_DEBOUNCE_MS;
+        } finally {
+            LOCK.unlock();
         }
-        rebuild();
     }
 
     /** Recipe choice per item, as passed to {@link CraftTreeBuilder}. */
@@ -105,8 +170,13 @@ public final class PlannerState {
 
     /** Flips the "hide ore-like resources" switch and re-expands the trees. */
     public static void toggleHideOres() {
-        hideOresOverride = !hideOres();
-        rebuild();
+        LOCK.lock();
+        try {
+            hideOresOverride = !hideOres();
+            rebuild();
+        } finally {
+            LOCK.unlock();
+        }
     }
 
     /** Drops the runtime switch so the config value applies again. */
@@ -114,11 +184,39 @@ public final class PlannerState {
         hideOresOverride = null;
     }
 
+    /** Monotonic counter identifying the current tree structure. */
+    public static long graphVersion() {
+        return graphVersion;
+    }
+
+    /**
+     * Runs the debounced recipe-change rebuild once its window has elapsed.
+     * Called every client tick from {@code ClientEvents}.
+     */
+    public static void tick() {
+        LOCK.lock();
+        try {
+            long at = pendingRebuildAt;
+            if (at != 0L && System.currentTimeMillis() >= at) {
+                rebuild();
+            }
+        } finally {
+            LOCK.unlock();
+        }
+    }
+
     /** Re-expands all roots using the recipes of the current level. */
     public static void rebuild() {
-        Minecraft mc = Minecraft.getInstance();
-        CraftTreeBuilder.rebuild(GRAPH, mc.level, PREFERENCES, hideOres());
-        refreshAvailability();
+        LOCK.lock();
+        try {
+            pendingRebuildAt = 0L;
+            Minecraft mc = Minecraft.getInstance();
+            CraftTreeBuilder.rebuild(GRAPH, mc.level, PREFERENCES, hideOres());
+            graphVersion++;
+            refreshAvailability();
+        } finally {
+            LOCK.unlock();
+        }
     }
 
     /**
@@ -127,13 +225,18 @@ public final class PlannerState {
      * while the player moves items around.
      */
     public static void refreshAvailability() {
-        Minecraft mc = Minecraft.getInstance();
-        LocalPlayer player = mc.player;
-        if (player == null) {
-            availability = Collections.emptyMap();
-            return;
+        LOCK.lock();
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            LocalPlayer player = mc.player;
+            if (player == null) {
+                availability = Collections.emptyMap();
+                return;
+            }
+            availability = ResourceCheck.evaluate(
+                    GRAPH.aggregateRequirements(), InventorySnapshot.of(player));
+        } finally {
+            LOCK.unlock();
         }
-        availability = ResourceCheck.evaluate(
-                GRAPH.aggregateRequirements(), InventorySnapshot.of(player));
     }
 }

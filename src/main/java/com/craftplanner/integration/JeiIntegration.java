@@ -37,12 +37,21 @@ public final class JeiIntegration {
     /**
      * Item hovered in the JEI ingredient list, or empty when JEI is missing,
      * has no runtime yet or shows nothing under the cursor.
+     *
+     * <p>The presence flag is set once, but JEI can still disappear during the
+     * session (its own mod failed, the runtime was unloaded): then touching
+     * {@link JeiRuntimePlugin} would raise a linkage error. The capture hotkey
+     * must degrade to "nothing hovered", never crash.</p>
      */
     public static Optional<ItemStack> hovered() {
         if (!isPresent()) {
             return Optional.empty();
         }
-        return JeiRuntimePlugin.hoveredStack();
+        try {
+            return JeiRuntimePlugin.hoveredStack();
+        } catch (LinkageError jeiGone) {
+            return Optional.empty();
+        }
     }
 
     private static boolean resolve() {
