@@ -14,14 +14,15 @@ import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.item.crafting.SmithingTrimRecipe;
 
 /**
  * Index of all usable recipes, keyed by the item they produce.
  *
  * <p>Built once per tree rebuild from {@link RecipeManager#getOrderedRecipes()}.
  * Recipes the planner cannot reasonably plan with are skipped: incomplete
- * (broken datapack) and special (non-book) recipes, plus everything outside
- * the supported types.</p>
+ * (broken datapack) and special (non-book) recipes, armour trims (their output
+ * is synthetic), and everything outside the supported types.</p>
  *
  * <p>When several recipes produce the same item they are all kept and ordered
  * by {@link #PRIORITY}, so the engine picks the "preferred" one and exposes
@@ -66,7 +67,15 @@ public final class RecipeIndex {
             if (recipe.isIncomplete() || recipe.isSpecial()) {
                 continue;
             }
-            if (!SUPPORTED.contains(recipe.getType())) {
+            if (recipe instanceof SmithingTrimRecipe) {
+                // getResultItem() is synthetic here: an iron chestplate carrying
+                // a trim component built from the first pattern in the registry.
+                // Indexing it would file all 18 trim recipes under one phantom
+                // key that no hovered stack ever matches. A trim is decoration,
+                // not a cost, so the recipes are left out entirely.
+                continue;
+            }
+            if (!isSupported(recipe.getType())) {
                 continue;
             }
             ItemStack result = recipe.getResultItem(registries);
@@ -83,6 +92,21 @@ public final class RecipeIndex {
     public List<RecipeHolder<?>> forOutput(ItemKey key) {
         List<RecipeHolder<?>> list = byOutput.get(key);
         return list == null ? Collections.emptyList() : Collections.unmodifiableList(list);
+    }
+
+    /**
+     * True when the planner expands recipes of this type: a vanilla type from
+     * {@link #SUPPORTED}, or a type whose inputs someone taught
+     * {@link RecipeIngredients} to read.
+     *
+     * <p>The two conditions are tied together on purpose. Indexing a type the
+     * engine cannot read is the failure this whole layer exists to prevent — the
+     * recipe is found, chosen, and then expands to nothing. Registering a
+     * provider for a modded type is therefore all it takes to make it
+     * plannable.</p>
+     */
+    public static boolean isSupported(RecipeType<?> type) {
+        return SUPPORTED.contains(type) || RecipeIngredients.hasProvider(type);
     }
 
     public boolean hasRecipe(ItemKey key) {

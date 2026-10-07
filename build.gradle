@@ -14,6 +14,17 @@ base {
 // Mojang ships Java 21 to end users in 1.21.1, so mods should target Java 21.
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
+// Smithing recipes never expose their inputs through Recipe#getIngredients()
+// (template/base/addition are package-private and NeoForge does not open them),
+// so the engine reads those fields directly and the compiler needs them public
+// — see com.craftplanner.engine.RecipeIngredients. NeoForge picks the same file
+// up at runtime from META-INF inside the jar.
+minecraft {
+    accessTransformers {
+        file('src/main/resources/META-INF/accesstransformer.cfg')
+    }
+}
+
 repositories {
     // JEI publishes its API here (compile-only dependency, see below).
     maven {
