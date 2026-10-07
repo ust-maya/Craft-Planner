@@ -109,7 +109,9 @@ final class RecipeListLayout {
         int minusW = Math.max(14, metrics.width("-") + GLYPH_PAD);
         int plusW = Math.max(14, metrics.width("+") + GLYPH_PAD);
         int recipeW = Math.max(MIN_RECIPE_W,
-                Math.max(metrics.width(maxOptions + "/" + maxOptions), metrics.width(headerRecipe)) + GAP);
+                // The counter is drawn with the "▾" chevron whenever the row is
+                // switchable, so the column has to fit the widest variant.
+                Math.max(metrics.width(maxOptions + "/" + maxOptions + " ▾"), metrics.width(headerRecipe)) + GAP);
         int amountW = Math.max(MIN_AMOUNT_W,
                 Math.max(metrics.width(Long.toString(maxAmount)), metrics.width(headerAmount)) + GAP);
         int removeW = Math.max(MIN_REMOVE_W,
