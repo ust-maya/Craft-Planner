@@ -181,11 +181,6 @@ public final class TreeMetrics {
         return new Rect(iconX(depth), iconY(index, scroll), ICON, ICON);
     }
 
-    /** Height of the caret inside a toggle plate: the largest that stays in it. */
-    public static int caretSize() {
-        return 5;
-    }
-
     // --- screen space: hit-test with these ----------------------------------
 
     /**

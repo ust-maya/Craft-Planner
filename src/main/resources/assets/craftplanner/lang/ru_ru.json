@@ -74,7 +74,7 @@
   "screen.craftplanner.list.ores.shown": "Руда: показана",
   "screen.craftplanner.list.ores.tooltip": "Скрыть или показать блоки руды и сырьё из неё в дереве и списке сырья (параметр filters.hideOres)",
   "screen.craftplanner.list.ambiguous": "Варианты (%1$s)",
-  "screen.craftplanner.list.ambiguous.tooltip": "Предметы, которые делаются несколькими способами — выбрать все сразу в одном окне",
+  "screen.craftplanner.list.ambiguous.tooltip": "Предметы, которые делаются несколькими способами — здесь видно деревом, что тянет каждый из них",
   "screen.craftplanner.ambiguous.title": "Выбор рецептов для дерева",
   "screen.craftplanner.ambiguous.header": "Предметов с несколькими рецептами: %1$s",
   "screen.craftplanner.ambiguous.empty": "Нечего выбирать — у всех предметов плана по одному рецепту",

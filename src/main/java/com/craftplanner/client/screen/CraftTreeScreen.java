@@ -354,19 +354,8 @@ public final class CraftTreeScreen extends Screen {
         }
 
         if (row.foldable()) {
-            TreeMetrics.Rect plate = TreeMetrics.toScreen(
-                    TreeMetrics.toggleRect(row.depth(), r, this.scroll), 1.0, left, contentTop());
-            boolean aimed = hovered && TreeMetrics.toggleHit(row.depth(), r, this.scroll, 1.0,
-                    left, contentTop()).contains(mouseX, mouseY);
-            // A folded branch keeps the amber plate: a plan with collapsed parts has
-            // to be obvious at a glance, since what it hides is still being planned.
-            UiShapes.chip(graphics, plate.x(), plate.y(), plate.w(), plate.h(),
-                    row.folded() ? UiPalette.MARKER_FOLDED_BG
-                            : aimed ? UiPalette.CHIP_HOVER_BG : UiPalette.CHIP_BG,
-                    aimed ? UiPalette.CHIP_HOVER_BORDER : UiPalette.CHIP_BORDER);
-            graphics.drawCenteredString(this.font, row.folded() ? "+" : "-",
-                    plate.x() + plate.w() / 2, plate.y() + 1,
-                    row.folded() ? UiPalette.MARKER_FOLDED_TEXT : UiPalette.TEXT);
+            drawFoldButton(graphics, row, yTop, left, hovered && TreeMetrics.toggleHit(
+                    row.depth(), r, this.scroll, 1.0, left, contentTop()).contains(mouseX, mouseY));
         }
 
         TreeMetrics.Rect icon = TreeMetrics.toScreen(
@@ -420,6 +409,42 @@ public final class CraftTreeScreen extends Screen {
             case SINGLE -> "▾";
             case NONE -> null;
         };
+    }
+
+    /**
+     * The fold control of a branch.
+     *
+     * <p>It used to be a chip-background plate with the font's own {@code -} on
+     * it — a dark plate on a dark row, four pixels of glyph, and nothing about it
+     * to say "button". Three things changed, all of them about being seen rather
+     * than about being clicked: the plate fills nearly the whole row instead of
+     * floating in the middle of it, its ring is a colour that holds its contrast
+     * against the row, and the mark is drawn as two rules rather than as a glyph,
+     * so it does not shrink with the font and stays the same size at any density.</p>
+     *
+     * <p>A folded branch keeps the amber plate: a plan with collapsed parts has to
+     * be obvious at a glance, since what it hides is still being planned.</p>
+     */
+    private void drawFoldButton(GuiGraphics graphics, TreeRow<RecipeNode> row, int yTop,
+            int left, boolean aimed) {
+        int x = left + TreeMetrics.toggleX(row.depth());
+        int height = this.plan.pitch() - 4;
+        int y = yTop + (this.plan.pitch() - height) / 2;
+        int width = TreeMetrics.TOGGLE_W;
+
+        UiShapes.chip(graphics, x, y, width, height,
+                row.folded() ? UiPalette.MARKER_FOLDED_BG
+                        : aimed ? UiPalette.FOLD_BTN_HOVER_BG : UiPalette.FOLD_BTN_BG,
+                aimed ? UiPalette.FOLD_BTN_HOVER_BORDER : UiPalette.FOLD_BTN_BORDER);
+
+        int ink = row.folded() ? UiPalette.MARKER_FOLDED_TEXT : UiPalette.FOLD_BTN_TEXT;
+        int centreY = y + height / 2;
+        int fromX = x + 2;
+        int toX = x + width - 3;
+        graphics.hLine(fromX, toX, centreY, ink);
+        if (row.folded()) {
+            graphics.vLine(x + width / 2, y + 3, y + height - 4, ink);
+        }
     }
 
     private TreeMetrics.Rect chipRect(int r) {

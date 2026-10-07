@@ -107,6 +107,25 @@ public final class UiPalette {
     public static final int TREE_FOCUS_BG = 0x26FFFFFF;
     public static final int TREE_FOCUS_BORDER = 0xFFFFC83D;
 
+    /**
+     * The fold button of a tree row.
+     *
+     * <p>A fold control that only shows itself under the cursor is not a control:
+     * the player has to already know it is there, and know where, before they can
+     * find it. These are deliberately lighter and more opaque than the chip
+     * buttons around them — a flat {@link #CHIP_BG} plate on a {@link
+     * #MODAL_PANEL_BG} row is a shade of dark grey on a shade of dark grey, which
+     * is exactly the pair the old 11 px {@code -} was lost in. The ring is the
+     * part that does the work: it holds AA for a graphic on every density without
+     * the plate having to be light enough to shout.</p>
+     */
+    public static final int FOLD_BTN_BG = 0xF02E2E2E;
+    public static final int FOLD_BTN_BORDER = 0xFF8C8C8C;
+    public static final int FOLD_BTN_TEXT = 0xFFE6E6E6;
+    /** Aimed at: the same amber the rest of the window rings its focus with. */
+    public static final int FOLD_BTN_HOVER_BORDER = 0xFFFFC83D;
+    public static final int FOLD_BTN_HOVER_BG = 0xFF424242;
+
     /** Chrome of the O layout editor, drawn over the overlay. */
     public static final int EDIT_BORDER = 0xC0E0A030;
     public static final int EDIT_GRIP = 0xE0E0A030;

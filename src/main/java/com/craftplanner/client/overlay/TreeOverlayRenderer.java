@@ -577,13 +577,20 @@ public final class TreeOverlayRenderer {
             }
             // A state mark in the HUD — the HUD has no cursor — and a button in the
             // layout editor, which is the one place these are reachable. Either way
-            // the hit box is the whole row height, so a click does not have to land
-            // on the few pixels of the caret itself.
-            int size = TreeMetrics.caretSize();
-            int centerY = TreeMetrics.rowCenter(r, first);
-            UiShapes.caret(graphics, TreeMetrics.toggleX(row.depth())
-                    + (TreeMetrics.TOGGLE_W - size) / 2, centerY - size / 2, size,
-                    row.folded(), row.folded() ? UiPalette.MARK_FOLDED : UiPalette.MARK_NEUTRAL);
+            // the hit box is the whole row height, so a click does not have to
+            // land on the few pixels of the caret itself. The plate is what makes
+            // it readable without hovering, which the bare caret never was.
+            TreeMetrics.Rect plate = TreeMetrics.toggleRect(row.depth(), r, first);
+            UiShapes.chip(graphics, plate.x(), plate.y(), plate.w(), plate.h(),
+                    row.folded() ? UiPalette.MARKER_FOLDED_BG : UiPalette.CHIP_BG,
+                    row.folded() ? UiPalette.MARK_FOLDED : UiPalette.MARK_NEUTRAL);
+            int centreY = plate.y() + plate.h() / 2;
+            int ink = row.folded() ? UiPalette.MARKER_FOLDED_TEXT : UiPalette.MARK_NEUTRAL;
+            graphics.hLine(plate.x() + 2, plate.x() + plate.w() - 3, centreY, ink);
+            if (row.folded()) {
+                graphics.vLine(plate.x() + plate.w() / 2, plate.y() + 3,
+                        plate.y() + plate.h() - 4, ink);
+            }
             HOTSPOTS.add(new Hotspot(panel.contentLeft(), panel.contentTop(), panel.scale(),
                     row.path(), null, row.depth(), r, null));
         }

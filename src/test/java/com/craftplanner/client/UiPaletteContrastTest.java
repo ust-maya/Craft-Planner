@@ -95,6 +95,31 @@ class UiPaletteContrastTest {
     }
 
     @Test
+    void theFoldButtonIsVisibleBeforeTheCursorReachesIt() {
+        // The complaint this pins: the fold control was a chip-background plate on
+        // a modal panel, so it was only findable by hovering it. Its ring and its
+        // glyph both have to hold up against the panel with nothing hovered, and
+        // the ring has to stand out from the plate it sits on — otherwise the
+        // button is still a dark shape on a dark row.
+        int panel = composite(UiPalette.MODAL_PANEL_BG, DARK_WORLD);
+        int plate = composite(UiPalette.FOLD_BTN_BG, panel);
+
+        assertTrue(contrast(UiPalette.FOLD_BTN_TEXT, plate) >= TEXT_AA,
+                () -> "fold glyph: " + round(contrast(UiPalette.FOLD_BTN_TEXT, plate)) + ":1");
+        assertTrue(contrast(UiPalette.FOLD_BTN_BORDER, panel) >= GRAPHICS_AA,
+                () -> "fold ring on the panel: "
+                        + round(contrast(UiPalette.FOLD_BTN_BORDER, panel)) + ":1");
+        // The ring has to be distinguishable from what it encloses, not merely
+        // legible: a border the plate already covers reads as no border at all.
+        assertTrue(contrast(UiPalette.FOLD_BTN_BORDER, plate) >= GRAPHICS_AA,
+                () -> "fold ring on its own plate: "
+                        + round(contrast(UiPalette.FOLD_BTN_BORDER, plate)) + ":1");
+        assertTrue(contrast(UiPalette.FOLD_BTN_HOVER_BORDER, plate) >= GRAPHICS_AA,
+                () -> "fold ring, hovered: "
+                        + round(contrast(UiPalette.FOLD_BTN_HOVER_BORDER, plate)) + ":1");
+    }
+
+    @Test
     void translucentColoursBlendTheWayTheRendererPutsThemDown() {
         // Guards the helpers the rest of this class relies on: an opaque black
         // stays black, a fully transparent colour paints nothing, half alpha is

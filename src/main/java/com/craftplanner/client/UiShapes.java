@@ -57,28 +57,6 @@ public final class UiShapes {
         graphics.fill(fromX, y, toX, y + BORDER_PX, color);
     }
 
-    /**
-     * Filled caret: {@code right} makes it point right (a closed branch), else it
-     * points down (an open one). 1.21.1 draws no polygons, so the triangle is a
-     * stack of horizontal fills — which is also why a shape rather than a glyph
-     * carries the state: two pixel rows of the bitmap font are an unreadable
-     * dash, two pixel rows of a filled triangle are still a triangle.
-     */
-    public static void caret(GuiGraphics graphics, int left, int top, int size, boolean right,
-            int color) {
-        float middle = (size - 1) / 2f;
-        for (int i = 0; i < size; i++) {
-            if (right) {
-                int len = Math.max(1, Math.round(size - Math.abs(i - middle) * 2));
-                graphics.fill(left, top + i, left + len, top + i + 1, color);
-            } else {
-                int len = Math.max(1, size - i);
-                int x = left + (size - len) / 2;
-                graphics.fill(x, top + i, x + len, top + i + 1, color);
-            }
-        }
-    }
-
     /** Hollow 1 px rectangle. */
     public static void ring(GuiGraphics graphics, int left, int top, int width, int height,
             int color) {
