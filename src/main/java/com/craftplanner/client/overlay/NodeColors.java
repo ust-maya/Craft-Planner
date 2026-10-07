@@ -25,8 +25,24 @@ public final class NodeColors {
     public static final int HAVE = 0xFF7BE08A;
     public static final int PARTIAL = 0xFFE0C040;
     public static final int MISSING = 0xFFE06060;
-    public static final int EDGE = 0x60FFFFFF;
     public static final int TEXT = 0xFFE0E0E0;
+
+    /**
+     * Colours of the tree connectors, one per planned goal. A machine recipe
+     * from a big pack nests five levels deep and shares its sub-assemblies with
+     * the next goal; one grey web of lines then makes it unreadable, while
+     * cycling a handful of hues lets the eye follow a single branch through the
+     * whole panel. Fully opaque and saturated: the lines sit on the dark panel
+     * behind the icons, and a translucent grey one simply disappears there.
+     */
+    private static final int[] BRANCH = {
+        0xFF5AA9FF, 0xFF66E07A, 0xFFFFC83D, 0xFFFF7A5C, 0xFFC77DFF, 0xFF3FD8CE
+    };
+
+    /** Connector colour of the {@code rootIndex}-th planned item. */
+    public static int branch(int rootIndex) {
+        return BRANCH[Math.floorMod(rootIndex, BRANCH.length)];
+    }
 
     private NodeColors() {
     }

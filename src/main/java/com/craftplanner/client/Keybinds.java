@@ -18,6 +18,7 @@ import org.lwjgl.glfw.GLFW;
  *   <li>{@code ADD_RECIPE} (N)  — capture hovered item and open quantity popup</li>
  *   <li>{@code TOGGLE_OVERLAY} (V) — show/hide the craft-tree overlay</li>
  *   <li>{@code OPEN_RECIPES} (K) — open the recipes-list screen</li>
+ *   <li>{@code EDIT_LAYOUT} (O) — drag, resize and rescale the overlay panel</li>
  * </ul>
  *
  * <p>The letters are free in vanilla 1.21.1 (which binds W A S D, Space, both
@@ -59,10 +60,23 @@ public class Keybinds {
             GLFW.GLFW_KEY_K,
             CATEGORY);
 
+    /**
+     * Enters and leaves the in-game layout editor of the overlay panel (drag to
+     * move, corner to resize, wheel for the text size).
+     */
+    public static final KeyMapping EDIT_LAYOUT = new KeyMapping(
+            "key.craftplanner.edit",
+            KeyConflictContext.UNIVERSAL,
+            KeyModifier.NONE,
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_O,
+            CATEGORY);
+
     @SubscribeEvent
     public static void register(RegisterKeyMappingsEvent event) {
         event.register(ADD_RECIPE);
         event.register(TOGGLE_OVERLAY);
         event.register(OPEN_RECIPES);
+        event.register(EDIT_LAYOUT);
     }
 }

@@ -1,6 +1,8 @@
 package com.craftplanner.client.screen;
 
 import com.craftplanner.client.PlannerState;
+import com.craftplanner.client.overlay.TreeCollapse;
+import com.craftplanner.client.overlay.TreeOverlayRenderer;
 import com.craftplanner.graph.RecipeNode;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,6 +13,7 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.crafting.RecipeHolder;
+import org.lwjgl.glfw.GLFW;
 
 /**
  * Window with all targets the player added (Stage 7, hotkey {@code K}).
@@ -382,6 +385,31 @@ public class RecipeListScreen extends Screen {
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         // Intentionally empty: the vanilla blurred background would be drawn on
         // top of our panel. render() paints its own dim instead.
+    }
+
+    /**
+     * The tree panel behind this window stays usable: its − / + markers fold a
+     * branch, because this is one of the two screens that own the mouse. Clicks
+     * inside this window's own panel are left to its widgets.
+     */
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.layout != null
+                && !overPanel((int) mouseX, (int) mouseY)) {
+            String fold = TreeOverlayRenderer.hitFold((int) mouseX, (int) mouseY);
+            if (fold != null) {
+                TreeCollapse.toggle(fold);
+                return true;
+            }
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    private boolean overPanel(int mx, int my) {
+        int left = panelLeft();
+        int top = panelTop();
+        return mx >= left && mx <= left + this.layout.panelWidth
+                && my >= top && my <= top + panelHeight();
     }
 
     @Override

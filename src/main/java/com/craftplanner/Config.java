@@ -2,6 +2,7 @@ package com.craftplanner;
 
 import com.craftplanner.client.OverlayState;
 import com.craftplanner.client.PlannerState;
+import com.craftplanner.client.overlay.OverlayPlacement;
 import com.craftplanner.engine.CraftTreeBuilder;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -27,6 +28,13 @@ public final class Config {
 
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
+    /** Density the layout editor resets to, and the range it may wheel through. */
+    private static final double OVERLAY_SCALE_DEFAULT = 0.23;
+    private static final double OVERLAY_SCALE_MIN = 0.1;
+    private static final double OVERLAY_SCALE_MAX = 1.0;
+    /** Unset marker of the geometry keys; must match {@code OverlayPlacement.AUTO}. */
+    private static final int GEOMETRY_AUTO = -1;
+
     private static final ModConfigSpec.IntValue MAX_DEPTH = BUILDER
             .comment("Maximum craft-tree depth. Deeper branches are cut off and their items are treated as raw materials.")
             .defineInRange("limits.maxDepth", CraftTreeBuilder.MAX_DEPTH, 1, 64);
@@ -50,8 +58,28 @@ public final class Config {
                     "the footer) and connector lines are scaled together, so the tree keeps its",
                     "proportions and simply gets smaller. Lower values fit more rows on screen but",
                     "make the glyphs and item icons softer, because both are bitmaps. A panel that is",
-                    "too wide for the screen is scaled down further instead of being clipped.")
-            .defineInRange("overlay.scale", 0.23, 0.1, 1.0);
+                    "too wide for the screen is scaled down further instead of being clipped.",
+                    "This is also what the mouse wheel changes while the overlay is being moved.")
+            .defineInRange("overlay.scale", OVERLAY_SCALE_DEFAULT, OVERLAY_SCALE_MIN, OVERLAY_SCALE_MAX);
+
+    private static final ModConfigSpec.IntValue OVERLAY_X = BUILDER
+            .comment("Overlay panel position and size, in GUI-scaled pixels — the same space the HUD",
+                    "uses, so the panel keeps its place whatever the resolution is.",
+                    "-1 means automatic: the panel is pinned to the top-left margin and sized from",
+                    "its content. The in-game layout editor writes these values; resetting the panel",
+                    "there, or deleting the four keys, gives the automatic layout back.",
+                    "A pinned panel keeps the configured text density and clips what does not fit",
+                    "instead of shrinking it further.")
+            .defineInRange("overlay.positionX", GEOMETRY_AUTO, GEOMETRY_AUTO, 32_000);
+
+    private static final ModConfigSpec.IntValue OVERLAY_Y = BUILDER
+            .defineInRange("overlay.positionY", GEOMETRY_AUTO, GEOMETRY_AUTO, 32_000);
+
+    private static final ModConfigSpec.IntValue OVERLAY_WIDTH = BUILDER
+            .defineInRange("overlay.width", GEOMETRY_AUTO, GEOMETRY_AUTO, 32_000);
+
+    private static final ModConfigSpec.IntValue OVERLAY_HEIGHT = BUILDER
+            .defineInRange("overlay.height", GEOMETRY_AUTO, GEOMETRY_AUTO, 32_000);
 
     private static final ModConfigSpec.IntValue MAX_AMOUNT = BUILDER
             .comment("Maximum amount a single planned recipe can request. The quantity popup",
@@ -118,6 +146,47 @@ public final class Config {
         return HIDE_ORES.get();
     }
 
+    /** Pinned overlay panel left/top in GUI-scaled pixels, or {@code -1} for automatic. */
+    public static int overlayX() {
+        return OVERLAY_X.get();
+    }
+
+    public static int overlayY() {
+        return OVERLAY_Y.get();
+    }
+
+    /** Pinned overlay panel width/height in GUI-scaled pixels, or {@code -1} to fit content. */
+    public static int overlayW() {
+        return OVERLAY_WIDTH.get();
+    }
+
+    public static int overlayH() {
+        return OVERLAY_HEIGHT.get();
+    }
+
+    /**
+     * Writes the geometry the layout editor produced and flushes it to disk,
+     * so a moved panel is still there after the game restarts.
+     */
+    public static void saveOverlayGeometry(int x, int y, int width, int height, double scale) {
+        OVERLAY_X.set(x);
+        OVERLAY_Y.set(y);
+        OVERLAY_WIDTH.set(width);
+        OVERLAY_HEIGHT.set(height);
+        OVERLAY_SCALE.set(scale);
+        SPEC.save();
+    }
+
+    /** Back to the automatic layout: margin, content-sized panel, default density. */
+    public static void resetOverlayGeometry() {
+        OVERLAY_X.set(GEOMETRY_AUTO);
+        OVERLAY_Y.set(GEOMETRY_AUTO);
+        OVERLAY_WIDTH.set(GEOMETRY_AUTO);
+        OVERLAY_HEIGHT.set(GEOMETRY_AUTO);
+        OVERLAY_SCALE.set(OVERLAY_SCALE_DEFAULT);
+        SPEC.save();
+    }
+
     /** Fires on load and on every in-game edit of the file. */
     @SubscribeEvent
     public static void onConfigChanged(ModConfigEvent event) {
@@ -125,6 +194,9 @@ public final class Config {
             return;
         }
         OverlayState.setVisible(overlayEnabled());
+        // The file carries the panel geometry: re-read it so an external edit
+        // wins over what the player dragged in the layout editor.
+        OverlayPlacement.reloadFromConfig();
         // An edited file wins over whatever the player toggled in the K window.
         PlannerState.resetHideOresOverride();
         // Depth/node limits changed: the existing tree may have been cut off.

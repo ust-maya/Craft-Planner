@@ -63,8 +63,29 @@ import net.neoforged.neoforge.client.event.RenderGuiEvent;
  * icons, text and connector lines shrink together and the tree keeps its
  * proportions. That is the only way to make the text smaller — Minecraft's
  * font is a 9 px bitmap and cannot be rendered below its native size without
- * scaling. The panel is additionally scaled down to fit the screen instead of
- * being clipped, so a wide tree never loses its right-hand text.</p>
+ * scaling. An auto-sized panel is additionally scaled down to fit the screen
+ * instead of being clipped, so a wide tree never loses its right-hand text.</p>
+ *
+ * <p>Where the panel lives, how large it is and how dense its text is are the
+ * player's, not the mod's: {@code O} ({@link Keybinds#EDIT_LAYOUT}) opens a
+ * layout editor — {@code OverlayLayoutScreen}, a transparent screen that frees
+ * the mouse from the game — in which the panel is dragged, its bottom-right
+ * corner resized, its text grown or shrunk with the {@code +} and {@code -}
+ * keys, and the result is committed to {@link OverlayPlacement} and the client
+ * config. The wheel keeps scrolling the plan in that mode, as it does in the
+ * HUD: a panel is arranged against the rows the player can actually see. A
+ * pinned panel then keeps the text size it was given and clips its content,
+ * because the player has already answered "it does not fit" by making the window
+ * larger.</p>
+ *
+ * <p>A machine pack's tree can be a hundred rows deep, so every row that has
+ * children carries a − / + marker that folds its branch away
+ * ({@link TreeCollapse}). Markers are drawn by the HUD but clicked through a
+ * screen — the editor above or the {@code K} list — because only there does the
+ * player have a cursor. Folding is a view decision: the hidden rows still count
+ * in the shopping list and the totals. Connector lines take one colour per
+ * planned item ({@link NodeColors#branch}) so a nested sub-assembly can be
+ * followed back to the goal it belongs to.</p>
  */
 @EventBusSubscriber(modid = Constants.MODID, value = Dist.CLIENT)
 public final class TreeOverlayRenderer {
@@ -77,6 +98,14 @@ public final class TreeOverlayRenderer {
     private static final int INDENT = 14;
     /** Left offset of the first icon; the rest is depth × {@link #INDENT}. */
     private static final int ICON_PAD = 2;
+    /**
+     * Gap between a row's icon and its label. Wide enough to hold the fold
+     * marker, and reserved whether or not the marker is drawn, so opening a
+     * screen never changes the panel width.
+     */
+    private static final int TEXT_GAP = 12;
+    /** Side of the fold marker box, in layout pixels. */
+    private static final int MARK = 9;
     /** Gap between the last tree row and the footer block. */
     private static final int FOOTER_GAP = 3;
     /** Gap between two shopping-list entries. */
@@ -110,7 +139,11 @@ public final class TreeOverlayRenderer {
      * the scrollable list (tree) layout instead of squeezing the text further.
      */
     private static final float MIN_READABLE_FIT = 0.6f;
-    private static final int CONNECTOR = NodeColors.EDGE;
+    /** Colours of the fold marker box: subtle when open, amber when folded. */
+    private static final int MARKER_BG = 0x50FFFFFF;
+    private static final int MARKER_FOLDED_BG = 0xC0E0A030;
+    private static final int MARKER_TEXT = NodeColors.TEXT;
+    private static final int MARKER_FOLDED_TEXT = 0xFF1E1200;
     private static final int PANEL_BG = 0xC0101010;
     private static final int PANEL_BORDER = 0x90606060;
     private static final int MUTED = 0x80C8C8C8;
@@ -124,11 +157,43 @@ public final class TreeOverlayRenderer {
      */
     private static TreeLayout cachedLayout;
     private static long cachedLayoutVersion = -1;
-    /** Last drawn panel rectangle, used to hit-test the mouse wheel. */
-    private static int lastPanelLeft;
-    private static int lastPanelTop;
-    private static int lastPanelW;
-    private static int lastPanelH;
+    /**
+     * Screen rectangles of the fold markers drawn last frame, in the same
+     * GUI-scaled pixels the panels are positioned in. The markers live in the
+     * HUD, which has no cursor of its own, so the screens that do — the layout
+     * editor and the recipe list — ask this list what was clicked.
+     */
+    private static final List<FoldHit> foldHits = new ArrayList<>();
+
+    /** A clickable fold marker: the branch it folds and where it was drawn. */
+    private record FoldHit(String path, int x, int y, int size) {
+        boolean contains(int mx, int my) {
+            return mx >= x && mx <= x + size && my >= y && my <= y + size;
+        }
+    }
+
+    /**
+     * Branch key of the fold marker under {@code (mx, my)}, or {@code null} when
+     * the point hits nothing.
+     */
+    public static String hitFold(int mx, int my) {
+        for (FoldHit hit : foldHits) {
+            if (hit.contains(mx, my)) {
+                return hit.path;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Scrolls the tree by {@code rows} rows; the exact clamp is applied when it
+     * is drawn. Exposed for the screens that own the mouse wheel — while one is
+     * open the HUD no longer receives it, and the layout editor needs the
+     * scroll to see the part of the plan it is sizing.
+     */
+    public static void scroll(int rows) {
+        treeScroll += rows;
+    }
 
     private TreeOverlayRenderer() {
     }
@@ -157,16 +222,20 @@ public final class TreeOverlayRenderer {
      * Mouse wheel scrolls the left-side tree while it is on screen and the
      * cursor is over the panel, so it does not steal scrolling elsewhere
      * (chat, inventories). The exact clamp is applied when the tree is drawn.
+     *
+     * <p>The layout editor runs in its own screen, which takes the wheel for the
+     * text size; scrolling a panel while it is being resized only gets in the
+     * way, so the tree stays put until editing is over.</p>
      */
     @SubscribeEvent
     public static void onMouseScrolled(InputEvent.MouseScrollingEvent event) {
-        if (!OverlayState.isVisible() || !"tree".equals(Config.overlayMode())) {
+        if (OverlayPlacement.editing()
+                || !OverlayState.isVisible() || !"tree".equals(Config.overlayMode())) {
             return;
         }
         double mx = event.getMouseX();
         double my = event.getMouseY();
-        if (mx < lastPanelLeft || mx > lastPanelLeft + lastPanelW
-                || my < lastPanelTop || my > lastPanelTop + lastPanelH) {
+        if (!OverlayPlacement.overPanel((int) mx, (int) my)) {
             return;
         }
         treeScroll += event.getScrollDeltaY() > 0 ? -1 : 1;
@@ -181,25 +250,53 @@ public final class TreeOverlayRenderer {
         final RecipeNode node;
         final int depth;
         final boolean last;
+        /** Fold key of this row, {@code null} when the node has no children. */
+        final String path;
+        /** Index of the planned item this row belongs to — colours its lines. */
+        final int branch;
         /** Row index of the last *direct* child (for the vertical spine). */
         int lastChildIndex;
+        /** Rows hidden because this branch is folded; 0 when expanded. */
+        int hiddenRows;
 
-        Row(RecipeNode node, int depth, boolean last) {
+        Row(RecipeNode node, int depth, boolean last, String path, int branch) {
             this.node = node;
             this.depth = depth;
             this.last = last;
+            this.path = path;
+            this.branch = branch;
             this.lastChildIndex = -1;
+        }
+
+        /** True when the row's own children are drawn below it. */
+        boolean expands(int index) {
+            return lastChildIndex > index;
         }
     }
 
-    private static int buildRows(RecipeNode node, int depth, boolean last, List<Row> out) {
+    /**
+     * Flattens the tree into rows, skipping the children of a folded branch.
+     *
+     * @return the row index the node was drawn at, so the parent can find the
+     *         last row of its children for the spine
+     */
+    private static int buildRows(RecipeNode node, int depth, boolean last, String parentPath,
+            int branch, List<Row> out) {
         int myIndex = out.size();
-        Row row = new Row(node, depth, last);
-        out.add(row);
         List<RecipeEdge> children = node.children();
+        // Only a node with children can be folded, so the allocating path key is
+        // built for exactly the rows that need one.
+        String path = children.isEmpty() ? null : pathOf(parentPath, node);
+        Row row = new Row(node, depth, last, path, branch);
+        out.add(row);
+        if (path != null && TreeCollapse.isFolded(path)) {
+            row.hiddenRows = countRows(children);
+            row.lastChildIndex = myIndex;
+            return myIndex;
+        }
         for (int i = 0; i < children.size(); i++) {
             int childIndex = buildRows(children.get(i).child(), depth + 1,
-                    i == children.size() - 1, out);
+                    i == children.size() - 1, path, branch, out);
             if (i == children.size() - 1) {
                 row.lastChildIndex = childIndex;
             }
@@ -208,6 +305,25 @@ public final class TreeOverlayRenderer {
             row.lastChildIndex = myIndex; // no children: spine not drawn
         }
         return myIndex;
+    }
+
+    /**
+     * Key of a branch: the chain of items leading to it. The engine merges equal
+     * ingredients into one child, so items are unique among siblings and the
+     * chain keeps pointing at the same branch across rebuilds — see
+     * {@link TreeCollapse}.
+     */
+    private static String pathOf(String parentPath, RecipeNode node) {
+        return parentPath == null ? node.item().toString() : parentPath + "/" + node.item();
+    }
+
+    /** Rows a folded branch would draw, children included. */
+    private static int countRows(List<RecipeEdge> children) {
+        int total = 0;
+        for (RecipeEdge edge : children) {
+            total += 1 + countRows(edge.child().children());
+        }
+        return total;
     }
 
     /** Left edge of the icon of a node at {@code depth}. */
@@ -238,11 +354,29 @@ public final class TreeOverlayRenderer {
     }
 
     /**
-     * Density of the overlay content ({@code overlay.scale}), clamped to the
-     * range the config allows so a hand-edited file cannot scale the UI away.
+     * Density of the overlay content: {@code overlay.scale} of the config, or
+     * the value the mouse wheel produced in the layout editor. Clamped to the
+     * range the config allows, so a hand-edited file cannot scale the UI away.
      */
     private static float overlayScale() {
-        return (float) Math.max(0.1, Math.min(1.0, Config.overlayScale()));
+        return (float) Math.max(0.1, Math.min(1.0, OverlayPlacement.density()));
+    }
+
+    /** Keeps a pinned panel on screen after a resolution change. */
+    private static int clampToScreen(int requested, int min, int max) {
+        if (requested == OverlayPlacement.AUTO) {
+            return min;
+        }
+        return max < min ? min : Math.max(min, Math.min(max, requested));
+    }
+
+    /** Cursor position in GUI-scaled pixels, the space the panel is drawn in. */
+    private static int mouseX(Minecraft mc) {
+        return (int) (mc.mouseHandler.xpos() / mc.getWindow().getGuiScale());
+    }
+
+    private static int mouseY(Minecraft mc) {
+        return (int) (mc.mouseHandler.ypos() / mc.getWindow().getGuiScale());
     }
 
     private static void renderTree(RenderGuiEvent.Post event, Minecraft mc, CraftGraph graph) {
@@ -251,8 +385,9 @@ public final class TreeOverlayRenderer {
 
         List<Row> rows = new ArrayList<>();
         List<RecipeNode> roots = graph.roots();
+        foldHits.clear();
         for (int i = 0; i < roots.size(); i++) {
-            buildRows(roots.get(i), 0, i == roots.size() - 1, rows);
+            buildRows(roots.get(i), 0, i == roots.size() - 1, null, i, rows);
         }
         if (rows.isEmpty()) {
             return;
@@ -264,11 +399,15 @@ public final class TreeOverlayRenderer {
         int screenH = mc.getWindow().getGuiScaledHeight();
         int availW = screenW - 2 * MARGIN;
         int availH = screenH - 2 * MARGIN;
+        int pinX = OverlayPlacement.x();
+        int pinY = OverlayPlacement.y();
+        int pinW = OverlayPlacement.w();
+        int pinH = OverlayPlacement.h();
 
         // Widest row decides the panel width (in layout pixels).
         int maxRowW = 0;
         for (Row r : rows) {
-            int w = iconX(r.depth) + ICON + 3 + font.width(label(r.node)) + 4;
+            int w = iconX(r.depth) + ICON + TEXT_GAP + font.width(rowLabel(r)) + 4;
             maxRowW = Math.max(maxRowW, w);
         }
         // The footer sets a floor for the width: the shopping list wraps, but
@@ -277,21 +416,37 @@ public final class TreeOverlayRenderer {
         int footerMinW = Math.max(widestEntry(availability, font),
                 font.width(keysHint("overlay.craftplanner.keys.short")));
 
-        int layoutW = Math.max(maxRowW, footerMinW) + 2 * PADDING;
-        float scale = Math.max(MIN_SCALE, Math.min(overlayScale(), (float) availW / layoutW));
-        int panelW = Math.min(availW, Math.max(1, Math.round(layoutW * scale)));
+        // Density comes first: an auto-sized panel shrinks to stay on screen,
+        // while a panel the player sized with the mouse keeps its text size and
+        // simply clips — resizing is the player's answer to "it does not fit".
+        float density = overlayScale();
+        int autoContentW = Math.max(maxRowW, footerMinW);
+        float scale;
+        int contentW;
+        int panelW;
+        if (pinW == OverlayPlacement.AUTO) {
+            scale = Math.max(MIN_SCALE,
+                    Math.min(density, (float) availW / (autoContentW + 2 * PADDING)));
+            contentW = autoContentW;
+            panelW = Math.min(availW, Math.max(1, Math.round((contentW + 2 * PADDING) * scale)));
+        } else {
+            scale = density;
+            panelW = Math.min(availW, pinW);
+            contentW = Math.max(24, Math.round(panelW / scale) - 2 * PADDING);
+        }
 
-        int contentW = layoutW - 2 * PADDING;
         Footer footer = buildFooter(availability, font, contentW,
                 hotkeyLine(font, contentW));
         int footerH = footer.height();
 
         int layoutH = TITLE_H + rows.size() * ROW_H + 2 * PADDING
                 + (footerH > 0 ? FOOTER_GAP + footerH : 0);
-        int panelH = Math.min(availH, Math.max(1, Math.round(layoutH * scale)));
+        int panelH = pinH == OverlayPlacement.AUTO
+                ? Math.min(availH, Math.max(1, Math.round(layoutH * scale)))
+                : Math.min(availH, pinH);
 
-        int left = MARGIN;
-        int top = MARGIN;
+        int left = clampToScreen(pinX, 0, screenW - panelW);
+        int top = clampToScreen(pinY, 0, screenH - panelH);
         int pad = Math.max(1, Math.round(PADDING * scale));
         int rowPx = Math.max(1, Math.round(ROW_H * scale));
         int footerPx = Math.round(footerH * scale);
@@ -334,23 +489,28 @@ public final class TreeOverlayRenderer {
 
         final int originY = 0;
 
-        // Connector lines first (so icons paint on top).
+        // Connector lines first (so icons paint on top). Every planned item gets
+        // its own colour: nested machine recipes cross the panel, and one grey
+        // web makes it impossible to say which sub-assembly belongs to which
+        // goal.
         for (int r = firstVisible; r <= lastVisible; r++) {
             Row row = rows.get(r);
             int yc = rowCenterY(r, treeScroll, originY);
+            int line = NodeColors.branch(row.branch);
 
             // Elbow running from the parent's spine into this row's icon.
             // Roots have no parent, hence no elbow and no stub to their left.
             if (row.depth > 0) {
-                graphics.hLine(spineX(row.depth - 1), iconX(row.depth) - 1, yc, CONNECTOR);
+                graphics.hLine(spineX(row.depth - 1), iconX(row.depth) - 1, yc, line);
             }
 
             // This row's own spine: it starts at the bottom edge of its icon,
-            // so the branch looks like it grows out of the icon.
-            if (!row.node.children().isEmpty()) {
+            // so the branch looks like it grows out of the icon. A folded branch
+            // draws none — there is nothing below it to connect.
+            if (row.expands(r)) {
                 graphics.vLine(spineX(row.depth),
                         iconBottomY(r, treeScroll, originY),
-                        rowCenterY(row.lastChildIndex, treeScroll, originY), CONNECTOR);
+                        rowCenterY(row.lastChildIndex, treeScroll, originY), line);
             }
         }
         // Keep the parent line flowing from the top edge when scrolled.
@@ -358,22 +518,36 @@ public final class TreeOverlayRenderer {
             Row r0 = rows.get(firstVisible);
             if (r0.depth > 0) {
                 graphics.vLine(spineX(r0.depth - 1), originY,
-                        rowCenterY(firstVisible, treeScroll, originY), CONNECTOR);
+                        rowCenterY(firstVisible, treeScroll, originY),
+                        NodeColors.branch(r0.branch));
             }
         }
 
-        // Icons + labels. The panel is sized from the widest row, so the room
-        // left of a label is exactly its own width — no row is ever trimmed.
+        // Icons + fold markers + labels. The panel is sized from the widest row,
+        // so the room left of a label is exactly its own width — no row is ever
+        // trimmed.
         int labelRoom = contentW - 4;
         for (int r = firstVisible; r <= lastVisible; r++) {
             Row row = rows.get(r);
             int yTop = rowTop(r, treeScroll, originY);
             int ix = iconX(row.depth);
-            int textX = ix + ICON + 3;
+            int markerX = ix + ICON + 1;
+            int textX = ix + ICON + TEXT_GAP;
+            int markerY = yTop + (ROW_H - MARK) / 2;
 
             graphics.renderItem(row.node.displayStack(), ix, yTop + (ROW_H - ICON) / 2);
+            if (row.path != null) {
+                boolean folded = row.hiddenRows > 0;
+                drawFoldMarker(graphics, font, markerX, markerY, folded);
+                // Recorded in screen pixels: the markers are HUD geometry, and
+                // the screens that receive clicks think in those.
+                foldHits.add(new FoldHit(row.path,
+                        contentLeft + Math.round(markerX * scale),
+                        contentTop + Math.round(markerY * scale),
+                        Math.max(6, Math.round(MARK * scale))));
+            }
 
-            String text = label(row.node);
+            String text = rowLabel(row);
             int room = labelRoom - textX;
             if (room > 0 && font.width(text) > room) {
                 text = trimToWidth(font, text, room);
@@ -407,14 +581,33 @@ public final class TreeOverlayRenderer {
             graphics.fill(barX, barY, barX + 2, barY + barH, 0x90A0A0A0);
         }
 
-        lastPanelLeft = left;
-        lastPanelTop = top;
-        lastPanelW = panelW;
-        lastPanelH = panelH;
+        OverlayPlacement.reportDrawn(left, top, panelW, panelH);
+        drawEditChrome(graphics, mc, font, left, top, panelW, panelH, screenW, screenH);
     }
 
     private static String label(RecipeNode node) {
         return node.item().name().getString() + " ×" + node.required();
+    }
+
+    /** The row label, with the number of rows a folded branch is hiding. */
+    private static String rowLabel(Row row) {
+        return row.hiddenRows > 0
+                ? label(row.node) + " (+" + row.hiddenRows + ")"
+                : label(row.node);
+    }
+
+    /**
+     * The − / + box of a branch that has children. Folded branches are painted
+     * amber so a plan with collapsed parts is obvious at a glance.
+     */
+    private static void drawFoldMarker(GuiGraphics graphics, Font font, int x, int y,
+            boolean folded) {
+        graphics.fill(x, y, x + MARK, y + MARK, folded ? MARKER_FOLDED_BG : MARKER_BG);
+        String glyph = folded ? "+" : "-";
+        int textX = x + (MARK - font.width(glyph)) / 2;
+        int textY = y + (MARK - font.lineHeight) / 2;
+        graphics.drawString(font, glyph, textX, textY,
+                folded ? MARKER_FOLDED_TEXT : MARKER_TEXT, false);
     }
 
     /**
@@ -433,14 +626,15 @@ public final class TreeOverlayRenderer {
 
     /**
      * A hotkey hint with the <em>current</em> key bindings substituted into its
-     * %1$s/%2$s/%3$s placeholders, so the footer keeps telling the truth after
-     * any rebind in Options → Controls.
+     * %1$s/%2$s/%3$s/%4$s placeholders, so the footer keeps telling the truth
+     * after any rebind in Options → Controls.
      */
     private static Component keysHint(String key) {
         return Component.translatable(key,
                 Keybinds.ADD_RECIPE.getKey().getDisplayName(),
                 Keybinds.TOGGLE_OVERLAY.getKey().getDisplayName(),
-                Keybinds.OPEN_RECIPES.getKey().getDisplayName());
+                Keybinds.OPEN_RECIPES.getKey().getDisplayName(),
+                Keybinds.EDIT_LAYOUT.getKey().getDisplayName());
     }
 
     // ---------------------------------------------------------------------
@@ -482,10 +676,16 @@ public final class TreeOverlayRenderer {
      * Builds the footer for a content width given in layout pixels. The
      * shopping list is sorted by shortage first, so what the player still has
      * to gather is what they see.
+     *
+     * <p>{@code keys} may be null — the hotkey line is dropped rather than cut
+     * when the panel is narrower than even the short hint, which the layout
+     * editor can produce by pinning the width or raising the text density. The
+     * width check has to test for that first, or {@code Font.width(null)}
+     * throws and takes the game down with it.</p>
      */
     private static Footer buildFooter(Map<ItemKey, Availability> availability, Font font,
             int contentW, Component keys) {
-        Footer footer = new Footer(font.width(keys) <= contentW ? keys : null);
+        Footer footer = new Footer(keys != null && font.width(keys) <= contentW ? keys : null);
         List<Map.Entry<ItemKey, Availability>> entries = shoppingList(availability);
         wrapShoppingList(footer, entries, font, contentW, 0);
         if (footer.hidden > 0) {
@@ -646,6 +846,60 @@ public final class TreeOverlayRenderer {
         graphics.fill(left + w - 1, top, left + w, top + h, PANEL_BORDER);
     }
 
+    // ---------------------------------------------------------------------
+    // Layout editor: move, resize and rescale the panel with the mouse
+    // ---------------------------------------------------------------------
+
+    private static final int EDIT_BORDER = 0xC0E0A030;
+    private static final int EDIT_GRIP = 0xE0E0A030;
+    private static final int EDIT_GRIP_HOVER = 0xE0FFE070;
+    private static final int EDIT_TEXT = 0xFFEEEEEE;
+
+    /**
+     * Editor chrome on top of the finished panel: the outline being dragged, the
+     * resize grip in its corner and the one-line instructions. The HUD keeps
+     * rendering behind {@code OverlayLayoutScreen}, which is where the input of
+     * that mode is handled.
+     */
+    private static void drawEditChrome(GuiGraphics graphics, Minecraft mc, Font font,
+            int left, int top, int panelW, int panelH, int screenW, int screenH) {
+        if (!OverlayPlacement.editing()) {
+            return;
+        }
+        graphics.fill(left, top, left + panelW, top + 1, EDIT_BORDER);
+        graphics.fill(left, top + panelH - 1, left + panelW, top + panelH, EDIT_BORDER);
+        graphics.fill(left, top, left + 1, top + panelH, EDIT_BORDER);
+        graphics.fill(left + panelW - 1, top, left + panelW, top + panelH, EDIT_BORDER);
+
+        int gripX = OverlayPlacement.gripLeft();
+        int gripY = OverlayPlacement.gripTop();
+        int gripSize = OverlayPlacement.gripSize();
+        boolean hovered = OverlayPlacement.overGrip(mouseX(mc), mouseY(mc));
+        int color = hovered ? EDIT_GRIP_HOVER : EDIT_GRIP;
+        graphics.fill(gripX, gripY, gripX + gripSize, gripY + gripSize, color);
+        graphics.fill(gripX + 1, gripY + 1, gripX + gripSize - 1, gripY + 2, 0xA0000000);
+        graphics.fill(gripX + 1, gripY + 4, gripX + gripSize - 1, gripY + 5, 0xA0000000);
+
+        // Trimmed to the screen, not to the panel: at a large GUI scale a
+        // translated hint can easily be wider than the whole window.
+        int maxTextW = Math.max(20, screenW - 8);
+        String first = trimToWidth(font, Component.translatable("overlay.craftplanner.edit.hint",
+                Integer.toString((int) Math.round(OverlayPlacement.liveDensity() * 100))).getString(), maxTextW);
+        String second = trimToWidth(font, Component.translatable("overlay.craftplanner.edit.hint2",
+                Keybinds.EDIT_LAYOUT.getKey().getDisplayName().getString()).getString(), maxTextW);
+        int widest = Math.max(font.width(first), font.width(second));
+        int textLeft = Math.max(2, Math.min(left + (panelW - widest) / 2, screenW - widest - 2));
+        // Below the panel when there is room, above it when the panel sits at the
+        // bottom edge — the instructions must never be cut by the screen.
+        int textTop = top + panelH + 8 + font.lineHeight <= screenH
+                ? top + panelH + 4
+                : top - 4 - (2 * font.lineHeight + 3);
+        graphics.fill(textLeft - 3, textTop - 2, textLeft + widest + 3,
+                textTop + 2 * font.lineHeight + 3, PANEL_BG);
+        graphics.drawString(font, first, textLeft, textTop, EDIT_TEXT, false);
+        graphics.drawString(font, second, textLeft, textTop + font.lineHeight + 2, EDIT_TEXT, false);
+    }
+
     /** Cuts text with an ellipsis so it fits the given pixel width. */
     private static String trimToWidth(Font font, String text, int maxWidth) {
         if (maxWidth <= 0 || font.width(text) <= maxWidth) {
@@ -685,6 +939,9 @@ public final class TreeOverlayRenderer {
     }
 
     private static void renderGraph(RenderGuiEvent.Post event, Minecraft mc, CraftGraph graph) {
+        // The node-link view has no fold markers; leave no clickable boxes of a
+        // previous tree frame behind.
+        foldHits.clear();
         TreeLayout layout = layoutFor(graph);
         if (layout.isEmpty()) {
             return;
@@ -694,12 +951,18 @@ public final class TreeOverlayRenderer {
         int screenHeight = mc.getWindow().getGuiScaledHeight();
         int maxPanelWidth = screenWidth - 2 * G_MARGIN;
         int maxPanelHeight = screenHeight - 2 * G_MARGIN;
+        int pinX = OverlayPlacement.x();
+        int pinY = OverlayPlacement.y();
+        int pinW = OverlayPlacement.w();
+        int pinH = OverlayPlacement.h();
 
         int contentWidth = layout.width();
         int contentHeight = layout.height();
         float density = overlayScale();
-        int panelWidth = Math.min(maxPanelWidth,
-                Math.max(1, Math.round(contentWidth * density)) + 2 * G_PADDING);
+        int panelWidth = pinW == OverlayPlacement.AUTO
+                ? Math.min(maxPanelWidth,
+                        Math.max(1, Math.round(contentWidth * density)) + 2 * G_PADDING)
+                : Math.min(maxPanelWidth, pinW);
 
         GuiGraphics graphics = event.getGuiGraphics();
         Font font = mc.font;
@@ -712,11 +975,13 @@ public final class TreeOverlayRenderer {
                 hotkeyLine(font, footerLayoutW));
         int footerSpace = Math.max(G_FOOTER_SPACE, Math.round(footer.height() * density) + 2);
 
-        int panelHeight = Math.min(maxPanelHeight,
-                Math.max(1, Math.round(contentHeight * density)) + 2 * G_PADDING
-                        + G_TITLE_SPACE + footerSpace);
-        int left = G_MARGIN;
-        int top = G_MARGIN;
+        int panelHeight = pinH == OverlayPlacement.AUTO
+                ? Math.min(maxPanelHeight,
+                        Math.max(1, Math.round(contentHeight * density)) + 2 * G_PADDING
+                                + G_TITLE_SPACE + footerSpace)
+                : Math.min(maxPanelHeight, pinH);
+        int left = clampToScreen(pinX, 0, screenWidth - panelWidth);
+        int top = clampToScreen(pinY, 0, screenHeight - panelHeight);
 
         float availableWidth = Math.max(1f, panelWidth - 2f * G_PADDING);
         float availableHeight = Math.max(1f, panelHeight - 2f * G_PADDING - G_TITLE_SPACE - footerSpace);
@@ -724,10 +989,15 @@ public final class TreeOverlayRenderer {
         // shrunk to fit the panel, so the two limits simply combine.
         float fit = Math.min(availableWidth / contentWidth, availableHeight / contentHeight);
         if (fit < MIN_READABLE_FIT) {
-            // Fitting the node-link view would mean squeezing the text below
-            // readability: fall back to the scrollable list layout instead.
-            renderTree(event, mc, graph);
-            return;
+            if (!OverlayPlacement.pinned()) {
+                // Fitting the node-link view would mean squeezing the text below
+                // readability: fall back to the scrollable list layout instead.
+                renderTree(event, mc, graph);
+                return;
+            }
+            // A panel the player sized on purpose keeps its text size and lets
+            // the graph clip — resizing was the point of pinning it.
+            fit = MIN_READABLE_FIT;
         }
         float scale = Math.max(0.05f, Math.min(density, fit));
 
@@ -763,6 +1033,9 @@ public final class TreeOverlayRenderer {
         pose.popPose();
         graphics.disableScissor();
         showTailTooltip(graphics, font, footer, mc, left + G_PADDING, footerTop, density);
+        OverlayPlacement.reportDrawn(left, top, panelWidth, panelHeight);
+        drawEditChrome(graphics, mc, font, left, top, panelWidth, panelHeight,
+                screenWidth, screenHeight);
     }
 
     /**
@@ -832,8 +1105,10 @@ public final class TreeOverlayRenderer {
         }
     }
 
+    /** Edges of the node-link view, in the colour of the goal they belong to. */
     private static void drawEdges(GuiGraphics graphics, TreeLayout layout) {
         for (PlacedNode parent : layout.nodes()) {
+            int line = NodeColors.branch(parent.branch());
             for (RecipeEdge edge : parent.node().children()) {
                 PlacedNode child = layout.of(edge.child());
                 if (child == null) {
@@ -845,9 +1120,9 @@ public final class TreeOverlayRenderer {
                 int endY = child.y();
                 int midY = startY + (endY - startY) / 2;
 
-                graphics.vLine(startX, startY, midY, NodeColors.EDGE);
-                graphics.hLine(Math.min(startX, endX), Math.max(startX, endX), midY, NodeColors.EDGE);
-                graphics.vLine(endX, midY, endY, NodeColors.EDGE);
+                graphics.vLine(startX, startY, midY, line);
+                graphics.hLine(Math.min(startX, endX), Math.max(startX, endX), midY, line);
+                graphics.vLine(endX, midY, endY, line);
             }
         }
     }
