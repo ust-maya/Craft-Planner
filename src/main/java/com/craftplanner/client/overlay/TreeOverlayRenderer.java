@@ -134,6 +134,15 @@ public final class TreeOverlayRenderer {
     private static final int SCROLL_HIT = 3;
 
     /**
+     * Edge of the recipe button at the end of a row, in layout pixels.
+     *
+     * <p>A 16 px icon with a pixel of air around it, which is the smallest square
+     * that still reads as a control rather than as a smudge at the label's edge —
+     * and it is fixed, so the column does not resize as a count changes.</p>
+     */
+    private static final int BADGE = 18;
+
+    /**
      * The fold toggles and recipe badges of the last drawn frame, in screen
      * pixels.
      *
@@ -347,9 +356,9 @@ public final class TreeOverlayRenderer {
         for (TreeRow<RecipeNode> row : rows) {
             widest = Math.max(widest, TreeMetrics.rowWidth(row.depth(), metrics.width(rowLabel(row))));
         }
-        // The badge column is right-aligned across every row, so it is added once
-        // to the widest row rather than to each of them.
-        widest += badgeLayoutW(rows, metrics);
+        // The recipe-button column is right-aligned across every row, so it is
+        // added once to the widest row rather than to each of them.
+        widest += badgeLayoutW(rows);
         cachedNaturalW = widest;
         cachedNaturalVersion = version;
         cachedNaturalFolds = folds;
@@ -358,39 +367,22 @@ public final class TreeOverlayRenderer {
     }
 
     /**
-     * Width the recipe-badge column needs, in layout pixels; zero when no row of
-     * the plan offers a choice, which is what keeps the column out of the panel
-     * entirely for a plan with nothing to pick.
+     * Width the recipe-button column needs, in layout pixels; zero when no row of
+     * the plan has a recipe to open, which is what keeps the column out of the
+     * panel entirely for a plan with nothing to pick.
      *
-     * <p>The badge is drawn inside the same scaled pose as the label, so a
-     * screen-pixel measurement is converted back to layout pixels before it is
-     * compared with {@link TreeMetrics#labelRoom}.</p>
+     * <p>The button is a square of fixed size rather than a measured string, so the
+     * column does not jump when a row's count changes from {@code 1/2} to
+     * {@code 1/12} — and it is in layout pixels because it is drawn inside the
+     * same scaled pose as the label it is subtracted from.</p>
      */
-    private static int badgeLayoutW(List<TreeRow<RecipeNode>> rows, TextMetrics metrics) {
-        int widest = 0;
+    private static int badgeLayoutW(List<TreeRow<RecipeNode>> rows) {
         for (TreeRow<RecipeNode> row : rows) {
-            String text = badgeText(row);
-            if (text != null) {
-                widest = Math.max(widest, metrics.width(text));
+            if (row.badge() != TreeRow.Badge.NONE) {
+                return BADGE + TreeMetrics.LABEL_GAP;
             }
         }
-        return widest == 0 ? 0
-                : (int) Math.ceil(widest / overlayScale()) + TreeMetrics.LABEL_GAP;
-    }
-
-    /**
-     * {@code 2/3 ▾} for a row that can be switched, {@code ▾} for the only
-     * recipe, {@code ✂} for a cut branch, {@code null} when there is nothing to
-     * choose. Shared with the window, so both surfaces name a row's choice the
-     * same way.
-     */
-    private static String badgeText(TreeRow<RecipeNode> row) {
-        return switch (row.badge()) {
-            case CUT -> "✂";
-            case MULTIPLE -> row.selected() + "/" + row.options() + " ▾";
-            case SINGLE -> "▾";
-            case NONE -> null;
-        };
+        return 0;
     }
 
     /** The label of a row: what it is, how much of it, and what a fold is hiding. */
@@ -537,7 +529,7 @@ public final class TreeOverlayRenderer {
             Map<ItemKey, Availability> availability) {
         int first = panel.scroll();
         int last = Math.min(rows.size() - 1, first + panel.visibleRows() - 1);
-        int badgeW = badgeLayoutW(rows, metrics);
+        int badgeW = badgeLayoutW(rows);
         int labelW = contentW - badgeW;
 
         for (int r = first; r <= last; r++) {
@@ -578,19 +570,10 @@ public final class TreeOverlayRenderer {
             // A state mark in the HUD — the HUD has no cursor — and a button in the
             // layout editor, which is the one place these are reachable. Either way
             // the hit box is the whole row height, so a click does not have to
-            // land on the few pixels of the caret itself. The plate is what makes
-            // it readable without hovering, which the bare caret never was.
+            // land on the few pixels of the mark itself.
             TreeMetrics.Rect plate = TreeMetrics.toggleRect(row.depth(), r, first);
-            UiShapes.chip(graphics, plate.x(), plate.y(), plate.w(), plate.h(),
-                    row.folded() ? UiPalette.MARKER_FOLDED_BG : UiPalette.CHIP_BG,
-                    row.folded() ? UiPalette.MARK_FOLDED : UiPalette.MARK_NEUTRAL);
-            int centreY = plate.y() + plate.h() / 2;
-            int ink = row.folded() ? UiPalette.MARKER_FOLDED_TEXT : UiPalette.MARK_NEUTRAL;
-            graphics.hLine(plate.x() + 2, plate.x() + plate.w() - 3, centreY, ink);
-            if (row.folded()) {
-                graphics.vLine(plate.x() + plate.w() / 2, plate.y() + 3,
-                        plate.y() + plate.h() - 4, ink);
-            }
+            UiShapes.foldButton(graphics, plate.x(), plate.y(), plate.w(), plate.h(),
+                    row.folded(), false);
             HOTSPOTS.add(new Hotspot(panel.contentLeft(), panel.contentTop(), panel.scale(),
                     row.path(), null, row.depth(), r, null));
         }
@@ -609,28 +592,29 @@ public final class TreeOverlayRenderer {
     }
 
     /**
-     * The recipe badge at the right end of a row's label, and the hit box that
-     * opens the picker for it. Every badge has a mark, so every badge has one:
-     * {@code badgeText} returning {@code null} is what keeps the column out of the
-     * panel for a plan that offers no choice at all.
+     * The recipe button at the right end of a row's label, and the hit box that
+     * opens the picker for it.
+     *
+     * <p>The same button the tree window draws, which is also why it survives the
+     * density: the panel is never drawn below {@link TreeMetrics#MIN_READABLE_SCALE},
+     * so a 16 px icon is never smaller than about ten pixels — while the
+     * {@code 1/4 ▾} it replaced was a string measured in font pixels and could
+     * promise nothing of the kind.</p>
      */
     private static void drawBadge(GuiGraphics graphics, Font font, TreeRow<RecipeNode> row, int r,
             int first, int labelW, int badgeW, TreePanel.Plan panel) {
-        String text = badgeText(row);
-        if (text == null || badgeW == 0) {
+        if (row.badge() == TreeRow.Badge.NONE || badgeW == 0) {
             return;
         }
-        int y = TreeMetrics.textY(r, first, font.lineHeight);
         int x = labelW + TreeMetrics.LABEL_GAP;
-        graphics.drawString(font, text, x, y, badgeInk(row), false);
+        int y = TreeMetrics.rowCenter(r, first) - BADGE / 2;
+        boolean switchable = row.badge() == TreeRow.Badge.MULTIPLE;
+        UiShapes.recipeButton(graphics, x, y, BADGE,
+                switchable ? UiPalette.FOLD_BTN_BG : UiPalette.CHIP_BG,
+                row.badge() == TreeRow.Badge.CUT ? UiPalette.MARK_CUT
+                        : switchable ? UiPalette.FOLD_BTN_BORDER : UiPalette.CHIP_BORDER);
         HOTSPOTS.add(new Hotspot(panel.contentLeft(), panel.contentTop(), panel.scale(),
-                null, row.node(), 0, 0,
-                new TreeMetrics.Rect(x - 1, y - 1, font.width(text) + 2, font.lineHeight + 2)));
-    }
-
-    /** Same ink the tree window gives a badge, so one plan reads the same in both places. */
-    private static int badgeInk(TreeRow<RecipeNode> row) {
-        return row.badge() == TreeRow.Badge.CUT ? UiPalette.MARK_CUT : NodeColors.branch(row.branch());
+                null, row.node(), 0, 0, new TreeMetrics.Rect(x, y, BADGE, BADGE)));
     }
 
     /** The row's label colour, from the same availability the shopping list uses. */

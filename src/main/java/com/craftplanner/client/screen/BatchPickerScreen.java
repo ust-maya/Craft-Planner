@@ -68,6 +68,8 @@ public final class BatchPickerScreen extends Screen {
     private static final int CONTROL_ROWS = 1;
     /** Air between a name and the column that follows it. */
     private static final int TEXT_GAP = 6;
+    /** Edge of the square recipe button, the tree's own size. */
+    private static final int RECIPE_BTN = 18;
     private static final int PANEL_BG = UiPalette.MODAL_PANEL_BG;
     private static final int PANEL_BORDER = UiPalette.MODAL_PANEL_BORDER;
     private static final int DIM = UiPalette.MODAL_SCRIM;
@@ -217,7 +219,7 @@ public final class BatchPickerScreen extends Screen {
     private int measure() {
         int widest = this.font.width(this.title);
         int amountW = this.font.width("×9999 (+9999)");
-        int counterW = this.font.width("9/9 ▾");
+        int counterW = RECIPE_BTN + TEXT_GAP + this.font.width("9/9");
         for (Line line : this.lines) {
             TreeRow<RecipeNode> row = this.plan.get(line.planRow());
             widest = Math.max(widest, TreeMetrics.labelX(depthOf(line))
@@ -470,14 +472,17 @@ public final class BatchPickerScreen extends Screen {
         int textY = y + (ROW_H - this.font.lineHeight) / 2;
 
         if (row.foldable()) {
-            drawFoldButton(graphics, contentLeft + TreeMetrics.toggleX(depth), y,
+            int height = ROW_H - 4;
+            UiShapes.foldButton(graphics, contentLeft + TreeMetrics.toggleX(depth),
+                    y + (ROW_H - height) / 2, TreeMetrics.TOGGLE_W, height,
                     row.folded(), aimed);
         }
         graphics.renderItem(node.displayStack(), contentLeft + TreeMetrics.iconX(depth),
                 y + (ROW_H - TreeMetrics.ICON) / 2);
 
-        String counter = line.head() ? counterOf(node) : "";
-        int counterW = counter.isEmpty() ? 0 : this.font.width(counter);
+        // A heading reserves room for the recipe button that ends it; the count that used
+        // to be printed there lives in the tooltip now.
+        int counterW = line.head() ? RECIPE_BTN : 0;
         String amount = "×" + row.amount() + (row.hiddenRows() > 0
                 ? " (+" + row.hiddenRows() + ")" : "");
         int nameX = contentLeft + TreeMetrics.labelX(depth);
@@ -491,9 +496,11 @@ public final class BatchPickerScreen extends Screen {
         graphics.drawString(this.font, amount,
                 contentRight - counterW - (counterW > 0 ? TEXT_GAP : 0) - this.font.width(amount),
                 textY, UiPalette.MUTED, false);
-        if (!counter.isEmpty()) {
-            graphics.drawString(this.font, counter, contentRight - counterW, textY,
-                    NodeColors.branch(row.branch()), false);
+        if (line.head()) {
+            // The heading ends in the same button the tree rows end in, so "this is
+            // the row you choose on" looks the same in both windows.
+            UiShapes.recipeButton(graphics, contentRight - RECIPE_BTN, y + (ROW_H - RECIPE_BTN) / 2,
+                    RECIPE_BTN, UiPalette.FOLD_BTN_BG, UiPalette.FOLD_BTN_BORDER);
         }
     }
 
@@ -522,7 +529,7 @@ public final class BatchPickerScreen extends Screen {
     private String counterOf(RecipeNode node) {
         int total = node.options().size();
         int index = Math.min(node.selectedRecipeIndex(), total - 1);
-        return (index + 1) + "/" + total + " ▾";
+        return (index + 1) + "/" + total + " " + node.item().name().getString();
     }
 
     /** The same availability colouring the plan's own tree uses. */
@@ -556,7 +563,7 @@ public final class BatchPickerScreen extends Screen {
                     : "screen.craftplanner.tree.collapse.tooltip");
         }
         if (this.ambiguous.contains(row.node().item())) {
-            return Component.translatable("screen.craftplanner.ambiguous.row.tooltip");
+            return Component.literal(counterOf(row.node()));
         }
         return null;
     }

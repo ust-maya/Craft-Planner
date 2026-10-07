@@ -658,21 +658,20 @@ public final class RecipePickerScreen extends Screen {
     }
 
     /**
-     * The fold plate of an option. It sits before the mark rather than replacing
-     * it: the mark says which recipe is in use, the plate says there is more to
-     * read, and neither answers the other.
+     * The fold plate of an option: the tree's own fold button, so a recipe and a
+     * branch open the same way.
+     *
+     * <p>It sits before the mark rather than replacing it: the mark says which
+     * recipe is in use, the plate says there is more to read, and neither answers
+     * the other.</p>
      */
     private void drawToggle(GuiGraphics graphics, int option, boolean hovered, int left, int y) {
         List<TreeRow<RecipeNode>> preview = previewOf(option);
         boolean empty = preview == null || preview.isEmpty();
         boolean open = !empty && this.expanded.contains(this.options.get(option).id());
-        int x = left + PAD;
-        int plateY = y + (ROW_H - TOGGLE_W) / 2;
-        UiShapes.chip(graphics, x, plateY, TOGGLE_W, TOGGLE_W,
-                open ? UiPalette.MARKER_FOLDED_BG : UiPalette.CHIP_BG,
-                hovered ? UiPalette.CHIP_HOVER_BORDER : UiPalette.CHIP_BORDER);
-        graphics.drawCenteredString(this.font, open ? "+" : "▸", x + TOGGLE_W / 2, plateY + 4,
-                open ? UiPalette.MARKER_FOLDED_TEXT : empty ? UiPalette.MARK_NEUTRAL : TEXT);
+        int height = ROW_H - 4;
+        UiShapes.foldButton(graphics, left + PAD, y + (ROW_H - height) / 2, TOGGLE_W, height,
+                open, hovered);
     }
 
     /** One row of an opened tree: guide, icon, name and how much of it is needed. */
