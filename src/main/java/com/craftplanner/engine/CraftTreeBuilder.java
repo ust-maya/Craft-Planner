@@ -19,6 +19,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.level.Level;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Recursive recipe-expansion engine (Stage 3).
@@ -49,10 +51,19 @@ import net.minecraft.world.level.Level;
  *       needed them, which then counts as raw material;</li>
  *   <li>base materials are never expanded either: planks end the branch as
  *       {@link NodeKind#RAW} (see {@link BaseMaterials}), so the tree stops at
- *       "4 oak planks" instead of walking on to the log they were sawn from.</li>
+ *       "4 oak planks" instead of walking on to the log they were sawn from;</li>
+ *   <li>a chain of machine hops that hands out one item for each one it takes,
+ *       all the way down to mined material, ends at the last item as
+ *       {@link NodeKind#RAW} ({@code recipes.cutRenameChains}, see
+ *       {@link RecipeIndex#isRenameCut}): glass is planned as "furnace: 1 sand",
+ *       not as stone -> cobblestone -> gravel -> sand. The row keeps its recipe
+ *       and its alternatives, so pinning a machine step expands the branch
+ *       again.</li>
  * </ul>
  */
 public final class CraftTreeBuilder {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("craftplanner/CraftTreeBuilder");
 
     /** Defaults of {@code limits.maxDepth} / {@code limits.maxNodes} in {@code Config}. */
     public static final int MAX_DEPTH = 24;
@@ -145,20 +156,30 @@ public final class CraftTreeBuilder {
         }
 
         RecipeHolder<?> chosen = chooseRecipe(options, preferences.get(node.item()), node.item(), path);
+        boolean pinned = isPinned(preferences.get(node.item()), options);
         // A null pick means every recipe for this item merely takes a storage
         // block apart (hay_block -> 9 wheat): the item is a base material and
-        // the branch ends here. The recipes are still recorded so the list
-        // screen can show which one applies and — when the item has several —
-        // let the player force one.
-        boolean baseMaterial = chosen == null;
-        if (baseMaterial) {
+        // the branch ends here. A rename cut means the same about a chain of
+        // machine hops that hand out one item for one, down to mined material
+        // (sand from gravel from cobblestone from stone). The recipes are still
+        // recorded so the list screen can show which one applies and — when the
+        // item has several — let the player force one, which ends the cut.
+        boolean renameCut = !pinned && index.isRenameCut(node.item());
+        boolean baseMaterial = chosen == null || renameCut;
+        if (chosen == null) {
+            // Nothing survived the ladder; the first candidate is still the true
+            // description of where the item comes from.
             chosen = options.get(0);
         }
+        if (Config.traceChoices()) {
+            trace(node.item(), options, chosen, baseMaterial, renameCut, path);
+        }
 
-        // Inputs are read through the type-aware layer, never through
-        // Recipe#getIngredients() directly: smithing recipes hold their slots in
-        // private fields and would come back empty (see RecipeIngredients).
-        NonNullList<Ingredient> ingredients = RecipeIngredients.of(chosen.value());
+        // Inputs are read through the index, which memoised them when it was
+        // built: smithing recipes keep their slots in private fields, machine
+        // recipes rebuild their list on every call, and neither must be parsed
+        // again per candidate per node — see RecipeIngredients and RecipeIndex.
+        NonNullList<Ingredient> ingredients = index.inputsOf(chosen);
 
         // A recipe the engine cannot read must not be recorded at all. Writing it
         // onto the node would leave the list screen offering a recipe button for a
@@ -208,7 +229,7 @@ public final class CraftTreeBuilder {
             if (IngredientUtil.isEmpty(ingredient)) {
                 continue;
             }
-            ItemStack representative = IngredientUtil.representative(ingredient);
+            ItemStack representative = index.cheapestStack(ingredient);
             if (representative == null) {
                 continue; // tag resolves to nothing — broken datapack, skip
             }
@@ -220,6 +241,10 @@ public final class CraftTreeBuilder {
                 // reads as "ingredients and results swapped" (the classic
                 // hay_block -> wheat -> hay_block storage loop). The branch
                 // simply ends here — the item is already counted above.
+                if (Config.traceChoices()) {
+                    LOGGER.debug("   drop ingredient {} of {} — back edge, already produced above",
+                            childKey, node.item());
+                }
                 continue;
             }
             if (filter.hides(childKey)) {
@@ -227,6 +252,10 @@ public final class CraftTreeBuilder {
                 // node out makes the branch end here, so the item that needed
                 // the ore becomes the raw material itself (redstone instead of
                 // deepslate redstone ore) and the shopping list stays useful.
+                if (Config.traceChoices()) {
+                    LOGGER.debug("   drop ingredient {} of {} — hidden by the ore filter",
+                            childKey, node.item());
+                }
                 continue;
             }
 
@@ -246,7 +275,7 @@ public final class CraftTreeBuilder {
             for (ItemKey candidate : IngredientUtil.keys(group.ingredient)) {
                 child.addCandidate(candidate);
             }
-            child.selectCandidate(0);
+            child.selectCandidate(index.cheapestCandidate(group.ingredient));
 
             node.addChild(child);
             nodeCount++;
@@ -270,24 +299,37 @@ public final class CraftTreeBuilder {
      * <p>Order of preference:
      * <ol>
      *   <li>an explicit player choice (recipe switch in the list screen);</li>
-     *   <li>a recipe that keeps at least one visible ingredient, neither
-     *       reverses a trivial pack/unpack pair nor consumes an item already on
-     *       the current path;</li>
-     *   <li>a recipe that at least keeps a visible ingredient and does not
-     *       reverse a pack/unpack pair;</li>
-     *   <li>a recipe that at least does not reverse a pack/unpack pair;</li>
+     *   <li>the cheapest candidate (the index sorts by unit cost) that launders
+     *       nothing, neither reverses a trivial pack/unpack pair nor consumes
+     *       an item already on the current path;</li>
+     *   <li>a recipe that launders nothing and does not consume a path item;</li>
+     *   <li>a recipe that does not reverse a pack/unpack pair and does not
+     *       consume a path item;</li>
      *   <li>a recipe that at least is not a bare "unpack" step;</li>
      *   <li>{@code null} — every recipe only takes a storage block apart, so
      *       the item has to be treated as a base material.</li>
      * </ol>
      *
-     * <p>Without steps 2–5 a storage block pair ({@code redstone_block <->
+     * <p>Steps 2–5 all keep the path test: a recipe whose ingredient is an
+     * ancestor of the node is the back edge of a loop, and the older ladder
+     * let it through on the second and third pass — the very hole through
+     * which a laundering chain re-entered the tree after the first pass
+     * rejected it.</p>
+     *
+     * <p>Without steps 2–6 a storage block pair ({@code redstone_block <->
      * redstone}, {@code hay_block <-> wheat}) is expanded in both directions at
-     * once: the engine picks the unpack recipe because crafting outranks
-     * smelting, and the matching pack recipe then walks straight back to the
-     * item it started from. The "keeps a visible ingredient" part keeps the
-     * ore filter from declaring a craftable item raw: when one of several
-     * recipes asks only for hidden resources, the next recipe wins.</p>
+     * once, and the matching pack recipe walks straight back to the item it
+     * started from.</p>
+     *
+     * <p>Visibility is deliberately <em>not</em> part of this ladder. An older
+     * revision preferred recipes with at least one unhidden ingredient, and
+     * with {@code filters.hideOres} that turned ore-born metals into a
+     * laundering chain ({@code ingot <- nuggets <- dust <- ring <- rod}): every
+     * honest recipe asks for hidden ore, so the ladder skipped to the first
+     * scrap-taking-apart recipe whose far end quietly returns to the very
+     * ingot. The honest recipe now stays chosen: its ore child is dropped and
+     * the item itself ends the branch as raw material — exactly the contract
+     * of the ore filter.</p>
      */
     private RecipeHolder<?> chooseRecipe(List<RecipeHolder<?>> options,
                                          ResourceLocation preferredId,
@@ -301,19 +343,19 @@ public final class CraftTreeBuilder {
             }
         }
         for (RecipeHolder<?> option : options) {
-            if (hasVisibleIngredient(option)
+            if (!launders(option, current)
                     && !reversesPackPair(option, current)
                     && !consumesPathItem(option, path)) {
                 return option;
             }
         }
         for (RecipeHolder<?> option : options) {
-            if (hasVisibleIngredient(option) && !reversesPackPair(option, current)) {
+            if (!launders(option, current) && !consumesPathItem(option, path)) {
                 return option;
             }
         }
         for (RecipeHolder<?> option : options) {
-            if (!reversesPackPair(option, current)) {
+            if (!reversesPackPair(option, current) && !consumesPathItem(option, path)) {
                 return option;
             }
         }
@@ -326,15 +368,70 @@ public final class CraftTreeBuilder {
     }
 
     /**
-     * True when at least one ingredient of the recipe survives the filter, i.e.
-     * the recipe would actually add something to the tree. Always true while
-     * the filter is off.
+     * True when the player pinned one of {@code options} for this item. A pinned
+     * recipe is the player's own answer to "where does this come from", so no
+     * automatic cut may hide the branch again.
      */
-    private boolean hasVisibleIngredient(RecipeHolder<?> recipe) {
-        for (Ingredient ingredient : RecipeIngredients.of(recipe.value())) {
-            ItemKey key = IngredientUtil.representativeKey(ingredient);
-            if (key != null && !filter.hides(key)) {
+    private static boolean isPinned(ResourceLocation preferredId, List<RecipeHolder<?>> options) {
+        if (preferredId == null) {
+            return false;
+        }
+        for (RecipeHolder<?> option : options) {
+            if (option.id().equals(preferredId)) {
                 return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * One block per expanded item for {@code debug.traceChoices}: the pick,
+     * every candidate with its rank cost and the three rejection tests, and
+     * the player's pinned choice when there is one. The tests are evaluated
+     * again here, so tracing costs what it says on the box — keep the switch
+     * off outside a debugging session.
+     */
+    private void trace(ItemKey current, List<RecipeHolder<?>> options,
+                       RecipeHolder<?> chosen, boolean baseMaterial, boolean renameCut,
+                       Set<ItemKey> path) {
+        ResourceLocation pinned = preferences.get(current);
+        LOGGER.debug("Craft Planner choice for {}{}: {}{} of {} recipes",
+                current, pinned == null ? "" : " (pinned to " + pinned + ")",
+                baseMaterial
+                        ? (renameCut ? "none — a machine chain that only renames raw material"
+                                : "none — treated as a base material")
+                        : chosen.id(),
+                baseMaterial ? " (still recorded as the row's recipe)" : "",
+                options.size());
+        for (RecipeHolder<?> option : options) {
+            LOGGER.debug("   {} cost={} laundered={} packReversal={} backEdge={}{}",
+                    option.id(), describeCost(option, current),
+                    launders(option, current), reversesPackPair(option, current),
+                    consumesPathItem(option, path),
+                    option == chosen ? "   <-- chosen" : "");
+        }
+    }
+
+    /** The sort key of one recipe in human terms: raw-material units and steps. */
+    private String describeCost(RecipeHolder<?> option, ItemKey produced) {
+        RecipeIndex.Cost cost = index.rankCost(option, produced);
+        if (cost.isUnknown()) {
+            return "unpriced";
+        }
+        return String.format("%.4f units / %d steps", cost.units(), cost.steps());
+    }
+
+    /**
+     * True when the recipe produces {@code current} by breaking down something
+     * whose own cheapest chain needs {@code current} — a scrap loop, not a
+     * supply chain. See {@link RecipeIndex#chainReaches}.
+     */
+    private boolean launders(RecipeHolder<?> recipe, ItemKey current) {
+        for (Ingredient ingredient : index.inputsOf(recipe)) {
+            for (ItemKey candidate : IngredientUtil.keys(ingredient)) {
+                if (index.chainReaches(candidate, current)) {
+                    return true;
+                }
             }
         }
         return false;
@@ -347,7 +444,7 @@ public final class CraftTreeBuilder {
      * {@code coal <-> coal_block} or {@code hay_block <-> wheat}.
      */
     private boolean reversesPackPair(RecipeHolder<?> recipe, ItemKey current) {
-        for (Ingredient ingredient : RecipeIngredients.of(recipe.value())) {
+        for (Ingredient ingredient : index.inputsOf(recipe)) {
             ItemKey ingredientKey = IngredientUtil.representativeKey(ingredient);
             if (ingredientKey == null) {
                 continue;
@@ -365,8 +462,8 @@ public final class CraftTreeBuilder {
     }
 
     /** True when one of {@code recipe}'s ingredients is exactly {@code item}. */
-    private static boolean consumes(RecipeHolder<?> recipe, ItemKey item) {
-        for (Ingredient ingredient : RecipeIngredients.of(recipe.value())) {
+    private boolean consumes(RecipeHolder<?> recipe, ItemKey item) {
+        for (Ingredient ingredient : index.inputsOf(recipe)) {
             ItemKey key = IngredientUtil.representativeKey(ingredient);
             if (key != null && key.equals(item)) {
                 return true;
@@ -376,11 +473,11 @@ public final class CraftTreeBuilder {
     }
 
     /** True when one of {@code recipe}'s ingredients is already on the path. */
-    private static boolean consumesPathItem(RecipeHolder<?> recipe, Set<ItemKey> path) {
+    private boolean consumesPathItem(RecipeHolder<?> recipe, Set<ItemKey> path) {
         if (path.isEmpty()) {
             return false;
         }
-        for (Ingredient ingredient : RecipeIngredients.of(recipe.value())) {
+        for (Ingredient ingredient : index.inputsOf(recipe)) {
             ItemKey key = IngredientUtil.representativeKey(ingredient);
             if (key != null && path.contains(key)) {
                 return true;
@@ -405,7 +502,7 @@ public final class CraftTreeBuilder {
             return false;
         }
         int inputs = 0;
-        for (Ingredient ingredient : RecipeIngredients.of(recipe.value())) {
+        for (Ingredient ingredient : index.inputsOf(recipe)) {
             if (IngredientUtil.isEmpty(ingredient)) {
                 continue;
             }

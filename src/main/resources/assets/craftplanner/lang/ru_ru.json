@@ -18,6 +18,13 @@
   "overlay.craftplanner.keys.short": "%1$s — добавить · %2$s — скрыть · %3$s — список · %4$s — окно",
   "overlay.craftplanner.edit.hint": "Мышь — двигать · Угол — размер · + - — текст %1$s%% · Колесо — прокрутка",
   "overlay.craftplanner.edit.hint2": "Клик по - / + в строке — свернуть ветку · Вне окна или %1$s — сохранить · ПКМ — сброс",
+  "overlay.craftplanner.choice.tooltip": "Рецепт %1$s/%2$s — нажмите, чтобы выбрать другой",
+  "gui.craftplanner.picker.title": "Как создать: %1$s",
+  "gui.craftplanner.picker.auto": "Как выбирает планировщик",
+  "gui.craftplanner.picker.auto.tooltip": "Забыть этот выбор и вернуться к рецепту, который планировщик считает предпочтительным",
+  "gui.craftplanner.recipe.output": "На выходе: %1$s ×%2$s",
+  "gui.craftplanner.recipe.needs": "Нужно: %1$s",
+  "gui.craftplanner.recipe.none": "Ничего не нужно",
   "overlay.craftplanner.legend.have": "есть",
   "overlay.craftplanner.legend.missing": "нет",
   "overlay.craftplanner.legend.intermediate": "сборка",
@@ -35,5 +42,10 @@
   "screen.craftplanner.list.clear.tooltip": "Удалить все запланированные рецепты (без возможности восстановления)",
   "screen.craftplanner.list.ores.hidden": "Руда: скрыта",
   "screen.craftplanner.list.ores.shown": "Руда: показана",
-  "screen.craftplanner.list.ores.tooltip": "Скрыть или показать блоки руды и сырьё из неё в дереве и списке сырья (параметр filters.hideOres)"
+  "screen.craftplanner.list.ores.tooltip": "Скрыть или показать блоки руды и сырьё из неё в дереве и списке сырья (параметр filters.hideOres)",
+  "screen.craftplanner.list.ambiguous": "Варианты (%1$s)",
+  "screen.craftplanner.list.ambiguous.tooltip": "Предметы, которые делаются несколькими способами — выбрать все сразу в одном окне",
+  "screen.craftplanner.ambiguous.title": "Выбор рецептов для дерева",
+  "screen.craftplanner.ambiguous.header": "Предметов с несколькими рецептами: %1$s",
+  "screen.craftplanner.ambiguous.row.tooltip": "Выбрать, каким рецептом планируется этот предмет"
 }

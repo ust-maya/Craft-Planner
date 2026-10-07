@@ -4,6 +4,9 @@ import com.craftplanner.client.OverlayState;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.overlay.OverlayPlacement;
 import com.craftplanner.engine.CraftTreeBuilder;
+import com.craftplanner.engine.RecipeIndex;
+import java.util.Arrays;
+import java.util.List;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -34,6 +37,16 @@ public final class Config {
     private static final double OVERLAY_SCALE_MAX = 1.0;
     /** Unset marker of the geometry keys; must match {@code OverlayPlacement.AUTO}. */
     private static final int GEOMETRY_AUTO = -1;
+
+    /**
+     * The ranks {@code recipes.moddedPriority} accepts; must match RecipeIndex's switch.
+     * A mutable list on purpose: while correcting an old config file that lacks the
+     * key, NeoForge calls {@code allowedValues.contains(null)}, and {@code List.of}
+     * throws NPE on that instead of returning false, crashing the whole mod load.
+     */
+    private static final String MODDED_PRIORITY_DEFAULT = "after_vanilla";
+    private static final List<String> MODDED_PRIORITIES =
+            Arrays.asList("after_vanilla", "before_smelting", "first");
 
     private static final ModConfigSpec.IntValue MAX_DEPTH = BUILDER
             .comment("Maximum craft-tree depth. Deeper branches are cut off and their items are treated as raw materials.")
@@ -81,6 +94,44 @@ public final class Config {
     private static final ModConfigSpec.IntValue OVERLAY_HEIGHT = BUILDER
             .defineInRange("overlay.height", GEOMETRY_AUTO, GEOMETRY_AUTO, 32_000);
 
+    private static final ModConfigSpec.BooleanValue OVERLAY_BADGES = BUILDER
+            .comment("Mark the rows of the tree that can be crafted in more than one way with a",
+                    "'used / total' badge, and let the player click it (in the layout editor or the",
+                    "K window) to choose. Switching this off leaves the tree as it was: the engine",
+                    "still picks the preferred recipe, there is just no affordance to change it.")
+            .define("overlay.badges", true);
+
+    private static final ModConfigSpec.BooleanValue INDEX_MODDED = BUILDER
+            .comment("Plan recipes of modded machines, not only the vanilla crafting table,",
+                    "furnace, stonecutter and smithing table. A modded recipe enters the plan when",
+                    "it has an item output and readable item inputs; types that keep their inputs",
+                    "in private fields produce nothing and stay out, so their items remain raw",
+                    "materials. Only item inputs are counted: energy, fluids and processing time of",
+                    "a machine are not part of the plan.")
+            .define("recipes.indexModded", true);
+
+    private static final ModConfigSpec.BooleanValue CUT_RENAME_CHAINS = BUILDER
+            .comment("End a tree branch at an item that machine recipes only rename: a chain of",
+                    "modded machine steps that each take one item and hand back one of the next,",
+                    "down to something nothing produces (Modern Industrialization grinding stone",
+                    "into cobblestone, cobblestone into gravel, gravel into sand). Such a chain",
+                    "spends exactly the material the last item costs, so the sand is treated as",
+                    "raw material and the plan shows the furnace step above it instead of four",
+                    "rows of grinding. Vanilla steps are never cut: a crafting table or a furnace",
+                    "row is what the plan is for. The cut row keeps its recipe badge, so a machine",
+                    "step can still be pinned from the picker — with overlay.badges off there is",
+                    "no badge to click and the cut cannot be undone from in game.")
+            .define("recipes.cutRenameChains", true);
+
+    private static final ModConfigSpec.ConfigValue<String> MODDED_PRIORITY = BUILDER
+            .comment("Where a machine recipe ranks against the vanilla ones when their ingredient",
+                    "costs tie: 'after_vanilla' (default) keeps the hand crafting table first and",
+                    "shows the machine as an alternative; 'before_smelting' puts machines ahead of",
+                    "the furnace group; 'first' lets a machine recipe outrank everything.",
+                    "The cheaper chain always wins regardless of this rank — see the recipe index.",
+                    "Changing this rebuilds the recipe index, so the tree re-expands on the next tick.")
+            .defineInList("recipes.moddedPriority", MODDED_PRIORITY_DEFAULT, MODDED_PRIORITIES);
+
     private static final ModConfigSpec.IntValue MAX_AMOUNT = BUILDER
             .comment("Maximum amount a single planned recipe can request. The quantity popup",
                     "clamps input to this value and flashes the field when the limit is hit.",
@@ -100,6 +151,14 @@ public final class Config {
                     "legacy forge: counterparts) and the *_ore naming, so modded ores are covered too.",
                     "The K window has a button that flips this switch in game without editing the file.")
             .define("filters.hideOres", true);
+
+    private static final ModConfigSpec.BooleanValue TRACE_CHOICES = BUILDER
+            .comment("Write every recipe decision of the tree into the debug log (run/client/logs/debug.log):",
+                    "for each expanded item — the chosen recipe, every candidate with its computed cost and",
+                    "the rejection reasons (laundering, pack reversal, back edge), and every ingredient the",
+                    "tree drops with the reason. Verbose; meant for finding out why a chain was picked,",
+                    "not for daily use.")
+            .define("debug.traceChoices", false);
 
     public static final ModConfigSpec SPEC = BUILDER.build();
 
@@ -123,6 +182,26 @@ public final class Config {
         return OVERLAY_MODE.get();
     }
 
+    /** Whether the tree marks items that have more than one recipe. */
+    public static boolean badgesEnabled() {
+        return OVERLAY_BADGES.get();
+    }
+
+    /** Whether recipes of modded machine types are planned at all. */
+    public static boolean indexModdedRecipes() {
+        return INDEX_MODDED.get();
+    }
+
+    /** Whether a chain of 1:1 machine hops is cut and its last item treated as raw material. */
+    public static boolean cutRenameChains() {
+        return CUT_RENAME_CHAINS.get();
+    }
+
+    /** Rank of a machine recipe against the vanilla ones: see {@code MODDED_PRIORITIES}. */
+    public static String moddedPriority() {
+        return MODDED_PRIORITY.get();
+    }
+
     /**
      * Density of the overlay content. {@code 1.0} = full-size item icons and
      * text; lower values scale icons, text and lines down together.
@@ -144,6 +223,11 @@ public final class Config {
     /** Whether ore-like resources are kept out of the tree by default. */
     public static boolean hideOres() {
         return HIDE_ORES.get();
+    }
+
+    /** Whether the engine logs every recipe decision and dropped ingredient. */
+    public static boolean traceChoices() {
+        return TRACE_CHOICES.get();
     }
 
     /** Pinned overlay panel left/top in GUI-scaled pixels, or {@code -1} for automatic. */
@@ -197,6 +281,10 @@ public final class Config {
         // The file carries the panel geometry: re-read it so an external edit
         // wins over what the player dragged in the layout editor.
         OverlayPlacement.reloadFromConfig();
+        // Which recipe types are indexable, and in what order, is decided while
+        // the index is built — the cached one has to go, or the change would
+        // only apply on the next world load.
+        RecipeIndex.invalidateCache();
         // An edited file wins over whatever the player toggled in the K window.
         PlannerState.resetHideOresOverride();
         // Depth/node limits changed: the existing tree may have been cut off.

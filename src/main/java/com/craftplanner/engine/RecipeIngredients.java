@@ -32,10 +32,12 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The class is a registry, not a per-instance object: providers are keyed by
  * {@link RecipeType} and the resolver is stateless, so it needs no injection.
- * {@link #register} is the extension point for modded recipe types — a type
- * with a registered provider also counts as supported by
- * {@link RecipeIndex#isSupported}, which keeps "the planner indexes this type"
- * and "the planner knows how to read its inputs" from drifting apart.</p>
+ * {@link #register} is the extension point for a recipe type whose inputs are
+ * <em>not</em> reachable through {@link Recipe#getIngredients()} — the vanilla
+ * smithing table being the example. While {@code recipes.indexModded} is on
+ * (the default) a modded type does not need a provider to be planned: it is
+ * indexed whenever its inputs read as non-empty, and this class is what reads
+ * them.</p>
  */
 public final class RecipeIngredients {
 
@@ -66,17 +68,13 @@ public final class RecipeIngredients {
     }
 
     /**
-     * Registers how the inputs of {@code type} are read. Registering a type also
-     * makes {@link RecipeIndex#isSupported} accept it, so a modded recipe type
-     * becomes plannable with this single call.
+     * Registers how the inputs of {@code type} are read. Without a provider the
+     * type is read through {@link Recipe#getIngredients()}, which is enough for
+     * most machine recipes; this is the escape hatch for the ones that keep
+     * their slots in their own fields.
      */
     public static void register(RecipeType<?> type, Provider provider) {
         PROVIDERS.put(type, provider);
-    }
-
-    /** True when the inputs of {@code type} need a provider to be readable. */
-    public static boolean hasProvider(RecipeType<?> type) {
-        return PROVIDERS.containsKey(type);
     }
 
     /**
@@ -94,13 +92,14 @@ public final class RecipeIngredients {
     public static NonNullList<Ingredient> of(Recipe<?> recipe) {
         try {
             Provider provider = PROVIDERS.get(recipe.getType());
+            NonNullList<Ingredient> base;
             if (provider != null) {
                 NonNullList<Ingredient> resolved = provider.ingredients(recipe);
-                if (resolved != null) {
-                    return resolved;
-                }
+                base = resolved != null ? resolved : recipe.getIngredients();
+            } else {
+                base = recipe.getIngredients();
             }
-            return recipe.getIngredients();
+            return multiplied(recipe, base);
         } catch (RuntimeException | LinkageError e) {
             if (WARNED.add(recipe.getType())) {
                 LOGGER.warn("Craft Planner could not read the ingredients of a {} recipe ({})."
@@ -109,6 +108,57 @@ public final class RecipeIngredients {
             }
             return NonNullList.create();
         }
+    }
+
+    /**
+     * Shapes that keep their per-operation count outside the ingredient list.
+     * Modern Industrialization's forge-hammer recipe is the known case:
+     * {@code getIngredients()} returns the single input slot, while the amount
+     * the hammer actually consumes lives in a separate {@code count()} field —
+     * {@code 2 copper ingots -> 1 double ingot} would otherwise read as 1:1,
+     * and the engine would see a chain that magically doubles copper.
+     */
+    private static NonNullList<Ingredient> multiplied(Recipe<?> recipe, NonNullList<Ingredient> ingredients) {
+        int count = externalCount(recipe);
+        if (count <= 1 || ingredients.size() != 1) {
+            return ingredients;
+        }
+        NonNullList<Ingredient> expanded = NonNullList.create();
+        for (int i = 0; i < count; i++) {
+            expanded.add(ingredients.get(0));
+        }
+        return expanded;
+    }
+
+    /** Cache of the reflection verdict per recipe class. */
+    private static final Map<Class<?>, Integer> COUNT_ACCESSORS = new HashMap<>();
+
+    /**
+     * The {@code count()} of a recognised hammer-shaped recipe, or 1 when the
+     * type has no external count. Reflection, because MI is a soft dependency:
+     * the class name is checked before the method, so a mod that merely has a
+     * {@code count()} method of a different shape is left alone.
+     */
+    private static int externalCount(Recipe<?> recipe) {
+        Class<?> cls = recipe.getClass();
+        Integer cached = COUNT_ACCESSORS.get(cls);
+        if (cached != null) {
+            return cached;
+        }
+        int count = 1;
+        if (cls.getName().startsWith("aztech.modern_industrialization.")
+                && cls.getSimpleName().toLowerCase().contains("hammer")) {
+            try {
+                Object raw = cls.getMethod("count").invoke(recipe);
+                if (raw instanceof Integer n && n > 1) {
+                    count = n;
+                }
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+                LOGGER.debug("Craft Planner could not read count() from a {} recipe.", cls, e);
+            }
+        }
+        COUNT_ACCESSORS.put(cls, count);
+        return count;
     }
 
     /**
