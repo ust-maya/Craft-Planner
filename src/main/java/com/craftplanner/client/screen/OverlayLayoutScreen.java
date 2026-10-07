@@ -25,10 +25,10 @@ import org.lwjgl.glfw.GLFW;
  * has to keep its own background undimmed for it to stay readable.</p>
  *
  * <p>Drag inside the panel to move it, its bottom-right corner to resize it,
- * press {@code +} or {@code -} for the text size and use the wheel to scroll the
- * plan. A click outside or {@code Esc} keeps the result — {@link #removed()}
- * commits it whichever way the screen is left — and right click restores the
- * automatic layout.</p>
+ * press {@code +} or {@code -} for the text size, and scroll the plan with the
+ * wheel or by holding the scrollbar at the panel's right edge. A click outside or
+ * {@code Esc} keeps the result — {@link #removed()} commits it whichever way the
+ * screen is left — and right click restores the automatic layout.</p>
  */
 public final class OverlayLayoutScreen extends Screen {
 
@@ -79,6 +79,12 @@ public final class OverlayLayoutScreen extends Screen {
         }
         if (OverlayPlacement.overGrip(mx, my)) {
             OverlayPlacement.startSize(mx, my);
+        } else if (TreeOverlayRenderer.grabScroll(mx, my)) {
+            // The scrollbar at the panel's right edge is HUD geometry as well, and
+            // takes the click before the panel body does: holding it scrolls the plan
+            // instead of dragging the window out from under the cursor. The resize
+            // corner above keeps priority where the two meet, or the bar would steal
+            // the grip it is drawn next to.
         } else if (OverlayPlacement.overPanel(mx, my)) {
             OverlayPlacement.startMove(mx, my);
         } else {
@@ -90,12 +96,17 @@ public final class OverlayLayoutScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (TreeOverlayRenderer.scrolling()) {
+            TreeOverlayRenderer.dragScroll((int) mouseY);
+            return true;
+        }
         OverlayPlacement.dragTo((int) mouseX, (int) mouseY, width, height);
         return true;
     }
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        TreeOverlayRenderer.releaseScroll();
         OverlayPlacement.endDrag();
         return true;
     }
@@ -134,6 +145,9 @@ public final class OverlayLayoutScreen extends Screen {
 
     @Override
     public void removed() {
+        // Leaving the editor mid-drag never comes with a release event, and a grab
+        // left over would move the plan instead of the panel in the next session.
+        TreeOverlayRenderer.releaseScroll();
         OverlayPlacement.applyAndSave();
         super.removed();
     }
