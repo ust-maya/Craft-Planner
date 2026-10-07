@@ -661,14 +661,26 @@ public final class TreeOverlayRenderer {
     }
 
     /**
-     * The {@code used / total ▾} badge of a row — its way of saying "this item
-     * can be made differently" and showing which way is picked — or {@code null}
-     * when the item has a single recipe or the badges are switched off.
+     * The badge of a row — its way of saying "this item can be made differently,
+     * or not made at all" and showing which way is picked — or {@code null} when
+     * the item has no recipe or the badges are switched off.
+     *
+     * <p>{@code used / total ▾} marks an item with several ways, {@code ✂} one the
+     * player cut the tree at, and a bare {@code ▾} an item with a single way: the
+     * picker that any of them opens also carries the cut switch, so the one-recipe
+     * leather of a book plan is reachable and not only the multi-recipe paper.</p>
      */
     private static String badgeText(Row row) {
-        return Config.badgesEnabled() && row.options > 1
-                ? row.selected + "/" + row.options + " ▾"
-                : null;
+        if (!Config.badgesEnabled()) {
+            return null;
+        }
+        if (PlannerState.isCut(row.node.item())) {
+            return "✂";
+        }
+        if (row.options > 1) {
+            return row.selected + "/" + row.options + " ▾";
+        }
+        return row.options == 1 ? "▾" : null;
     }
 
     /**
@@ -915,9 +927,10 @@ public final class TreeOverlayRenderer {
     }
 
     /**
-     * Hover feedback for a {@code 2/3 ▾} badge: the number alone does not say
-     * which recipe is in use or what the others would ask for, so the tooltip
-     * names the machine, the mod and the ingredients.
+     * Hover feedback for a badge: the number alone does not say which recipe is in
+     * use or what the others would ask for, so the tooltip names the machine, the
+     * mod and the ingredients, and leads with what clicking does — choose between
+     * several ways, open a branch the player cut, or end it.
      *
      * <p>Offered only while one of the planner's screens is open: with no screen
      * the game grabs the cursor and pins it to the centre of the window, and the
@@ -933,11 +946,19 @@ public final class TreeOverlayRenderer {
         if (node == null || node.recipe() == null) {
             return;
         }
+        int total = node.options().size();
+        Component head;
+        if (PlannerState.isCut(node.item())) {
+            head = Component.translatable("overlay.craftplanner.cut.tooltip");
+        } else if (total > 1) {
+            head = Component.translatable("overlay.craftplanner.choice.tooltip",
+                    Integer.toString(node.selectedRecipeIndex() + 1), Integer.toString(total));
+        } else {
+            head = Component.translatable("overlay.craftplanner.single.tooltip");
+        }
         List<Component> lines = new ArrayList<>(
                 RecipeLabel.describe(node.recipe(), mc.level.registryAccess()));
-        lines.add(0, Component.translatable("overlay.craftplanner.choice.tooltip",
-                Integer.toString(node.selectedRecipeIndex() + 1),
-                Integer.toString(node.alternatives().size() + 1)));
+        lines.add(0, head);
         showTooltip(graphics, font, mc, lines);
     }
 
