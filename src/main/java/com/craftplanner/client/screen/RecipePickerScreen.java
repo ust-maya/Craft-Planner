@@ -7,7 +7,6 @@ import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.RecipeNode;
-import com.mojang.blaze3d.vertex.PoseStack;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.gui.GuiGraphics;
@@ -33,12 +32,10 @@ import org.lwjgl.glfw.GLFW;
  * of each alternative are on screen. A picked recipe stays picked: it is un-pinned
  * only by taking the item out of the plan.</p>
  *
- * <p>Rows are drawn by this screen rather than by widgets, and through a scaled
- * pose. Minecraft's font is a 9 px bitmap with no smaller variant, so scaling is
- * the only way to bring the text down — the same mechanism the HUD panel uses to
- * keep a machine pack's tree on one screen. Because the rows are no longer
- * widgets, their hit boxes are computed here too, in screen pixels, from the same
- * geometry the drawing uses.</p>
+ * <p>Rows are drawn by this screen rather than by widgets — no vanilla widget
+ * offers the three-part composition a row needs (mark, machine icon, two-colour
+ * text) — so their hit boxes are computed here too, from the same geometry the
+ * drawing uses.</p>
  *
  * <p>Everything is resolved from the graph again on every change: the engine
  * re-expands the tree in place and recreates its child nodes, so holding on to a
@@ -48,18 +45,8 @@ import org.lwjgl.glfw.GLFW;
  */
 public final class RecipePickerScreen extends Screen {
 
-    /**
-     * Scale of the whole panel content: text and icons shrink together, so a row
-     * stays a picture of a machine with a line of text next to it.
-     */
-    private static final float SCALE = 0.8f;
-    /**
-     * A row in the scaled pose's own units — tall enough for one 16 px icon. The
-     * layout is written in these and only converted to screen pixels where fills
-     * and hit boxes are drawn.
-     */
-    private static final int ROW_L = 17;
-    private static final int ROW_H = Math.round(ROW_L * SCALE);
+    /** A row: one 16 px icon plus a pixel of air above and below. */
+    private static final int ROW_H = 17;
     /** Band above the rows that holds the title. */
     private static final int HEADER_H = 14;
     private static final int PAD = 5;
@@ -70,13 +57,13 @@ public final class RecipePickerScreen extends Screen {
      * vanilla bitmap, which is a full-width glyph, plus a pixel of air before the
      * icon starts.
      */
-    private static final int MARK_L = 12;
-    private static final int ICON_L = 16;
-    private static final int GAP_L = 3;
+    private static final int MARK_W = 12;
+    private static final int ICON_W = 16;
+    private static final int GAP = 3;
     /** Air kept between the cost and the machine that runs it. */
-    private static final int TEXT_GAP_L = 6;
+    private static final int TEXT_GAP = 6;
     /** A machine name narrower than this says less than the icon next to it. */
-    private static final int MIN_TAIL_L = 20;
+    private static final int MIN_TAIL = 20;
     /** Rows that are always there under the options: the cut switch and close. */
     private static final int CONTROL_ROWS = 2;
     private static final int PANEL_BG = UiPalette.MODAL_PANEL_BG;
@@ -97,7 +84,7 @@ public final class RecipePickerScreen extends Screen {
     private final Screen returnTo;
 
     private List<RecipeHolder<?>> options = List.of();
-    /** The same options as drawn rows, measured in the pose's own units. */
+    /** The same options as drawn rows. */
     private List<Option> rows = List.of();
     private int selected = -1;
     private int scroll;
@@ -193,23 +180,18 @@ public final class RecipePickerScreen extends Screen {
     }
 
     /**
-     * Width the panel needs: the worst row, measured in the pose's units and scaled
-     * down to the screen. The control rows are measured too, so the cut switch can
-     * never be the row the panel is too narrow for.
+     * Width the panel needs: the worst row. The control rows are measured too, so
+     * the cut switch can never be the row the panel is too narrow for.
      */
     private int measure() {
         int widest = this.font.width(this.title);
         for (Option row : this.rows) {
-            widest = Math.max(widest, MARK_L + ICON_L + GAP_L + this.font.width(row.cost())
-                    + TEXT_GAP_L + this.font.width("· " + row.machine()));
+            widest = Math.max(widest, MARK_W + ICON_W + GAP + this.font.width(row.cost())
+                    + TEXT_GAP + this.font.width("· " + row.machine()));
         }
-        widest = Math.max(widest, MARK_L + this.font.width(cutLabel()));
-        widest = Math.max(widest, MARK_L + this.font.width(tr("screen.craftplanner.list.close")));
-        // Two layout pixels of slack: the width is rounded to a whole screen pixel
-        // and the row reads it back by dividing, so the worst row would otherwise
-        // lose its last character to the rounding.
-        return Math.min(this.width - 2 * MARGIN,
-                Math.max(200, Math.round((widest + 2) * SCALE) + 2 * PAD));
+        widest = Math.max(widest, MARK_W + this.font.width(cutLabel()));
+        widest = Math.max(widest, MARK_W + this.font.width(tr("screen.craftplanner.list.close")));
+        return Math.min(this.width - 2 * MARGIN, Math.max(200, widest + 2 + 2 * PAD));
     }
 
     private static String cutLabel() {
@@ -380,21 +362,16 @@ public final class RecipePickerScreen extends Screen {
     }
 
     private void drawTitle(GuiGraphics graphics, int left, int top) {
-        int width = Math.round(this.font.width(this.title) * SCALE);
-        PoseStack pose = graphics.pose();
-        pose.pushPose();
-        pose.translate(left + (this.panelWidth - width) / 2f, top + 2, 0);
-        pose.scale(SCALE, SCALE, 1f);
-        graphics.drawString(this.font, this.title, 0, 0, TEXT, false);
-        pose.popPose();
+        graphics.drawString(this.font, this.title,
+                left + (this.panelWidth - this.font.width(this.title)) / 2, top + 2, TEXT, false);
     }
 
     /**
-     * One row: its highlight in screen pixels, then mark, icon and text through the
-     * scaled pose. The mark column and the icon gutter keep their room even when
-     * empty, so the text of every row starts at the same x — a machine the block
-     * lookup does not know leaves the gutter blank rather than shifting its line
-     * left out of alignment with the rows above it.
+     * One row: its highlight, then mark, icon and text. The mark column and the
+     * icon gutter keep their room even when empty, so the text of every row
+     * starts at the same x — a machine the block lookup does not know leaves the
+     * gutter blank rather than shifting its line left out of alignment with the
+     * rows above it.
      */
     private void drawRow(GuiGraphics graphics, ItemStack icon, String primary, String secondary,
             String mark, boolean gutter, boolean used, boolean hovered, int left, int y) {
@@ -404,17 +381,15 @@ public final class RecipePickerScreen extends Screen {
                     used ? ROW_SELECTED : ROW_HOVER);
         }
 
-        PoseStack pose = graphics.pose();
-        pose.pushPose();
-        pose.translate(left + PAD, y, 0);
-        pose.scale(SCALE, SCALE, 1f);
-        int textX = MARK_L + (gutter ? ICON_L + GAP_L : 0);
-        int textY = (ROW_L - this.font.lineHeight) / 2;
+        int bx = left + PAD;
+        int gutterW = MARK_W + (gutter ? ICON_W + GAP : 0);
+        int textX = bx + gutterW;
+        int textY = y + (ROW_H - this.font.lineHeight) / 2;
         if (!mark.isEmpty()) {
-            graphics.drawString(this.font, mark, 0, textY, TEXT, false);
+            graphics.drawString(this.font, mark, bx, textY, TEXT, false);
         }
         if (gutter && !icon.isEmpty()) {
-            graphics.renderItem(icon, MARK_L, (ROW_L - ICON_L) / 2);
+            graphics.renderItem(icon, bx + MARK_W, y + (ROW_H - ICON_W) / 2);
         }
 
         // The cost has the first claim on the row: two options are compared by what
@@ -423,12 +398,12 @@ public final class RecipePickerScreen extends Screen {
         // is the only thing saying which machine this is, so it is kept and drawn as
         // primary text. A tail too narrow to read is dropped whole rather than shown
         // as "· …", which carries no more information than the icon.
-        int room = (int) (inner / SCALE) - textX;
+        int room = inner - gutterW;
         String head = primary;
         String tail = secondary;
-        int tailRoom = room - Math.min(this.font.width(head), room) - TEXT_GAP_L;
+        int tailRoom = room - Math.min(this.font.width(head), room) - TEXT_GAP;
         if (!tail.isEmpty() && this.font.width(tail) > tailRoom) {
-            if (icon.isEmpty() || tailRoom >= MIN_TAIL_L) {
+            if (icon.isEmpty() || tailRoom >= MIN_TAIL) {
                 tail = RecipeListLayout.trimToWidth(this.font::width, tail,
                         Math.max(0, tailRoom));
             } else {
@@ -436,16 +411,15 @@ public final class RecipePickerScreen extends Screen {
             }
         }
         int headRoom = tail.isEmpty() ? room
-                : room - this.font.width(tail) - TEXT_GAP_L;
+                : room - this.font.width(tail) - TEXT_GAP;
         if (this.font.width(head) > headRoom) {
             head = RecipeListLayout.trimToWidth(this.font::width, head, Math.max(0, headRoom));
         }
         graphics.drawString(this.font, head, textX, textY, TEXT, false);
         if (!tail.isEmpty()) {
-            graphics.drawString(this.font, tail, textX + this.font.width(head) + TEXT_GAP_L,
+            graphics.drawString(this.font, tail, textX + this.font.width(head) + TEXT_GAP,
                     textY, icon.isEmpty() ? TEXT : MUTED, false);
         }
-        pose.popPose();
     }
 
     @Override

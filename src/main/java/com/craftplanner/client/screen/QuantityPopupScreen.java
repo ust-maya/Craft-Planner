@@ -125,14 +125,12 @@ public class QuantityPopupScreen extends Screen {
         addRenderableWidget(stepper("+10", stepX + 3 * (STEP_WIDTH + STEP_GAP), stepY, 10));
 
         int buttonsY = top + l.buttonY;
-        addRenderableWidget(Button.builder(Component.translatable(KEY_ADD),
-                button -> confirm())
-                .bounds(left + BUTTON_MARGIN, buttonsY, l.buttonWidth, BUTTON_HEIGHT)
-                .build());
-        addRenderableWidget(Button.builder(Component.translatable(KEY_CANCEL),
-                button -> onClose())
-                .bounds(left + l.panelWidth - l.buttonWidth - BUTTON_MARGIN, buttonsY, l.buttonWidth, BUTTON_HEIGHT)
-                .build());
+        addRenderableWidget(FitButton.create(left + BUTTON_MARGIN, buttonsY,
+                l.buttonWidth, BUTTON_HEIGHT, Component.translatable(KEY_ADD),
+                button -> confirm(), null));
+        addRenderableWidget(FitButton.create(left + l.panelWidth - l.buttonWidth - BUTTON_MARGIN,
+                buttonsY, l.buttonWidth, BUTTON_HEIGHT, Component.translatable(KEY_CANCEL),
+                button -> onClose(), null));
     }
 
     /** Measures the panel for the current texts. */
@@ -148,10 +146,8 @@ public class QuantityPopupScreen extends Screen {
     private Button stepper(String label, int x, int y, long delta) {
         // Shift multiplies the step by 10, matching the wheel behaviour the
         // hint promises (±1, Shift — ±10).
-        return Button.builder(Component.literal(label),
-                button -> step(hasShiftDown() ? delta * 10 : delta))
-                .bounds(x, y, STEP_WIDTH, STEP_HEIGHT)
-                .build();
+        return FitButton.create(x, y, STEP_WIDTH, STEP_HEIGHT, Component.literal(label),
+                button -> step(hasShiftDown() ? delta * 10 : delta), null);
     }
 
     private void onFieldChanged(String value) {

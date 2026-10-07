@@ -46,8 +46,8 @@ final class FitButton extends Button {
                 ? UiPalette.CHIP_HOVER_BORDER : UiPalette.CHIP_BORDER;
         UiShapes.chip(graphics, this.getX(), this.getY(), this.getWidth(), this.getHeight(),
                 background, border);
-        int textColor = this.active ? (this.isHovered() ? 0xFFFFFFFF : UiPalette.TEXT)
-                : 0xFF808080;
+        int textColor = this.active ? (this.isHovered() ? UiPalette.CHIP_TEXT_HOVER : UiPalette.TEXT)
+                : UiPalette.CHIP_TEXT_DISABLED;
         // AbstractButton holds no font field in 1.21.1 — its own renderWidget
         // resolves the instance font the same way.
         this.renderString(graphics, Minecraft.getInstance().font, textColor);
