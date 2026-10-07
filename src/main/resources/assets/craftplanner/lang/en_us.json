@@ -25,8 +25,6 @@
   "overlay.craftplanner.material.have": "In stock: %1$s",
   "overlay.craftplanner.material.missing": "Missing: %1$s",
   "gui.craftplanner.picker.title": "How to craft %1$s",
-  "gui.craftplanner.picker.auto": "Let the planner choose",
-  "gui.craftplanner.picker.auto.tooltip": "Forget this choice and go back to the recipe the planner prefers",
   "gui.craftplanner.picker.cut": "Cut the tree here",
   "gui.craftplanner.picker.cut.tooltip": "End the branch at this item: it stays in the plan as material to gather, and its own ingredients are no longer planned",
   "gui.craftplanner.picker.cut.on.tooltip": "The branch is cut, so this item counts as material to gather — click to let the planner expand its ingredients again",
@@ -56,5 +54,6 @@
   "screen.craftplanner.list.ambiguous.tooltip": "Items the tree can craft in more than one way — choose them all in one place",
   "screen.craftplanner.ambiguous.title": "Pick recipes for the tree",
   "screen.craftplanner.ambiguous.header": "%1$s items with more than one recipe",
+  "screen.craftplanner.ambiguous.empty": "Nothing to choose — every item in the plan has one recipe",
   "screen.craftplanner.ambiguous.row.tooltip": "Choose which recipe this item is planned with"
 }

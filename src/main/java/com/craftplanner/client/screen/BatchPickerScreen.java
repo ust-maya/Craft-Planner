@@ -1,6 +1,7 @@
 package com.craftplanner.client.screen;
 
 import com.craftplanner.client.PlannerState;
+import com.craftplanner.client.UiPalette;
 import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.RecipeNode;
 import java.util.ArrayList;
@@ -33,10 +34,10 @@ public final class BatchPickerScreen extends Screen {
     private static final int PAD = 6;
     /** Space in front of the row text, taken by the item icon. */
     private static final int ICON_W = 20;
-    private static final int PANEL_BG = 0xF0101010;
-    private static final int PANEL_BORDER = 0xFF404040;
-    private static final int DIM = 0xB0000000;
-    private static final int TEXT = 0xFFE0E0E0;
+    private static final int PANEL_BG = UiPalette.MODAL_PANEL_BG;
+    private static final int PANEL_BORDER = UiPalette.MODAL_PANEL_BORDER;
+    private static final int DIM = UiPalette.MODAL_SCRIM;
+    private static final int TEXT = UiPalette.TEXT;
 
     private final Screen returnTo;
     /** The ambiguous nodes as of the last rebuild, one per item. */
@@ -68,9 +69,11 @@ public final class BatchPickerScreen extends Screen {
     protected void init() {
         this.seenGraphVersion = PlannerState.graphVersion();
         this.rows = ambiguousNodes();
-        if (this.rows.isEmpty() || this.minecraft.level == null) {
-            // Nothing left to choose between (the plan changed, or the world
-            // went away): close instead of offering an empty box.
+        if (this.minecraft.level == null) {
+            // The world went away: nothing to choose in, so close. An empty
+            // row list stays open on purpose — the player clicked
+            // "Alternatives" and must be told there is nothing to choose,
+            // not watch the window flash shut.
             this.minecraft.setScreen(this.returnTo);
             return;
         }
@@ -80,12 +83,17 @@ public final class BatchPickerScreen extends Screen {
         int left = (this.width - this.panelWidth) / 2;
         int rowW = this.panelWidth - 2 * PAD - ICON_W;
         int y = top() + HEADER_H;
-        for (int i = 0; i < visibleRows(); i++) {
+        int shown = Math.max(0, Math.min(visibleRows(), this.rows.size() - this.scroll));
+        for (int i = 0; i < shown; i++) {
             RecipeNode node = this.rows.get(this.scroll + i);
             addRenderableWidget(FitButton.create(left + PAD + ICON_W, y, rowW, ROW_H - 2,
                     Component.literal(rowLabel(node)),
                     button -> this.minecraft.setScreen(new RecipePickerScreen(node.item(), this)),
                     Component.translatable("screen.craftplanner.ambiguous.row.tooltip")));
+            y += ROW_H;
+        }
+        if (this.rows.isEmpty()) {
+            // The message row render() paints in place of the list.
             y += ROW_H;
         }
         addRenderableWidget(FitButton.create(left + PAD + ICON_W, y + 3, rowW, ROW_H - 2,
@@ -160,9 +168,19 @@ public final class BatchPickerScreen extends Screen {
                 this.width / 2, top + 6, TEXT);
         super.render(graphics, mouseX, mouseY, partialTick);
 
+        if (this.rows.isEmpty()) {
+            String message = RecipeListLayout.trimToWidth(this.font::width,
+                    Component.translatable("screen.craftplanner.ambiguous.empty").getString(),
+                    this.panelWidth - 2 * PAD - ICON_W);
+            graphics.drawString(this.font, message,
+                    left + PAD + ICON_W,
+                    top + HEADER_H + (ROW_H - this.font.lineHeight) / 2, UiPalette.MUTED, false);
+            return;
+        }
         // Icons after the widgets: the button would paint over anything drawn
         // earlier in its row.
-        for (int i = 0; i < visibleRows(); i++) {
+        int shown = Math.max(0, Math.min(visibleRows(), this.rows.size() - this.scroll));
+        for (int i = 0; i < shown; i++) {
             RecipeNode node = this.rows.get(this.scroll + i);
             graphics.renderItem(node.displayStack(), left + PAD + 2, top + HEADER_H + i * ROW_H + 2);
         }

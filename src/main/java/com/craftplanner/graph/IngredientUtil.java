@@ -14,9 +14,13 @@ import net.minecraft.world.item.crafting.Ingredient;
  * Helpers around vanilla {@link Ingredient}: expansion to concrete stacks,
  * tag detection and representative-item selection.
  *
- * <p>Ingredients can describe several items at once (tag or explicit list).
- * The engine uses {@link #representative} for the default branch and keeps
- * {@link #keys} as the alternatives the player can switch to.</p>
+ * <p>Ingredients can describe several items at once (tag or explicit list), and
+ * two different items are picked from that list on purpose: the engine expands an
+ * ingredient to the <em>cheapest</em> item it accepts, because that is the plan the
+ * player wants, while {@link #representative} answers with the <em>first</em> one,
+ * which is what a readable label or a cycle check needs — a label must describe the
+ * recipe as written, not the plan it happens to feed. {@link #keys} keeps the
+ * alternatives the player can switch to.</p>
  */
 public final class IngredientUtil {
 

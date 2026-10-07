@@ -180,7 +180,7 @@ public final class CraftTreeBuilder {
         // hand ("I will gather the leather myself, do not plan rabbit hide"), and
         // it survives a pinned recipe — the player asked for it. The recipes are
         // still recorded so the list screen can show which one applies and — when
-        // the item has several — let the player force one, which ends the cut.
+        // the item has several — let the player force one of them.
         boolean cutHere = cuts.contains(node.item());
         boolean baseMaterial = chosen == null || cutHere;
         if (chosen == null) {
@@ -315,7 +315,7 @@ public final class CraftTreeBuilder {
      *
      * <p>Order of preference:
      * <ol>
-     *   <li>an explicit player choice (recipe switch in the list screen);</li>
+     *   <li>an explicit player choice (the recipe picked in the picker screen);</li>
      *   <li>the cheapest candidate (the index sorts by unit cost) that launders
      *       nothing, neither reverses a trivial pack/unpack pair nor consumes
      *       an item already on the current path;</li>
