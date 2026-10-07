@@ -1,5 +1,8 @@
 package com.craftplanner.client.screen;
 
+import com.craftplanner.client.UiPalette;
+import com.craftplanner.client.UiShapes;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -7,13 +10,14 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 
 /**
- * Vanilla button that trims its own label instead of scrolling it.
+ * The mod's button: a flat chip that trims its label instead of scrolling it.
  *
- * <p>{@code AbstractButton} keeps an over-long label inside the widget with a
- * scissor and animates it back and forth, which on a dense panel reads as "the
- * text does not fit". Cutting the label with an ellipsis first makes the
- * guarantee explicit: whatever width the layout ends up handing out, no label
- * can leave its button.</p>
+ * <p>Two deliberate departures from vanilla. The label is cut with an ellipsis
+ * first, because {@code AbstractButton} keeps an over-long label inside the
+ * widget with a scissor and animates it back and forth — on a dense panel that
+ * reads as "the text does not fit". And the chrome is the same flat plate the
+ * hand-drawn rows use, because the vanilla sprite button painted over these
+ * panels looked like it belonged to another mod.</p>
  */
 final class FitButton extends Button {
 
@@ -32,6 +36,21 @@ final class FitButton extends Button {
             button.setTooltip(Tooltip.create(tooltip));
         }
         return button;
+    }
+
+    @Override
+    public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        int background = !this.active ? UiPalette.CHIP_DISABLED
+                : this.isHovered() ? UiPalette.CHIP_HOVER_BG : UiPalette.CHIP_BG;
+        int border = this.isFocused() || (this.active && this.isHovered())
+                ? UiPalette.CHIP_HOVER_BORDER : UiPalette.CHIP_BORDER;
+        UiShapes.chip(graphics, this.getX(), this.getY(), this.getWidth(), this.getHeight(),
+                background, border);
+        int textColor = this.active ? (this.isHovered() ? 0xFFFFFFFF : UiPalette.TEXT)
+                : 0xFF808080;
+        // AbstractButton holds no font field in 1.21.1 — its own renderWidget
+        // resolves the instance font the same way.
+        this.renderString(graphics, Minecraft.getInstance().font, textColor);
     }
 
     @Override

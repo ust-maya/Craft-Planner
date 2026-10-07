@@ -4,6 +4,7 @@ import com.craftplanner.client.MachineNames;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
 import com.craftplanner.client.UiPalette;
+import com.craftplanner.client.UiShapes;
 import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.RecipeNode;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -325,13 +326,11 @@ public final class RecipePickerScreen extends Screen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         int left = panelLeft();
         int top = top();
-        int bottom = top + panelHeight();
         graphics.fill(0, 0, this.width, this.height, DIM);
-        graphics.fill(left, top, left + this.panelWidth, bottom, PANEL_BG);
-        graphics.fill(left, top, left + this.panelWidth, top + 1, PANEL_BORDER);
-        graphics.fill(left, bottom - 1, left + this.panelWidth, bottom, PANEL_BORDER);
-        graphics.fill(left, top, left + 1, bottom, PANEL_BORDER);
-        graphics.fill(left + this.panelWidth - 1, top, left + this.panelWidth, bottom, PANEL_BORDER);
+        UiShapes.panel(graphics, left, top, this.panelWidth, panelHeight(), PANEL_BG,
+                UiPalette.MODAL_BORDER_OUTER, PANEL_BORDER);
+        UiShapes.headerBand(graphics, left, top, this.panelWidth, HEADER_H - 3,
+                UiPalette.MODAL_HEADER_BG, UiPalette.ACCENT_LINE, PAD);
         drawTitle(graphics, left, top);
 
         int hover = hitRow(mouseX, mouseY);
@@ -355,8 +354,10 @@ public final class RecipePickerScreen extends Screen {
             y += ROW_H;
         }
         boolean cut = PlannerState.isCut(this.item);
+        // The cut switch wears the "in use" plate while it is ON: the amber
+        // state must read as a decision, not as a hovered row.
         drawRow(graphics, ItemStack.EMPTY, cutLabel(), "", cut ? "✔" : "", false,
-                false, shown == hover, left, y);
+                cut, shown == hover, left, y);
         y += ROW_H;
         drawRow(graphics, ItemStack.EMPTY, tr("screen.craftplanner.list.close"), "", "", false,
                 false, shown + 1 == hover, left, y);
@@ -371,7 +372,8 @@ public final class RecipePickerScreen extends Screen {
             int barH = Math.max(6, trackH * shown / this.options.size());
             int barY = trackTop + (trackH - barH) * this.scroll / hidden;
             int barX = left + this.panelWidth - 4;
-            graphics.fill(barX, barY, barX + 2, barY + barH, SCROLL);
+            graphics.fill(barX, trackTop, barX + 3, trackTop + trackH, UiPalette.SCROLL_TRACK);
+            graphics.fill(barX, barY, barX + 3, barY + barH, SCROLL);
         }
 
         super.render(graphics, mouseX, mouseY, partialTick);

@@ -3,6 +3,7 @@ package com.craftplanner.client.screen;
 import com.craftplanner.Config;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.UiPalette;
+import com.craftplanner.client.UiShapes;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -219,11 +220,11 @@ public class QuantityPopupScreen extends Screen {
         // Background first, widgets afterwards — the panel would otherwise be
         // painted over the steppers and the buttons.
         graphics.fill(0, 0, this.width, this.height, DIM);
-        graphics.fill(left, top, left + l.panelWidth, top + l.panelHeight, PANEL_BG);
-        graphics.fill(left, top, left + l.panelWidth, top + 1, PANEL_BORDER);
-        graphics.fill(left, top + l.panelHeight - 1, left + l.panelWidth, top + l.panelHeight, PANEL_BORDER);
-        graphics.fill(left, top, left + 1, top + l.panelHeight, PANEL_BORDER);
-        graphics.fill(left + l.panelWidth - 1, top, left + l.panelWidth, top + l.panelHeight, PANEL_BORDER);
+        UiShapes.panel(graphics, left, top, l.panelWidth, l.panelHeight, PANEL_BG,
+                UiPalette.MODAL_BORDER_OUTER, PANEL_BORDER);
+        // The band closes the title + icon header; the field row starts below it.
+        UiShapes.headerBand(graphics, left, top, l.panelWidth, FIELD_Y - 6,
+                UiPalette.MODAL_HEADER_BG, UiPalette.ACCENT_LINE, PAD);
 
         // Icon + item name, the name cut to the room the measured panel gives it.
         graphics.renderItem(this.stack, centerX + ICON_DX, top + HEADER_Y);
@@ -239,6 +240,10 @@ public class QuantityPopupScreen extends Screen {
         drawClampFlash(graphics);
 
         for (int i = 0; i < l.hintLines.size(); i++) {
+            if (i == 0) {
+                UiShapes.divider(graphics, left + PAD, left + l.panelWidth - PAD,
+                        top + HINT_Y - 4, UiPalette.SECTION_DIVIDER);
+            }
             graphics.drawCenteredString(font,
                     RecipeListLayout.trimToWidth(m, l.hintLines.get(i), innerW),
                     centerX, top + HINT_Y + i * RecipeListLayout.LINE_H, MUTED);
@@ -262,10 +267,7 @@ public class QuantityPopupScreen extends Screen {
         int y1 = this.amountField.getY() - 1;
         int x2 = this.amountField.getX() + this.amountField.getWidth() + 1;
         int y2 = this.amountField.getY() + this.amountField.getHeight() + 1;
-        graphics.fill(x1, y1, x2, y1 + 1, CLAMP_FLASH);
-        graphics.fill(x1, y2 - 1, x2, y2, CLAMP_FLASH);
-        graphics.fill(x1, y1, x1 + 1, y2, CLAMP_FLASH);
-        graphics.fill(x2 - 1, y1, x2, y2, CLAMP_FLASH);
+        UiShapes.ring(graphics, x1, y1, x2 - x1, y2 - y1, CLAMP_FLASH);
     }
 
     @Override

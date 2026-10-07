@@ -2,6 +2,7 @@ package com.craftplanner.client.screen;
 
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.UiPalette;
+import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.overlay.TreeCollapse;
 import com.craftplanner.client.overlay.TreeOverlayRenderer;
 import com.craftplanner.graph.RecipeNode;
@@ -283,17 +284,27 @@ public class RecipeListScreen extends Screen {
         // Background first, widgets afterwards — the panel would otherwise be
         // painted over the buttons.
         graphics.fill(0, 0, this.width, this.height, DIM);
-        graphics.fill(left, top, right, bottom, PANEL_BG);
-        graphics.fill(left, top, right, top + 1, PANEL_BORDER);
-        graphics.fill(left, bottom - 1, right, bottom, PANEL_BORDER);
-        graphics.fill(left, top, left + 1, bottom, PANEL_BORDER);
-        graphics.fill(right - 1, top, right, bottom, PANEL_BORDER);
+        UiShapes.panel(graphics, left, top, l.panelWidth, panelHeight(), PANEL_BG,
+                UiPalette.MODAL_BORDER_OUTER, PANEL_BORDER);
+        UiShapes.headerBand(graphics, left, top, l.panelWidth, RecipeListLayout.HEADER - 3,
+                UiPalette.MODAL_HEADER_BG, UiPalette.ACCENT_LINE, RecipeListLayout.PAD);
 
         for (int i = 0; i < visibleRows(); i++) {
             if ((this.scroll + i) % 2 == 1) {
                 int y = top + RecipeListLayout.HEADER + i * RecipeListLayout.ROW_HEIGHT;
-                graphics.fill(left + 1, y, right - 1, y + RecipeListLayout.ROW_HEIGHT, ROW_STRIPE);
+                graphics.fill(left + 2, y, right - 2, y + RecipeListLayout.ROW_HEIGHT, ROW_STRIPE);
             }
+        }
+
+        // The amber bar names the row under the cursor; the row itself has no
+        // hover fill because its buttons are widgets that paint later.
+        int hoverRow = (mouseY - (top + RecipeListLayout.HEADER)) / RecipeListLayout.ROW_HEIGHT;
+        if (hoverRow >= 0 && hoverRow < visibleRows()
+                && mouseX >= left && mouseX <= right
+                && mouseY >= top + RecipeListLayout.HEADER && mouseY < footerTop()) {
+            graphics.fill(left + 2, top + RecipeListLayout.HEADER + hoverRow * RecipeListLayout.ROW_HEIGHT,
+                    left + 4, top + RecipeListLayout.HEADER + (hoverRow + 1) * RecipeListLayout.ROW_HEIGHT,
+                    UiPalette.SELECT_BAR);
         }
 
         super.render(graphics, mouseX, mouseY, partialTick);
@@ -333,6 +344,7 @@ public class RecipeListScreen extends Screen {
             int trackHeight = visibleRows() * RecipeListLayout.ROW_HEIGHT;
             int barHeight = Math.max(8, trackHeight * visibleRows() / this.roots.size());
             int barY = trackTop + (trackHeight - barHeight) * this.scroll / maxScroll();
+            graphics.fill(right - 4, trackTop, right - 1, trackTop + trackHeight, UiPalette.SCROLL_TRACK);
             graphics.fill(right - 4, barY, right - 1, barY + barHeight, UiPalette.SCROLL_BAR);
         }
     }

@@ -7,6 +7,7 @@ import com.craftplanner.client.OverlayState;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
+import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.layout.PlacedNode;
 import com.craftplanner.client.layout.TreeLayout;
 import com.craftplanner.client.resource.Availability;
@@ -82,14 +83,16 @@ import net.neoforged.neoforge.client.event.RenderGuiEvent;
  * larger.</p>
  *
  * <p>A machine pack's tree can be a hundred rows deep, so every row that has
- * children carries a − / + marker that folds its branch away
- * ({@link TreeCollapse}). Markers are drawn by the HUD but clicked through a
- * screen — the editor above or the {@code K} list — because only there does the
- * player have a cursor; the scrollbar at the panel's right edge is grabbed the
- * same way. Folding is a view decision: the hidden rows still count
- * in the shopping list and the totals. Connector lines take one colour per
- * planned item ({@link NodeColors#branch}) so a nested sub-assembly can be
- * followed back to the goal it belongs to.</p>
+ * children carries a − / + chip that folds its branch away
+ * ({@link TreeCollapse}). Both the chips and the "this item can be crafted
+ * differently" badges live in a fixed-size rail on the panel's right edge —
+ * never in the scaled tree, where a 9 px glyph would shrink to two pixels —
+ * and they are clicked through a screen ({@code K} or {@code O}), because only
+ * there does the player have a cursor; the scrollbar is grabbed the same way.
+ * Folding is a view decision: the hidden rows still count in the shopping list
+ * and the totals. Connector lines take one colour per planned item
+ * ({@link NodeColors#branch}) so a nested sub-assembly can be followed back to
+ * the goal it belongs to.</p>
  */
 @EventBusSubscriber(modid = Constants.MODID, value = Dist.CLIENT)
 public final class TreeOverlayRenderer {
@@ -103,13 +106,11 @@ public final class TreeOverlayRenderer {
     /** Left offset of the first icon; the rest is depth × {@link #INDENT}. */
     private static final int ICON_PAD = 2;
     /**
-     * Gap between a row's icon and its label. Wide enough to hold the fold
-     * marker, and reserved whether or not the marker is drawn, so opening a
-     * screen never changes the panel width.
+     * Gap between a row's icon and its label. The fold and badge controls live
+     * in the screen-space rail now, so the label only needs breathing room —
+     * every pixel not spent on controls belongs to the text.
      */
-    private static final int TEXT_GAP = 12;
-    /** Side of the fold marker box, in layout pixels. */
-    private static final int MARK = 9;
+    private static final int TEXT_GAP = 4;
     /** Gap between the last tree row and the footer block. */
     private static final int FOOTER_GAP = 3;
     /** Gap between two shopping-list entries. */
@@ -143,11 +144,20 @@ public final class TreeOverlayRenderer {
      * the scrollable list (tree) layout instead of squeezing the text further.
      */
     private static final float MIN_READABLE_FIT = 0.6f;
-    /** Colours of the fold marker box: subtle when open, amber when folded. */
-    private static final int MARKER_BG = UiPalette.MARKER_BG;
+    /** Folded chips are painted amber so a plan with collapsed parts is obvious. */
     private static final int MARKER_FOLDED_BG = UiPalette.MARKER_FOLDED_BG;
-    private static final int MARKER_TEXT = NodeColors.TEXT;
     private static final int MARKER_FOLDED_TEXT = UiPalette.MARKER_FOLDED_TEXT;
+    /**
+     * Control rail geometry, in <em>screen</em> pixels: chips keep this size
+     * whatever the panel density, which is the whole point — the inline badges
+     * they replace were two pixels tall at the default scale.
+     */
+    private static final int CHIP_H = 11;
+    private static final int FOLD_CHIP_W = 11;
+    private static final int RAIL_GAP = 3;
+    private static final int CHIP_TEXT_PAD = 2;
+    /** Zone kept at the panel's right edge for the scrollbar track. */
+    private static final int SCROLL_ZONE = 5;
     private static final int PANEL_BG = UiPalette.HUD_PANEL_BG;
     private static final int PANEL_BORDER = UiPalette.HUD_PANEL_BORDER;
     private static final int MUTED = UiPalette.HUD_MUTED;
@@ -191,40 +201,52 @@ public final class TreeOverlayRenderer {
         }
     }
 
-    /** A clickable fold marker: the branch it folds and where it was drawn. */
+    /** A clickable fold chip: the branch it folds and where the plate was drawn. */
     private record FoldHit(String path, int x, int y, int size) {
-        boolean contains(int mx, int my) {
-            return mx >= x && mx <= x + size && my >= y && my <= y + size;
-        }
     }
 
     /**
-     * Branch key of the fold marker under {@code (mx, my)}, or {@code null} when
-     * the point hits nothing.
+     * Branch key of the fold chip under {@code (mx, my)}, or {@code null}.
+     * At small row pitches the chips stack tight, so the column is aimed by
+     * the <em>nearest</em> chip center, not by the first rectangle that
+     * happens to contain the point — a rect test there would let one click
+     * resolve to the wrong row.
      */
     public static String hitFold(int mx, int my) {
+        String best = null;
+        int bestDist = Integer.MAX_VALUE;
         for (FoldHit hit : foldHits) {
-            if (hit.contains(mx, my)) {
-                return hit.path;
+            if (mx < hit.x || mx > hit.x + hit.size) {
+                continue;
+            }
+            int dist = Math.abs(my - (hit.y + CHIP_H / 2));
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = hit.path;
             }
         }
-        return null;
+        return bestDist <= CHIP_H ? best : null;
     }
 
     /**
-     * The node whose badge is under {@code (mx, my)}, or {@code null}. The badge
-     * marks an item that more than one recipe produces, and the returned node is
-     * what the picker screen needs to list them — the node itself, because a
-     * badge only ever exists for a row that was drawn this frame.
+     * The node whose badge chip is under {@code (mx, my)}, or {@code null}.
+     * Same nearest-center rule as {@link #hitFold}: the picker must open for
+     * the row the cursor is closest to, even where two chips touch.
      */
     public static RecipeNode hitChoice(int mx, int my) {
-        for (int i = choiceHits.size() - 1; i >= 0; i--) {
-            ChoiceHit hit = choiceHits.get(i);
-            if (hit.contains(mx, my)) {
-                return hit.node();
+        RecipeNode best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (ChoiceHit hit : choiceHits) {
+            if (mx < hit.x || mx > hit.x + hit.w) {
+                continue;
+            }
+            int dist = Math.abs(my - (hit.y + hit.h / 2));
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = hit.node();
             }
         }
-        return null;
+        return bestDist <= CHIP_H ? best : null;
     }
 
     /** Where the last drawn frame put the scrollbar, {@code null} when the plan fits. */
@@ -519,16 +541,25 @@ public final class TreeOverlayRenderer {
         int pinW = OverlayPlacement.w();
         int pinH = OverlayPlacement.h();
 
-        // Widest row decides the panel width (in layout pixels). The badge has to
-        // be counted here too: it is drawn after the label, and a row measured
-        // without it would have the badge cut off by the panel edge.
+        // Widest row decides the panel width (in layout pixels). The control
+        // rail is measured here too, but in screen pixels and from ALL rows —
+        // sizing it from the visible ones would make the panel jitter while
+        // the player scrolls.
         int maxRowW = 0;
+        boolean hasFold = false;
+        int badgeColW = 0;
         for (Row r : rows) {
+            maxRowW = Math.max(maxRowW,
+                    iconX(r.depth) + ICON + TEXT_GAP + font.width(rowLabel(r)));
+            if (r.path != null) {
+                hasFold = true;
+            }
             String badge = badgeText(r);
-            int w = iconX(r.depth) + ICON + TEXT_GAP + font.width(rowLabel(r)) + 4
-                    + (badge == null ? 0 : 4 + font.width(badge));
-            maxRowW = Math.max(maxRowW, w);
+            if (badge != null) {
+                badgeColW = Math.max(badgeColW, font.width(badge));
+            }
         }
+        int railW = railWidth(hasFold, badgeColW);
         // The footer sets a floor for the width: the shopping list wraps, but
         // the hotkey line is a single line and has to fit — nothing is ever
         // cut or pushed outside the panel.
@@ -538,6 +569,8 @@ public final class TreeOverlayRenderer {
         // Density comes first: an auto-sized panel shrinks to stay on screen,
         // while a panel the player sized with the mouse keeps its text size and
         // simply clips — resizing is the player's answer to "it does not fit".
+        // The rail counts against the fit budget too, so a full-width panel
+        // never loses its chips to the screen edge.
         float density = overlayScale();
         int autoContentW = Math.max(maxRowW, footerMinW);
         float scale;
@@ -545,13 +578,14 @@ public final class TreeOverlayRenderer {
         int panelW;
         if (pinW == OverlayPlacement.AUTO) {
             scale = Math.max(MIN_SCALE,
-                    Math.min(density, (float) availW / (autoContentW + 2 * PADDING)));
+                    Math.min(density, (float) availW / (autoContentW + 2 * PADDING + railW)));
             contentW = autoContentW;
-            panelW = Math.min(availW, Math.max(1, Math.round((contentW + 2 * PADDING) * scale)));
+            panelW = Math.min(availW,
+                    Math.max(1, Math.round((contentW + 2 * PADDING) * scale)) + railW);
         } else {
             scale = density;
             panelW = Math.min(availW, pinW);
-            contentW = Math.max(24, Math.round(panelW / scale) - 2 * PADDING);
+            contentW = Math.max(24, Math.round((panelW - railW) / scale) - 2 * PADDING);
         }
 
         Footer footer = buildFooter(availability, font, contentW,
@@ -579,8 +613,18 @@ public final class TreeOverlayRenderer {
         int maxScroll = Math.max(0, rows.size() - visibleRows);
         treeScroll = Math.max(0, Math.min(treeScroll, maxScroll));
 
-        graphics.fill(left, top, left + panelW, top + panelH, PANEL_BG);
-        drawBorder(graphics, left, top, panelW, panelH);
+        UiShapes.panel(graphics, left, top, panelW, panelH, PANEL_BG,
+                UiPalette.HUD_BORDER_OUTER, PANEL_BORDER);
+        // Header band under the title line, closed by the shared accent
+        // underline. At small densities the whole header is a few pixels —
+        // below five there is nothing to band, and painting it would eat the
+        // first tree row.
+        if (contentTop - top >= 5) {
+            graphics.fill(left + 2, top + 2, left + panelW - 2, contentTop - 1,
+                    UiPalette.HUD_HEADER_BG);
+            graphics.fill(left + 2, contentTop - 1, left + panelW - 2, contentTop,
+                    UiPalette.HUD_ACCENT_LINE);
+        }
 
         PoseStack pose = graphics.pose();
 
@@ -644,65 +688,44 @@ public final class TreeOverlayRenderer {
             }
         }
 
-        // Icons + fold markers + labels. The panel is sized from the widest row,
-        // so the room left of a label is exactly its own width — no row is ever
-        // trimmed.
+        // Icons + labels. The fold and badge controls are NOT drawn here — they
+        // live in the screen-space rail below, where density cannot shrink them
+        // to two pixels. The panel is sized from the widest row, so the room
+        // left of a label is exactly its own width — no row is ever trimmed.
         int labelRoom = contentW - 4;
         for (int r = firstVisible; r <= lastVisible; r++) {
             Row row = rows.get(r);
             int yTop = rowTop(r, treeScroll, originY);
             int ix = iconX(row.depth);
-            int markerX = ix + ICON + 1;
             int textX = ix + ICON + TEXT_GAP;
-            int markerY = yTop + (ROW_H - MARK) / 2;
 
             graphics.renderItem(row.node.displayStack(), ix, yTop + (ROW_H - ICON) / 2);
-            if (row.path != null) {
-                boolean folded = row.hiddenRows > 0;
-                drawFoldMarker(graphics, font, markerX, markerY, folded);
-                // Recorded in screen pixels: the markers are HUD geometry, and
-                // the screens that receive clicks think in those.
-                foldHits.add(new FoldHit(row.path,
-                        contentLeft + Math.round(markerX * scale),
-                        contentTop + Math.round(markerY * scale),
-                        Math.max(6, Math.round(MARK * scale))));
-            }
 
             String text = rowLabel(row);
-            String badge = badgeText(row);
-            // The badge keeps its room even when nothing is left for the label: a
-            // cut-off "how many ways are there" is the information the player is
-            // shortest of, and a row that cannot fit both shows the badge alone.
-            int room = labelRoom - textX - (badge == null ? 0 : 4 + font.width(badge));
+            int room = labelRoom - textX;
             if (room <= 0) {
                 text = "";
             } else if (font.width(text) > room) {
                 text = trimToWidth(font, text, room);
             }
             int color = NodeColors.forNode(row.node, availability);
-            int textY = yTop + (ROW_H - font.lineHeight) / 2;
-            graphics.drawString(font, text, textX, textY, color, false);
-
-            if (badge != null) {
-                int badgeX = textX + font.width(text) + 4;
-                graphics.drawString(font, badge, badgeX, textY,
-                        NodeColors.branch(row.branch), false);
-                choiceHits.add(new ChoiceHit(row.node,
-                        contentLeft + Math.round(badgeX * scale),
-                        contentTop + Math.round(textY * scale),
-                        Math.max(6, Math.round(font.width(badge) * scale)),
-                        Math.max(6, Math.round(font.lineHeight * scale))));
-            }
+            graphics.drawString(font, text, textX, yTop + (ROW_H - font.lineHeight) / 2,
+                    color, false);
         }
 
         pose.popPose();
         graphics.disableScissor();
+
+        drawControlRail(graphics, mc, font, rows, left, panelW, contentLeft, contentTop,
+                contentBottom, firstVisible, lastVisible, rowPx, hasFold, badgeColW);
 
         showChoiceTooltip(graphics, mc, font);
 
         // Footer: own scaled pose, clipped to the panel, so neither the icons
         // nor the numbers can ever spill into the game view.
         if (footerH > 0) {
+            UiShapes.divider(graphics, left + 2, left + panelW - 2,
+                    footerTop - Math.max(1, gapPx / 2), UiPalette.HUD_SECTION_DIVIDER);
             graphics.enableScissor(left, footerTop, left + panelW, top + panelH - 1);
             pose.pushPose();
             pose.translate(left + pad, footerTop, 0);
@@ -720,12 +743,15 @@ public final class TreeOverlayRenderer {
             int trackH = contentBottom - contentTop;
             int barH = Math.max(8, trackH * visibleRows / rows.size());
             int barY = trackTop + (trackH - barH) * treeScroll / maxScroll;
-            int barX = left + panelW - 3;
+            int barX = left + panelW - 4;
+            // A quiet 3 px track makes the bar's existence obvious; the thumb
+            // on top brightens under the cursor.
+            graphics.fill(barX, trackTop, barX + 3, trackTop + trackH, UiPalette.SCROLL_TRACK);
             // Recorded in screen pixels for the screens that receive clicks.
             scrollTrack = new ScrollTrack(barX - SCROLL_HIT, trackTop,
-                    2 + 2 * SCROLL_HIT, trackH, barH, maxScroll);
+                    3 + 2 * SCROLL_HIT, trackH, barH, maxScroll);
             boolean hot = scrollGrab || scrollTrack.contains(mouseX(mc), mouseY(mc));
-            graphics.fill(barX, barY, barX + 2, barY + barH, hot ? SCROLL_BAR_HOT : SCROLL_BAR);
+            graphics.fill(barX, barY, barX + 3, barY + barH, hot ? SCROLL_BAR_HOT : SCROLL_BAR);
         }
 
         OverlayPlacement.reportDrawn(left, top, panelW, panelH);
@@ -803,18 +829,101 @@ public final class TreeOverlayRenderer {
         return row.options == 1 ? "▾" : null;
     }
 
+    /** Width of the control rail in screen pixels, including the scrollbar zone. */
+    private static int railWidth(boolean hasFold, int badgeColW) {
+        int width = SCROLL_ZONE + 1;
+        if (hasFold) {
+            width += FOLD_CHIP_W;
+        }
+        if (badgeColW > 0) {
+            width += (hasFold ? RAIL_GAP : 0) + badgeColW + 2 * CHIP_TEXT_PAD;
+        }
+        return width;
+    }
+
     /**
-     * The − / + box of a branch that has children. Folded branches are painted
-     * amber so a plan with collapsed parts is obvious at a glance.
+     * The control rail: fold − / + and recipe badges as fixed-size chips at the
+     * panel's right edge, drawn in screen space after the scaled tree so the
+     * controls keep a readable size at any density — the inline versions were
+     * two-pixel glyphs at the default scale. Backgrounds paint before glyphs:
+     * at a small row pitch adjacent chips touch, and no glyph may end up under
+     * a neighbouring plate. The plates are the hit boxes, recorded every frame
+     * for the screens that own the cursor, and a hovered chip lights its whole
+     * row because at a four-pixel pitch the chip alone does not say which
+     * label it belongs to.
      */
-    private static void drawFoldMarker(GuiGraphics graphics, Font font, int x, int y,
-            boolean folded) {
-        graphics.fill(x, y, x + MARK, y + MARK, folded ? MARKER_FOLDED_BG : MARKER_BG);
-        String glyph = folded ? "+" : "-";
-        int textX = x + (MARK - font.width(glyph)) / 2;
-        int textY = y + (MARK - font.lineHeight) / 2;
-        graphics.drawString(font, glyph, textX, textY,
-                folded ? MARKER_FOLDED_TEXT : MARKER_TEXT, false);
+    private static void drawControlRail(GuiGraphics graphics, Minecraft mc, Font font,
+            List<Row> rows, int left, int panelW, int contentLeft, int contentTop,
+            int contentBottom, int firstVisible, int lastVisible, int rowPx,
+            boolean hasFold, int badgeColW) {
+        foldHits.clear();
+        choiceHits.clear();
+        if (contentBottom - contentTop < CHIP_H) {
+            return; // too little panel to hold a whole chip
+        }
+        int badgeW = badgeColW + 2 * CHIP_TEXT_PAD;
+        int railRight = left + panelW - SCROLL_ZONE;
+        int badgeX = railRight - badgeW;
+        int foldX = badgeColW > 0 ? badgeX - RAIL_GAP - FOLD_CHIP_W : railRight - FOLD_CHIP_W;
+        int railLeft = hasFold ? foldX : (badgeColW > 0 ? badgeX : railRight);
+        int stripRight = railLeft - 2;
+        // Only a screen owns a real cursor; in the bare HUD the pointer is
+        // pinned to the centre and hover would light a random row.
+        boolean cursor = mc.screen != null;
+        int mx = mouseX(mc);
+        int my = mouseY(mc);
+
+        for (int pass = 0; pass < 2; pass++) {
+            for (int r = firstVisible; r <= lastVisible; r++) {
+                Row row = rows.get(r);
+                String badge = badgeText(row);
+                boolean fold = row.path != null;
+                if (!fold && badge == null) {
+                    continue;
+                }
+                int yc = contentTop + Math.round((r - treeScroll + 0.5f) * rowPx);
+                int cy = Math.max(contentTop, Math.min(contentBottom - CHIP_H, yc - CHIP_H / 2));
+                boolean folded = fold && row.hiddenRows > 0;
+                boolean foldHover = fold && cursor
+                        && mx >= foldX && mx <= foldX + FOLD_CHIP_W
+                        && my >= cy && my <= cy + CHIP_H;
+                boolean badgeHover = badge != null && cursor
+                        && mx >= badgeX && mx <= badgeX + badgeW
+                        && my >= cy && my <= cy + CHIP_H;
+                if (pass == 0) {
+                    if (foldHover || badgeHover) {
+                        graphics.fill(contentLeft, yc - rowPx / 2, stripRight,
+                                yc + rowPx / 2 + 1, UiPalette.MODAL_ROW_HOVER);
+                    }
+                    if (fold) {
+                        UiShapes.chip(graphics, foldX, cy, FOLD_CHIP_W, CHIP_H,
+                                folded ? MARKER_FOLDED_BG : (foldHover
+                                        ? UiPalette.CHIP_HOVER_BG : UiPalette.CHIP_BG),
+                                foldHover ? UiPalette.CHIP_HOVER_BORDER : UiPalette.CHIP_BORDER);
+                        foldHits.add(new FoldHit(row.path, foldX, cy, FOLD_CHIP_W));
+                    }
+                    if (badge != null) {
+                        UiShapes.chip(graphics, badgeX, cy, badgeW, CHIP_H,
+                                badgeHover ? UiPalette.CHIP_HOVER_BG : UiPalette.CHIP_BG,
+                                badgeHover ? UiPalette.CHIP_HOVER_BORDER : UiPalette.CHIP_BORDER);
+                        choiceHits.add(new ChoiceHit(row.node, badgeX, cy, badgeW, CHIP_H));
+                    }
+                } else {
+                    if (fold) {
+                        String glyph = folded ? "+" : "-";
+                        graphics.drawString(font, glyph,
+                                foldX + (FOLD_CHIP_W - font.width(glyph)) / 2,
+                                cy + (CHIP_H - font.lineHeight) / 2,
+                                folded ? MARKER_FOLDED_TEXT : NodeColors.TEXT, false);
+                    }
+                    if (badge != null) {
+                        graphics.drawString(font, badge, badgeX + CHIP_TEXT_PAD,
+                                cy + (CHIP_H - font.lineHeight) / 2,
+                                NodeColors.branch(row.branch), false);
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -1172,13 +1281,6 @@ public final class TreeOverlayRenderer {
         mc.screen.setTooltipForNextRenderPass(joined);
     }
 
-    private static void drawBorder(GuiGraphics graphics, int left, int top, int w, int h) {
-        graphics.fill(left, top, left + w, top + 1, PANEL_BORDER);
-        graphics.fill(left, top + h - 1, left + w, top + h, PANEL_BORDER);
-        graphics.fill(left, top, left + 1, top + h, PANEL_BORDER);
-        graphics.fill(left + w - 1, top, left + w, top + h, PANEL_BORDER);
-    }
-
     // ---------------------------------------------------------------------
     // Layout editor: move, resize and rescale the panel with the mouse
     // ---------------------------------------------------------------------
@@ -1199,19 +1301,17 @@ public final class TreeOverlayRenderer {
         if (!OverlayPlacement.editing()) {
             return;
         }
-        graphics.fill(left, top, left + panelW, top + 1, EDIT_BORDER);
-        graphics.fill(left, top + panelH - 1, left + panelW, top + panelH, EDIT_BORDER);
-        graphics.fill(left, top, left + 1, top + panelH, EDIT_BORDER);
-        graphics.fill(left + panelW - 1, top, left + panelW, top + panelH, EDIT_BORDER);
+        UiShapes.ring(graphics, left, top, panelW, panelH, EDIT_BORDER);
+        UiShapes.ring(graphics, left + 1, top + 1, panelW - 2, panelH - 2, EDIT_BORDER);
 
         int gripX = OverlayPlacement.gripLeft();
         int gripY = OverlayPlacement.gripTop();
         int gripSize = OverlayPlacement.gripSize();
         boolean hovered = OverlayPlacement.overGrip(mouseX(mc), mouseY(mc));
         int color = hovered ? EDIT_GRIP_HOVER : EDIT_GRIP;
-        graphics.fill(gripX, gripY, gripX + gripSize, gripY + gripSize, color);
-        graphics.fill(gripX + 1, gripY + 1, gripX + gripSize - 1, gripY + 2, 0xA0000000);
-        graphics.fill(gripX + 1, gripY + 4, gripX + gripSize - 1, gripY + 5, 0xA0000000);
+        UiShapes.chip(graphics, gripX, gripY, gripSize, gripSize, UiPalette.CHIP_BG, color);
+        graphics.fill(gripX + 2, gripY + 2, gripX + gripSize - 2, gripY + 3, color);
+        graphics.fill(gripX + 2, gripY + 4, gripX + gripSize - 3, gripY + 5, color);
 
         // Trimmed to the screen, not to the panel: at a large GUI scale a
         // translated hint can easily be wider than the whole window.
@@ -1227,8 +1327,8 @@ public final class TreeOverlayRenderer {
         int textTop = top + panelH + 8 + font.lineHeight <= screenH
                 ? top + panelH + 4
                 : top - 4 - (2 * font.lineHeight + 3);
-        graphics.fill(textLeft - 3, textTop - 2, textLeft + widest + 3,
-                textTop + 2 * font.lineHeight + 3, PANEL_BG);
+        UiShapes.chip(graphics, textLeft - 3, textTop - 2, widest + 6,
+                2 * font.lineHeight + 5, UiPalette.CHIP_BG, UiPalette.CHIP_BORDER);
         graphics.drawString(font, first, textLeft, textTop, EDIT_TEXT, false);
         graphics.drawString(font, second, textLeft, textTop + font.lineHeight + 2, EDIT_TEXT, false);
     }
@@ -1316,7 +1416,6 @@ public final class TreeOverlayRenderer {
                 : Math.min(maxPanelHeight, pinH);
         int left = clampToScreen(pinX, 0, screenWidth - panelWidth);
         int top = clampToScreen(pinY, 0, screenHeight - panelHeight);
-
         float availableWidth = Math.max(1f, panelWidth - 2f * G_PADDING);
         float availableHeight = Math.max(1f, panelHeight - 2f * G_PADDING - G_TITLE_SPACE - footerSpace);
         // Density decides how big a small graph is drawn; a large one is still
@@ -1335,11 +1434,13 @@ public final class TreeOverlayRenderer {
         }
         float scale = Math.max(0.05f, Math.min(density, fit));
 
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, PANEL_BG);
-        graphics.fill(left, top, left + panelWidth, top + 1, PANEL_BORDER);
-        graphics.fill(left, top + panelHeight - 1, left + panelWidth, top + panelHeight, PANEL_BORDER);
-        graphics.fill(left, top, left + 1, top + panelHeight, PANEL_BORDER);
-        graphics.fill(left + panelWidth - 1, top, left + panelWidth, top + panelHeight, PANEL_BORDER);
+        UiShapes.panel(graphics, left, top, panelWidth, panelHeight, PANEL_BG,
+                UiPalette.HUD_BORDER_OUTER, PANEL_BORDER);
+        int graphHeaderBottom = top + G_PADDING + G_TITLE_SPACE - 1;
+        graphics.fill(left + 2, top + 2, left + panelWidth - 2, graphHeaderBottom,
+                UiPalette.HUD_HEADER_BG);
+        graphics.fill(left + 2, graphHeaderBottom, left + panelWidth - 2, graphHeaderBottom + 1,
+                UiPalette.HUD_ACCENT_LINE);
 
         graphics.drawString(font,
                 Component.translatable("overlay.craftplanner.title"),
@@ -1359,6 +1460,8 @@ public final class TreeOverlayRenderer {
         graphics.disableScissor();
 
         int footerTop = top + panelHeight - footerSpace - 2;
+        UiShapes.divider(graphics, left + 2, left + panelWidth - 2,
+                footerTop - 2, UiPalette.HUD_SECTION_DIVIDER);
         graphics.enableScissor(left, footerTop, left + panelWidth, top + panelHeight - 1);
         pose.pushPose();
         pose.translate(left + G_PADDING, footerTop, 0);
@@ -1436,6 +1539,7 @@ public final class TreeOverlayRenderer {
         int x = left + panelWidth - G_PADDING - rowTotal;
         for (int i = from; i < to; i++) {
             graphics.fill(x, y, x + G_LEGEND_SQUARE, y + G_LEGEND_SQUARE, colors[i]);
+            UiShapes.ring(graphics, x, y, G_LEGEND_SQUARE, G_LEGEND_SQUARE, UiPalette.CHIP_BORDER);
             graphics.drawString(font, labels[i], x + G_LEGEND_SQUARE + 2, y, NodeColors.TEXT, false);
             x += itemW[i] + 6;
         }
