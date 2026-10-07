@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import net.minecraft.world.level.material.Fluid;
 
 /**
  * Container for all trees the player has added. Keeps the list of roots and
@@ -82,7 +83,7 @@ public final class CraftGraph {
     }
 
     private static RecipeNode find(RecipeNode node, ItemKey item) {
-        if (node.item().equals(item)) {
+        if (!node.isFluidRequirement() && node.item().equals(item)) {
             return node;
         }
         for (RecipeEdge edge : node.children()) {
@@ -109,8 +110,19 @@ public final class CraftGraph {
     public Map<ItemKey, Long> aggregateRequirements() {
         Map<ItemKey, Long> totals = new LinkedHashMap<>();
         forEachNode(node -> {
-            if (node.isLeaf()) {
+            if (!node.isFluidRequirement() && node.isLeaf()) {
                 totals.merge(node.item(), node.required(), CraftMath::saturatingAdd);
+            }
+        });
+        return totals;
+    }
+
+    /** Total required amount of each fluid, in millibuckets. */
+    public Map<Fluid, Long> aggregateFluidRequirements() {
+        Map<Fluid, Long> totals = new LinkedHashMap<>();
+        forEachNode(node -> {
+            if (node.isFluidRequirement() && node.isLeaf()) {
+                totals.merge(node.fluidRequirement(), node.required(), CraftMath::saturatingAdd);
             }
         });
         return totals;
@@ -119,7 +131,11 @@ public final class CraftGraph {
     /** Every distinct item used by the tree with its total demand. */
     public Map<ItemKey, Long> aggregateAll() {
         Map<ItemKey, Long> totals = new LinkedHashMap<>();
-        forEachNode(node -> totals.merge(node.item(), node.required(), CraftMath::saturatingAdd));
+        forEachNode(node -> {
+            if (!node.isFluidRequirement()) {
+                totals.merge(node.item(), node.required(), CraftMath::saturatingAdd);
+            }
+        });
         return totals;
     }
 

@@ -19,6 +19,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.material.Fluid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -203,7 +204,8 @@ public final class CraftTreeBuilder {
         // branch that never expands — a recipe with no result — so the item is
         // treated as raw material instead. The pick from a previous rebuild is
         // dropped with it, because the graph keeps its nodes across rebuilds.
-        if (!baseMaterial && ingredients.isEmpty()) {
+        List<RecipeFluids.Requirement> fluidInputs = index.fluidInputsOf(chosen);
+        if (!baseMaterial && ingredients.isEmpty() && fluidInputs.isEmpty()) {
             node.clearRecipe();
             node.clearAlternatives();
             markTerminal(node, NodeKind.RAW);
@@ -298,6 +300,20 @@ public final class CraftTreeBuilder {
             nodeCount++;
             children++;
             expand(child, path);
+        }
+
+        // Fluid ingredients have no player inventory source in the planner yet,
+        // so they are explicit gather-only leaves rather than expandable graph
+        // resources. Repeated tanks for the same fluid are combined in mB.
+        Map<Fluid, Long> groupedFluids = new LinkedHashMap<>();
+        for (RecipeFluids.Requirement requirement : fluidInputs) {
+            groupedFluids.merge(requirement.fluid(), requirement.amount(), CraftMath::saturatingAdd);
+        }
+        for (Map.Entry<Fluid, Long> entry : groupedFluids.entrySet()) {
+            long amount = CraftMath.saturatingMul(crafts, entry.getValue());
+            node.addChild(RecipeNode.fluidRequirement(entry.getKey(), amount, node.depth() + 1));
+            nodeCount++;
+            children++;
         }
         path.remove(node.item());
 

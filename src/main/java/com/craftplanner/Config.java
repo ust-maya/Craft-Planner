@@ -115,10 +115,10 @@ public final class Config {
     private static final ModConfigSpec.BooleanValue INDEX_MODDED = BUILDER
             .comment("Plan recipes of modded machines, not only the vanilla crafting table,",
                     "furnace, stonecutter and smithing table. A modded recipe enters the plan when",
-                    "it has an item output and readable item inputs; types that keep their inputs",
-                    "in private fields produce nothing and stay out, so their items remain raw",
-                    "materials. Only item inputs are counted: energy, fluids and processing time of",
-                    "a machine are not part of the plan.")
+                    "it has an item output and readable item or recognized fluid inputs; types that",
+                    "keep their inputs in private fields produce nothing and stay out, so their items",
+                    "remain raw materials. Fluid inputs are shown in the tree, but only item inputs",
+                    "affect recipe ranking; energy and processing time are not planned.")
             .define("recipes.indexModded", true);
 
     private static final ModConfigSpec.ConfigValue<String> MODDED_PRIORITY = BUILDER

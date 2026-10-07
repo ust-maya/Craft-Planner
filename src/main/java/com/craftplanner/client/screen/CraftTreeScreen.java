@@ -155,7 +155,8 @@ public final class CraftTreeScreen extends Screen {
             anyChoice |= row.badge() != TreeRow.Badge.NONE;
         }
         this.nameW = Math.min(MAX_NAME_W, Math.max(MIN_NAME_W, widestName + 2));
-        this.amountW = Math.max(metrics.width(Long.toString(maxAmount)) + 8, metrics.width("×9999"));
+        this.amountW = Math.max(metrics.width(Long.toString(maxAmount) + " mB") + 8,
+            metrics.width("×9999"));
         // The recipe column is a square button, so it is measured rather than
         // fitted to text — and it is reserved whenever any row has a recipe at all,
         // not only when some row offers a choice, so the column a player learns to
@@ -372,7 +373,7 @@ public final class CraftTreeScreen extends Screen {
         graphics.drawString(this.font, name, nameX, textY(r), ink, false);
 
         if (this.amountW > 0) {
-            String amount = "×" + row.amount()
+                String amount = row.node().amountLabel()
                     + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
             String shown = RecipeListLayout.trimToWidth(this.font::width, amount, this.amountW);
             graphics.drawString(this.font, shown, nameRightEdge() - this.font.width(shown),
@@ -620,7 +621,7 @@ public final class CraftTreeScreen extends Screen {
         boolean pickable = row != null && row.badge() != TreeRow.Badge.NONE;
         this.recipeButton.active = pickable;
         this.recipeButton.setTooltip(Tooltip.create(pickable
-                ? Component.translatable("screen.craftplanner.tree.recipe.tooltip", row.node().item().name())
+                ? Component.translatable("screen.craftplanner.tree.recipe.tooltip", row.node().displayName())
                 : Component.translatable("screen.craftplanner.tree.recipe.none")));
     }
 
@@ -812,10 +813,11 @@ public final class CraftTreeScreen extends Screen {
      */
     private List<Component> rowTooltip(TreeRow<RecipeNode> row) {
         List<Component> lines = new ArrayList<>();
-        lines.add(row.node().item().name().copy());
-        Availability state = PlannerState.availability().get(row.node().item());
+        lines.add(row.node().displayName().copy());
+        Availability state = row.node().isFluidRequirement()
+            ? null : PlannerState.availability().get(row.node().item());
         lines.add(Component.translatable("overlay.craftplanner.material.required",
-                Long.toString(row.amount())));
+            row.node().amountLabel()));
         if (state != null) {
             lines.add(Component.translatable("overlay.craftplanner.material.have",
                     Long.toString(state.available())));

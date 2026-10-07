@@ -69,6 +69,9 @@ public final class NodeColors {
      * Craftable nodes keep their neutral colour: they are produced by the tree.
      */
     public static int forNode(RecipeNode node, Map<ItemKey, Availability> availability) {
+        if (node.isFluidRequirement()) {
+            return RAW;
+        }
         if (node.kind() == NodeKind.CYCLE) {
             return CYCLE;
         }
