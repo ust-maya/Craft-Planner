@@ -511,6 +511,17 @@ public final class RecipePickerScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        // The plan can be rebuilt between this screen's tick and this frame: the
+        // debounced rebuild runs in the client tick after Screen.tick(). The lines
+        // were laid out from the previews of the old plan, and a preview of the new
+        // one can be shorter (a cut item has no tree at all), so the band is laid out
+        // again before anything indexes into a preview.
+        if (PlannerState.graphVersion() != this.seenGraphVersion) {
+            init();
+            if (this.minecraft.screen != this) {
+                return; // init() closed the picker: the item left the plan
+            }
+        }
         int left = panelLeft();
         int top = top();
         graphics.fill(0, 0, this.width, this.height, DIM);
