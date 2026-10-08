@@ -198,8 +198,8 @@ final class RecipeListLayout {
 
         // Footer buttons: scaled down first if the panel is too narrow to hold
         // them side by side, then the ore switch — and, when any item of the
-        // plan has alternatives, the ambiguous-recipes button next to it — are
-        // centred in the gap.
+        // plan has alternatives, the ambiguous-recipes button next to it — sit
+        // next to Close.
         int room = panelWidth - 2 * PAD - gaps * GAP;
         int footerWant = clearW + ambiguousW + oresW + closeW;
         if (footerWant > room && footerWant > 0) {
@@ -223,9 +223,10 @@ final class RecipeListLayout {
             }
             middle = ambiguousW > 0 ? ambiguousW + GAP + oresW : oresW;
         }
-        int middleX = clearX + clearW + Math.max(GAP, (free - middle) / 2);
-        int oresX = ambiguousW > 0 ? middleX + ambiguousW + GAP : middleX;
-        int ambiguousX = middleX;
+        // The switches sit with Close at the same GAP, and Clear all stands alone on
+        // the left: the one button that wipes the plan is kept apart from the rest.
+        int oresX = closeX - GAP - oresW;
+        int ambiguousX = ambiguousW > 0 ? oresX - GAP - ambiguousW : oresX;
 
         // Footer rows: the wrapped hint, then the buttons. With a single hint
         // line this reproduces the previous 15 / 27 offsets exactly.
