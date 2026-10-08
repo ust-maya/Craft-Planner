@@ -221,8 +221,7 @@ public final class CraftTreeBuilder {
             }
         }
 
-        ItemStack result = chosen.value().getResultItem(index.registries());
-        node.setRecipe(chosen, result.getCount());
+        node.setRecipe(chosen, index.outputCountOf(chosen, node.item()));
         node.clearChildren();
 
         if (baseMaterial) {

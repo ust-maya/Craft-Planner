@@ -518,6 +518,19 @@ public final class RecipeIndex {
         return fluidInputs.getOrDefault(holder, List.of());
     }
 
+    /**
+     * How many of {@code item} one craft of {@code holder} yields; 1 when unknown.
+     *
+     * <p>Not the recipe's own result count: a machine recipe can pour out several
+     * items at once, and the tree has to divide the demand by how much of <em>this
+     * one</em> comes out of a craft, or it plans too many operations and shows the
+     * by-product as something to gather as well.</p>
+     */
+    public int outputCountOf(RecipeHolder<?> holder, ItemKey item) {
+        Map<ItemKey, Integer> outputs = outputCounts.get(holder);
+        return outputs == null ? 1 : Math.max(1, outputs.getOrDefault(item, 1));
+    }
+
     /** Recipes producing the given item, best candidate first. Never null. */
     public List<RecipeHolder<?>> forOutput(ItemKey key) {
         List<RecipeHolder<?>> list = byOutput.get(key);
