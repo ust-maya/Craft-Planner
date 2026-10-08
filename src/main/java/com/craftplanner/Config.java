@@ -8,6 +8,8 @@ import com.craftplanner.engine.CraftTreeBuilder;
 import com.craftplanner.engine.RecipeIndex;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
+import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -160,6 +162,18 @@ public final class Config {
 
     public static final ModConfigSpec SPEC = BUILDER.build();
 
+    /**
+     * The settings the live recipe index and tree were built from, so a config
+     * event can tell what actually changed instead of rebuilding everything.
+     * Boxed, and {@code null} until the first event makes them known — that
+     * first one is the load, where the index has to be built anyway.
+     */
+    private static Boolean appliedIndexModded;
+    private static String appliedModdedPriority;
+    private static Boolean appliedHideOres;
+    private static Integer appliedMaxDepth;
+    private static Integer appliedMaxNodes;
+
     private Config() {
     }
 
@@ -264,12 +278,22 @@ public final class Config {
         SPEC.save();
     }
 
-    /** Fires on load and on every in-game edit of the file. */
-    @SubscribeEvent
-    public static void onConfigChanged(ModConfigEvent event) {
-        if (event.getConfig().getSpec() != SPEC) {
-            return;
-        }
+    /**
+     * Applies a config load or reload.
+     *
+     * <p>Only what actually changed is acted on. The file also carries the panel
+     * geometry, and the layout editor writes it on every drag — so an
+     * unconditional reset here would throw away a recipe index that takes
+     * seconds to build, once per mouse move.</p>
+     */
+    private static void applyConfigChange() {
+        boolean indexChanged = !Objects.equals(indexModdedRecipes(), appliedIndexModded)
+                || !Objects.equals(moddedPriority(), appliedModdedPriority);
+        boolean hideOresChanged = !Objects.equals(hideOres(), appliedHideOres);
+        boolean limitsChanged = !Objects.equals(maxDepth(), appliedMaxDepth)
+                || !Objects.equals(maxNodes(), appliedMaxNodes)
+                || hideOresChanged || indexChanged;
+
         OverlayState.setVisible(overlayEnabled());
         // The file carries the panel geometry: re-read it so an external edit
         // wins over what the player dragged in the layout editor.
@@ -277,10 +301,41 @@ public final class Config {
         // Which recipe types are indexable, and in what order, is decided while
         // the index is built — the cached one has to go, or the change would
         // only apply on the next world load.
-        RecipeIndex.invalidateCache();
+        if (indexChanged) {
+            RecipeIndex.invalidateCache();
+        }
         // An edited file wins over whatever the player toggled in the K window.
-        PlannerState.resetHideOresOverride();
+        if (hideOresChanged) {
+            PlannerState.resetHideOresOverride();
+        }
         // Depth/node limits changed: the existing tree may have been cut off.
-        PlannerState.rebuild();
+        if (limitsChanged) {
+            PlannerState.rebuild();
+        }
+
+        appliedIndexModded = indexModdedRecipes();
+        appliedModdedPriority = moddedPriority();
+        appliedHideOres = hideOres();
+        appliedMaxDepth = maxDepth();
+        appliedMaxNodes = maxNodes();
+    }
+
+    /** Fires on load and on every in-game edit of the file. */
+    @SubscribeEvent
+    public static void onConfigChanged(ModConfigEvent event) {
+        if (event.getConfig().getSpec() != SPEC) {
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null) {
+            // The first event is the file being read at mod load, before the
+            // client exists. Nothing is built from the config yet — the overlay
+            // flag and the recipe index take their starting values as they are
+            // created — so there is nothing to re-apply.
+            return;
+        }
+        // A file saved by another mod, or edited outside the game, can report on
+        // a worker thread; the index, the tree and the panel live on the client one.
+        mc.execute(Config::applyConfigChange);
     }
 }
