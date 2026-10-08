@@ -1,6 +1,7 @@
 package com.craftplanner.client.screen;
 
 import com.craftplanner.client.Keybinds;
+import com.craftplanner.client.overlay.HudHitMap;
 import com.craftplanner.client.overlay.OverlayPlacement;
 import com.craftplanner.client.overlay.TreeCollapse;
 import com.craftplanner.client.overlay.TreeOverlayRenderer;
@@ -80,15 +81,15 @@ public final class OverlayLayoutScreen extends Screen {
         // the bar would steal the grip it is drawn next to.
         if (OverlayPlacement.overGrip(mx, my)) {
             OverlayPlacement.startSize(mx, my);
-        } else if (TreeOverlayRenderer.grabScroll(mx, my)) {
+        } else if (HudHitMap.grabScroll(mx, my)) {
             // The grab took the click; the drag follows in mouseDragged.
-        } else if (TreeOverlayRenderer.hitFold(mx, my) != null) {
+        } else if (HudHitMap.hitFold(mx, my) != null) {
             // A fold mark of the panel behind this screen. This editor is a screen,
             // so it is the one place HUD geometry can be aimed at — which is what
             // keeps a fold mark from being a mark that leads nowhere.
-            TreeCollapse.toggle(TreeOverlayRenderer.hitFold(mx, my));
-        } else if (TreeOverlayRenderer.hitChoice(mx, my) != null) {
-            RecipeNode node = TreeOverlayRenderer.hitChoice(mx, my);
+            TreeCollapse.toggle(HudHitMap.hitFold(mx, my));
+        } else if (HudHitMap.hitChoice(mx, my) != null) {
+            RecipeNode node = HudHitMap.hitChoice(mx, my);
             this.minecraft.setScreen(new RecipePickerScreen(node.item(), this));
         } else if (OverlayPlacement.overPanel(mx, my)) {
             OverlayPlacement.startMove(mx, my);
@@ -101,8 +102,8 @@ public final class OverlayLayoutScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (TreeOverlayRenderer.scrolling()) {
-            TreeOverlayRenderer.dragScroll((int) mouseY);
+        if (HudHitMap.scrolling()) {
+            HudHitMap.dragScroll((int) mouseY);
             return true;
         }
         OverlayPlacement.dragTo((int) mouseX, (int) mouseY, width, height);
@@ -111,7 +112,7 @@ public final class OverlayLayoutScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        TreeOverlayRenderer.releaseScroll();
+        HudHitMap.releaseScroll();
         OverlayPlacement.endDrag();
         return true;
     }
@@ -152,7 +153,7 @@ public final class OverlayLayoutScreen extends Screen {
     public void removed() {
         // Leaving the editor mid-drag never comes with a release event, and a grab
         // left over would move the plan instead of the panel in the next session.
-        TreeOverlayRenderer.releaseScroll();
+        HudHitMap.releaseScroll();
         OverlayPlacement.applyAndSave();
         super.removed();
     }
