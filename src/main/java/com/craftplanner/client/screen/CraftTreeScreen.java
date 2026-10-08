@@ -444,14 +444,20 @@ public final class CraftTreeScreen extends Screen {
 
     private void drawGuides(GuiGraphics graphics, int first, int last) {
         int left = contentLeft();
-        for (int r = first; r <= last; r++) {
+        // Same rule as the overlay: a parent above the view still draws the run its
+        // visible children hang off, and no run reaches below the last drawn row.
+        int runBottom = rowTop(last + 1);
+        for (int r = 0; r <= last; r++) {
             TreeRow<RecipeNode> parent = this.rows.get(r);
-            if (!parent.expands(r)) {
+            if (!parent.expands(r) || parent.lastChildIndex() < first) {
                 continue;
             }
             int x = left + TreeMetrics.spineX(parent.depth());
-            graphics.vLine(x, contentTop() + TreeMetrics.iconBottom(r, this.scroll),
-                    rowCenter(parent.lastChildIndex()), UiPalette.TREE_GUIDE);
+            int fromY = Math.max(contentTop(), contentTop() + TreeMetrics.iconBottom(r, this.scroll));
+            int toY = Math.min(runBottom, rowCenter(parent.lastChildIndex()));
+            if (toY > fromY) {
+                graphics.vLine(x, fromY, toY, UiPalette.TREE_GUIDE);
+            }
         }
         for (int r = first; r <= last; r++) {
             TreeRow<RecipeNode> row = this.rows.get(r);
@@ -606,8 +612,10 @@ public final class CraftTreeScreen extends Screen {
         drawLegend(graphics, left + PAD, y + 3);
         drawMaterialSummary(graphics, left + PAD, y + 3 + 2 * LINE_H + 2);
         int hintY = y + 3 + 3 * LINE_H + 4;
-        List<String> hint = RecipeListLayout.wrapText(this.font::width, hint(),
-                this.plan.panelW() - 2 * PAD, 2);
+        // Broken between entries: a word wrap tore "V —" from "overlay" and left a
+        // lone "·" at the end of the first line.
+        List<String> hint = RecipeListLayout.wrapSegments(this.font::width, hint(),
+                this.plan.panelW() - 2 * PAD, 2, " · ");
         for (int i = 0; i < hint.size(); i++) {
             graphics.drawString(this.font, hint.get(i), left + PAD, hintY + i * LINE_H,
                     UiPalette.MUTED, false);

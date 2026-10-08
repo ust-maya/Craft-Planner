@@ -527,6 +527,31 @@ public final class BatchPickerScreen extends Screen {
             }
         }
 
+        // The vertical run from a parent down to its last child, the half of the
+        // elbow the rows above were missing: without it every child read as a lone
+        // "–" hanging off nothing. Parents above the band are walked too, so a
+        // branch scrolled into its middle still shows what it hangs off; the
+        // scissor set above clips whatever reaches past the band.
+        int bandBottom = bandTop() + shown * ROW_H;
+        for (int i = 0; i < this.lines.size(); i++) {
+            Line line = this.lines.get(i);
+            TreeRow<RecipeNode> parent = this.plan.get(line.planRow());
+            if (!parent.expands(line.planRow())) {
+                continue;
+            }
+            int headPlanRow = this.lines.get(line.headLine()).planRow();
+            int childLine = line.headLine() + (parent.lastChildIndex() - headPlanRow);
+            if (childLine < first || i > last) {
+                continue;
+            }
+            int x = contentLeft + TreeMetrics.spineX(depthOf(line));
+            int fromY = Math.max(bandTop(), lineTop(i) + (ROW_H + TreeMetrics.ICON) / 2);
+            int toY = Math.min(bandBottom, lineTop(childLine) + ROW_H / 2);
+            if (toY > fromY) {
+                graphics.vLine(x, fromY, toY, UiPalette.TREE_GUIDE);
+            }
+        }
+
         for (int i = first; i <= last; i++) {
             Line line = this.lines.get(i);
             drawBranchLine(graphics, line, i, i == hover,

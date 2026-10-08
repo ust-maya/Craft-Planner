@@ -396,14 +396,22 @@ public final class TreeOverlayRenderer {
                     TreeMetrics.rowTop(end, first) + TreeMetrics.ROW_H,
                     NodeColors.branch(row.branch()));
         }
-        for (int r = first; r <= last; r++) {
+        // Every parent whose children reach into view draws its run, not only the
+        // parents that are themselves on screen: a branch scrolled into its middle
+        // would otherwise show elbows hanging off nothing. The run stops at the last
+        // drawn row instead of running on into the empty band below it.
+        int runBottom = TreeMetrics.rowTop(last + 1, first);
+        for (int r = 0; r <= last; r++) {
             TreeRow<RecipeNode> parent = rows.get(r);
-            if (!parent.expands(r)) {
+            if (!parent.expands(r) || parent.lastChildIndex() < first) {
                 continue;
             }
             int x = TreeMetrics.spineX(parent.depth());
-            graphics.vLine(x, TreeMetrics.iconBottom(r, first),
-                    TreeMetrics.rowCenter(parent.lastChildIndex(), first), UiPalette.TREE_GUIDE);
+            int fromY = Math.max(TreeMetrics.rowTop(first, first), TreeMetrics.iconBottom(r, first));
+            int toY = Math.min(runBottom, TreeMetrics.rowCenter(parent.lastChildIndex(), first));
+            if (toY > fromY) {
+                graphics.vLine(x, fromY, toY, UiPalette.TREE_GUIDE);
+            }
         }
         for (int r = first; r <= last; r++) {
             TreeRow<RecipeNode> row = rows.get(r);
