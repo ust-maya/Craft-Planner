@@ -89,6 +89,11 @@ public final class BatchPickerScreen extends Screen {
     private Set<ItemKey> ambiguous = Set.of();
     private int panelWidth;
     private int scroll;
+    /** True while the left button holds the thumb; only then does a drag move the list. */
+    private boolean thumbDrag;
+    /** Cursor row and scroll offset at the moment the thumb was taken, for a drag relative to them. */
+    private int grabY;
+    private int grabScroll;
     private long seenGraphVersion;
     private long seenFoldVersion = -1;
     private long seenAvailabilityVersion = -1;
@@ -320,6 +325,19 @@ public final class BatchPickerScreen extends Screen {
         }
         int mx = (int) mouseX;
         int my = (int) mouseY;
+        // The bar is checked before the rows: its grab zone reaches a few pixels into
+        // the band, and a click meant for the thumb must not open a recipe picker.
+        if (grabThumb(mx, my)) {
+            return true;
+        }
+        int jumped = trackJump(mx, my);
+        if (jumped >= 0) {
+            this.scroll = jumped;
+            // The bare track brings the thumb under the cursor; holding the button
+            // then drags it from there, as on any other scrollbar.
+            startThumbDrag(my);
+            return true;
+        }
         int index = hitLine(mx, my);
         if (index >= 0 && index < this.lines.size()) {
             Line line = this.lines.get(index);
@@ -368,6 +386,49 @@ public final class BatchPickerScreen extends Screen {
         }
         this.scroll = Math.max(0, Math.min(maxScroll(), this.scroll + (scrollY > 0 ? -1 : 1)));
         return true;
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (this.thumbDrag) {
+            this.scroll = Scrollbar.scrollDragged(bar(panelLeft(), visibleLines()), this.grabScroll,
+                    (int) mouseY - this.grabY, maxScroll());
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        this.thumbDrag = false;
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    /**
+     * Takes hold of the thumb under the cursor. Taking hold does not move it; only
+     * the drag that follows does, measured from here — the same grab the K window has.
+     */
+    private boolean grabThumb(int mx, int my) {
+        if (maxScroll() <= 0 || !Scrollbar.overThumb(bar(panelLeft(), visibleLines()), mx, my)) {
+            return false;
+        }
+        startThumbDrag(my);
+        return true;
+    }
+
+    private void startThumbDrag(int my) {
+        this.thumbDrag = true;
+        this.grabY = my;
+        this.grabScroll = this.scroll;
+    }
+
+    /** A click on the bare track pages the list to that point; {@code -1} off the track. */
+    private int trackJump(int mx, int my) {
+        if (maxScroll() <= 0) {
+            return -1;
+        }
+        Scrollbar.Geometry bar = bar(panelLeft(), visibleLines());
+        return Scrollbar.overColumn(bar, mx, my) ? Scrollbar.scrollAt(bar, my, maxScroll()) : -1;
     }
 
     @Override
