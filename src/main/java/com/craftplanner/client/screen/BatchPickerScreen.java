@@ -471,20 +471,10 @@ public final class BatchPickerScreen extends Screen {
         // The header names the count, but a long translation must not leave the
         // band — it is trimmed to the panel like every other string here.
         String header = RecipeListLayout.trimToWidth(this.font::width,
-                Component.translatable("screen.craftplanner.ambiguous.header", decisions())
+                Component.translatable("screen.craftplanner.ambiguous.header", this.ambiguous.size())
                         .getString(),
                 this.panelWidth - 2 * PAD);
         graphics.drawCenteredString(this.font, header, left + this.panelWidth / 2, top + 6, TEXT);
-    }
-
-    private int decisions() {
-        int heads = 0;
-        for (Line line : this.lines) {
-            if (line.head()) {
-                heads++;
-            }
-        }
-        return heads;
     }
 
     private void drawEmpty(GuiGraphics graphics, int left) {

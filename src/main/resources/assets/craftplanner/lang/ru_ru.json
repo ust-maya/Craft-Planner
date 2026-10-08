@@ -92,7 +92,7 @@
   "screen.craftplanner.list.ambiguous": "Варианты (%1$s)",
   "screen.craftplanner.list.ambiguous.tooltip": "Предметы, которые можно создать несколькими способами — в дереве для каждого показана ветка, в которую он входит",
   "screen.craftplanner.ambiguous.title": "Выбор рецептов для дерева",
-  "screen.craftplanner.ambiguous.header": "Предметов с несколькими вариантами рецептов: %1$s",
+  "screen.craftplanner.ambiguous.header": "Предметов с выбором рецепта: %1$s",
   "screen.craftplanner.ambiguous.empty": "Нечего выбирать — у всех предметов плана по одному рецепту",
   "screen.craftplanner.ambiguous.row.tooltip": "%1$s · %2$s — выбрать, каким рецептом планируется этот предмет"
 }
