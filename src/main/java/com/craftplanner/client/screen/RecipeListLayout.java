@@ -229,7 +229,7 @@ final class RecipeListLayout {
 
         // Footer rows: the wrapped hint, then the buttons. With a single hint
         // line this reproduces the previous 15 / 27 offsets exactly.
-        this.hintLines = wrapText(metrics, hint, panelWidth - 2 * PAD, MAX_HINT_LINES);
+        this.hintLines = wrapSegments(metrics, hint, panelWidth - 2 * PAD, MAX_HINT_LINES, " · ");
         this.hintY = FOOTER_TEXT_Y + LINE_H + 3;
         this.buttonsY = this.hintY + Math.max(1, this.hintLines.size()) * LINE_H + 3;
         this.footerH = this.buttonsY + BUTTON_H + FOOTER_BOTTOM_PAD;
