@@ -5,6 +5,7 @@ import com.craftplanner.client.resource.Availability;
 import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.NodeKind;
 import com.craftplanner.graph.RecipeNode;
+import com.craftplanner.client.tree.TreeRow;
 import java.util.Map;
 
 /**
@@ -26,7 +27,14 @@ public final class NodeColors {
 
     public static final int RAW = 0xFFB8B8B8;
     public static final int INTERMEDIATE = 0xFF8FD3FF;
-    public static final int ROOT = 0xFFFFE08F;
+    /**
+     * A planned goal, kept well apart from {@link #PARTIAL}. The two were one warm
+     * hue forty brightness points apart, and a player who reads colour before shape
+     * took a half-covered material for a goal. This is the pale end of that family:
+     * light enough that only a covered or a missing row can be mistaken for it, and
+     * the sign in front of the amount says which.
+     */
+    public static final int ROOT = 0xFFFFF3C4;
     public static final int CYCLE = 0xFFFF7FD0;
     public static final int HAVE = 0xFF7BE08A;
     public static final int PARTIAL = 0xFFE0C040;
@@ -86,32 +94,47 @@ public final class NodeColors {
     }
 
     /**
+     * The ink of a drawn tree row: what the inventory covers, or what the row is.
+     *
+     * <p>One rule for the four surfaces that show rows — the HUD, the tree window
+     * (G), the recipe picker and the batch picker. Each had written the same switch
+     * out for itself, so a colour decision made in one of them left the others
+     * reading the same row differently; the batch picker is the one that had no
+     * {@code UNKNOWN} branch at all and drew a cycle row in whatever colour its
+     * status happened to imply.</p>
+     *
+     * <p>A cycle keeps its own colour whatever the inventory holds: the row marks
+     * where the branch was stopped because the item is already being made above it,
+     * which is not a shortage.</p>
+     */
+    public static int forRow(TreeRow<?> row) {
+        if (row.kind() == TreeRow.Kind.CYCLE) {
+            return CYCLE;
+        }
+        return switch (row.status()) {
+            case COVERED -> HAVE;
+            case PARTIAL -> PARTIAL;
+            case MISSING -> MISSING;
+            case UNKNOWN -> switch (row.kind()) {
+                case ROOT -> ROOT;
+                case ASSEMBLY -> INTERMEDIATE;
+                case MATERIAL -> RAW;
+                case CYCLE -> CYCLE;
+            };
+        };
+    }
+
+    /**
      * Colour of a raw material by itself: green when covered, amber when
      * partly, red when nothing is carried. Used both for tree leaves and for
      * the amounts in the footer shopping list, so the same number reads the
      * same way in both places.
      */
     public static int forAvailability(Availability state) {
-        if (state.satisfied()) {
-            return HAVE;
-        }
-        return partlyCovered(state) ? PARTIAL : MISSING;
-    }
-
-    /**
-     * Stage 10: {@code resources.partialThresholdPercent} decides how much of
-     * a material has to be in the inventory before it counts as "partly there"
-     * (yellow) instead of "missing" (red). With the default of 0 the old rule
-     * applies: anything above zero is yellow.
-     */
-    private static boolean partlyCovered(Availability state) {
-        if (state.available() <= 0) {
-            return false;
-        }
-        int percent = Config.partialThresholdPercent();
-        if (percent <= 0) {
-            return true;
-        }
-        return state.available() * 100L >= state.required() * percent;
+        return switch (state.status(Config.partialThresholdPercent())) {
+            case OK -> HAVE;
+            case PARTIAL -> PARTIAL;
+            case MISSING -> MISSING;
+        };
     }
 }

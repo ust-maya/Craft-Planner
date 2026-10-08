@@ -5,6 +5,7 @@ import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.TextMetrics;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
+import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -82,12 +83,18 @@ public class QuantityPopupScreen extends Screen {
     private final String itemName;
     private EditBox amountField;
     private long amount;
+    /** The four steppers, with the step each one takes without Shift. */
+    private final List<Stepper> steppers = new ArrayList<>();
+    /** Whether the stepper labels currently show the Shift step. */
+    private boolean shiftShown;
     /** Measured geometry of the current panel; rebuilt by {@link #computeLayout()}. */
     private Layout layout;
     /** {@code font::width}, refreshed in {@link #init()} — the layout's only input. */
     private TextMetrics metrics;
     /** Deadline of the "value was clamped" border flash (see {@link #render}). */
     private long clampFlashUntil;
+    /** Guards the field's responder against the write-back {@link #writeField} triggers. */
+    private boolean updatingField;
 
     public QuantityPopupScreen(ItemStack stack) {
         super(Component.translatable(KEY_TITLE));
@@ -118,12 +125,15 @@ public class QuantityPopupScreen extends Screen {
         setInitialFocus(this.amountField);
 
         // One tidy row of steppers beneath the field: -10, -1, +1, +10.
+        this.steppers.clear();
         int stepY = top + STEP_Y;
         int stepX = left + (l.panelWidth - (4 * STEP_WIDTH + 3 * STEP_GAP)) / 2;
-        addRenderableWidget(stepper("-10", stepX, stepY, -10));
-        addRenderableWidget(stepper("-1", stepX + (STEP_WIDTH + STEP_GAP), stepY, -1));
-        addRenderableWidget(stepper("+1", stepX + 2 * (STEP_WIDTH + STEP_GAP), stepY, 1));
-        addRenderableWidget(stepper("+10", stepX + 3 * (STEP_WIDTH + STEP_GAP), stepY, 10));
+        for (int i = 0; i < STEPPER_DELTAS.length; i++) {
+            long delta = STEPPER_DELTAS[i];
+            addRenderableWidget(stepper(delta, stepX + i * (STEP_WIDTH + STEP_GAP), stepY));
+        }
+        this.shiftShown = false;
+        syncStepperLabels();
 
         int buttonsY = top + l.buttonY;
         addRenderableWidget(FitButton.create(left + BUTTON_MARGIN, buttonsY,
@@ -144,22 +154,83 @@ public class QuantityPopupScreen extends Screen {
         return Component.translatable(key).getString();
     }
 
-    private Button stepper(String label, int x, int y, long delta) {
+    /** The four steps the stepper row offers, in the order it draws them. */
+    private static final long[] STEPPER_DELTAS = {-10, -1, 1, 10};
+
+    private Button stepper(long delta, int x, int y) {
         // Shift multiplies the step by 10, matching the wheel behaviour the
         // hint promises (±1, Shift — ±10).
-        return FitButton.create(x, y, STEP_WIDTH, STEP_HEIGHT, Component.literal(label),
-                button -> step(hasShiftDown() ? delta * 10 : delta), null);
+        Button button = FitButton.create(x, y, STEP_WIDTH, STEP_HEIGHT,
+                Component.literal(stepperLabel(delta, false)),
+                b -> step(hasShiftDown() ? delta * 10 : delta), null);
+        this.steppers.add(new Stepper(button, delta));
+        return button;
+    }
+
+    /** A stepper and the step it takes without Shift. */
+    private record Stepper(Button button, long delta) {
+    }
+
+    /**
+     * The label of a stepper: the step it takes <em>as the modifier is held right
+     * now</em>. The row used to read ±1 and ±10 while Shift made it move by ten
+     * times that, so the hint promised a big step the buttons never showed.
+     */
+    private static String stepperLabel(long delta, boolean shift) {
+        long step = shift ? delta * 10 : delta;
+        return step > 0 ? "+" + step : Long.toString(step);
+    }
+
+    /** Re-labels the steppers when the player puts Shift down or lets it go. */
+    private void syncStepperLabels() {
+        boolean shift = hasShiftDown();
+        if (shift == this.shiftShown) {
+            return;
+        }
+        this.shiftShown = shift;
+        for (Stepper stepper : this.steppers) {
+            stepper.button().setMessage(Component.literal(stepperLabel(stepper.delta(), shift)));
+        }
+    }
+
+    @Override
+    public void tick() {
+        syncStepperLabels();
     }
 
     private void onFieldChanged(String value) {
+        if (this.updatingField) {
+            return;
+        }
         if (value.isEmpty()) {
+            // Mid-edit: the player cleared the field to type a new number. The old
+            // amount stays, and {@link #confirm()} refuses to add nothing.
             return;
         }
         try {
             long parsed = Long.parseLong(value);
-            this.amount = clamp(parsed);
+            long clamped = clamp(parsed);
+            this.amount = clamped;
+            if (clamped != parsed) {
+                // Show the ceiling in the field rather than a number the window
+                // will quietly ignore when Add is pressed.
+                writeField(clamped);
+            }
         } catch (NumberFormatException ignored) {
-            // filter allows digits only; keep the previous value
+            // The filter admits digits only; an over-long literal is not a number.
+        }
+    }
+
+    /** Writes the amount into the field without letting the responder re-enter. */
+    private void writeField(long value) {
+        if (this.amountField == null) {
+            return;
+        }
+        this.updatingField = true;
+        try {
+            this.amountField.setValue(Long.toString(value));
+        } finally {
+            this.updatingField = false;
         }
     }
 
@@ -169,9 +240,7 @@ public class QuantityPopupScreen extends Screen {
 
     private void setAmount(long value) {
         this.amount = clamp(value);
-        if (this.amountField != null) {
-            this.amountField.setValue(Long.toString(this.amount));
-        }
+        writeField(this.amount);
     }
 
     /** Clamps to {@code [1, quantity.maxAmount]} and flashes the field when the ceiling was hit. */
@@ -185,6 +254,11 @@ public class QuantityPopupScreen extends Screen {
     }
 
     private void confirm() {
+        if (this.amountField != null && this.amountField.getValue().isEmpty()) {
+            // Nothing was typed, so there is no amount to add: Enter and the Add
+            // button both wait for a number instead of planning the old one.
+            return;
+        }
         long requested = clamp(this.amount);
         PlannerState.add(this.stack, requested);
         Minecraft mc = Minecraft.getInstance();

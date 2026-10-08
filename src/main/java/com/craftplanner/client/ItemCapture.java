@@ -1,5 +1,7 @@
 package com.craftplanner.client;
 
+import com.craftplanner.engine.RecipeIndex;
+import com.craftplanner.graph.ItemKey;
 import java.util.Optional;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -19,6 +21,9 @@ import net.minecraft.world.item.ItemStack;
  *       (inventory, chest, creative picker, any modded GUI);</li>
  *   <li>stack carried on the cursor, if no GUI is open.</li>
  * </ol>
+ *
+ * <p>Whatever is found is then read for its <em>recipe</em>, not for its history:
+ * see {@link #plannable}.</p>
  */
 public final class ItemCapture {
 
@@ -29,17 +34,47 @@ public final class ItemCapture {
     public static Optional<ItemStack> capture(Minecraft mc) {
         Optional<ItemStack> fromViewer = ViewerIntegration.hovered();
         if (fromViewer.isPresent()) {
-            return fromViewer;
+            return plannable(mc, fromViewer.get());
         }
 
         Screen screen = mc.screen;
         if (screen instanceof AbstractContainerScreen<?> containerScreen) {
             Optional<ItemStack> fromSlot = hoveredSlot(containerScreen);
             if (fromSlot.isPresent()) {
-                return fromSlot;
+                return plannable(mc, fromSlot.get());
             }
         }
-        return carriedStack(mc);
+        return carriedStack(mc).flatMap(stack -> plannable(mc, stack));
+    }
+
+    /**
+     * The stack the plan can actually build from the captured one.
+     *
+     * <p>A damaged iron pickaxe and a fresh one are the same item and a different
+     * {@link ItemKey}: the key carries the component patch, and recipes are indexed
+     * by item alone. Captured as it stands, the worn tool therefore reads as
+     * something no recipe makes — the tree said "raw material" about an item the
+     * player was holding the recipe of on screen. A renamed or enchanted stack hits
+     * the same wall. So the components are dropped exactly when that is the only
+     * thing between the item and its recipe, and kept in every case where the item
+     * is planned as itself.</p>
+     */
+    private static Optional<ItemStack> plannable(Minecraft mc, ItemStack stack) {
+        if (mc.level == null || stack.getComponentsPatch().isEmpty()) {
+            // Nothing to lose: the captured key already is the key of the item.
+            return Optional.of(stack);
+        }
+        RecipeIndex index = RecipeIndex.cachedFor(mc.level.getRecipeManager(),
+                mc.level.registryAccess());
+        ItemKey captured = ItemKey.of(stack);
+        if (!index.forOutput(captured).isEmpty()) {
+            return Optional.of(stack);
+        }
+        ItemKey plain = ItemKey.of(stack.getItem());
+        if (index.forOutput(plain).isEmpty()) {
+            return Optional.of(stack);
+        }
+        return Optional.of(new ItemStack(stack.getItem(), Math.max(1, stack.getCount())));
     }
 
     /** Slot the mouse currently points at, ignoring empty and ghost slots. */

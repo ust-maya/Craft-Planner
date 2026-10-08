@@ -142,10 +142,21 @@ public final class RecipeIndex {
         return index;
     }
 
-    /** Drops the cached index so the next {@link #cachedFor} rebuilds it. */
+    /**
+     * Drops the cached index so the next {@link #cachedFor} rebuilds it.
+     *
+     * <p>The set of recipe types that failed to parse goes with it: it is a
+     * judgement about the recipes of one world and its datapacks, and the next
+     * connection can answer it differently — a server pack can make a type
+     * readable again, and the old verdict would keep excluding it forever.</p>
+     */
     public static void invalidateCache() {
         cached = null;
         cachedManager = null;
+        UNREADABLE.clear();
+        // Which item counts as a base material is a tag question, and tags belong to the
+        // datapacks of the world this index is being dropped for.
+        BaseMaterials.clearCache();
     }
 
     public static RecipeIndex build(RecipeManager manager, HolderLookup.Provider registries) {
@@ -312,6 +323,9 @@ public final class RecipeIndex {
         }
         for (int pass = 0; pass < COST_PASSES; pass++) {
             boolean changed = false;
+            // A cost can only fall while some chain gets shorter, so a pass that
+            // changes nothing means the prices have settled: the remaining passes
+            // would recompute the same answer for every recipe in the game.
             for (Map.Entry<ItemKey, List<RecipeHolder<?>>> entry : byOutput.entrySet()) {
                 ItemKey key = entry.getKey();
                 if (BaseMaterials.isBaseMaterial(key)) {
@@ -328,7 +342,15 @@ public final class RecipeIndex {
                 unitCosts.put(key, current);
             }
             if (!changed) {
+                LOGGER.debug("Craft Planner settled recipe costs in {} passes.", pass + 1);
                 break;
+            }
+            if (pass == COST_PASSES - 1) {
+                // Still moving after the whole budget: two items price each other
+                // through a loop (A from B, B from A), so each pass finds a shorter
+                // way round. The ladder stops here rather than chasing it forever.
+                LOGGER.warn("Craft Planner ran out of cost passes with prices still moving:"
+                        + " a recipe cycle is being priced. Costs are taken as they stand.");
             }
         }
         for (Map.Entry<ItemKey, Cost> entry : unitCosts.entrySet()) {
@@ -518,26 +540,23 @@ public final class RecipeIndex {
         return fluidInputs.getOrDefault(holder, List.of());
     }
 
+    /**
+     * How many of {@code item} one craft of {@code holder} yields; 1 when unknown.
+     *
+     * <p>Not the recipe's own result count: a machine recipe can pour out several
+     * items at once, and the tree has to divide the demand by how much of <em>this
+     * one</em> comes out of a craft, or it plans too many operations and shows the
+     * by-product as something to gather as well.</p>
+     */
+    public int outputCountOf(RecipeHolder<?> holder, ItemKey item) {
+        Map<ItemKey, Integer> outputs = outputCounts.get(holder);
+        return outputs == null ? 1 : Math.max(1, outputs.getOrDefault(item, 1));
+    }
+
     /** Recipes producing the given item, best candidate first. Never null. */
     public List<RecipeHolder<?>> forOutput(ItemKey key) {
         List<RecipeHolder<?>> list = byOutput.get(key);
         return list == null ? Collections.emptyList() : Collections.unmodifiableList(list);
-    }
-
-    public boolean hasRecipe(ItemKey key) {
-        return byOutput.containsKey(key);
-    }
-
-    public int recipeCount() {
-        int total = 0;
-        for (List<RecipeHolder<?>> list : byOutput.values()) {
-            total += list.size();
-        }
-        return total;
-    }
-
-    public int outputCount() {
-        return byOutput.size();
     }
 
     /** Registry access the index was built with — needed to resolve outputs. */

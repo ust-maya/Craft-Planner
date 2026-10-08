@@ -1,7 +1,9 @@
 package com.craftplanner.client.screen;
 
+import com.craftplanner.client.AmountLabel;
 import com.craftplanner.client.PlanRows;
 import com.craftplanner.client.PlannerState;
+import com.craftplanner.client.Scrollbar;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.overlay.NodeColors;
@@ -88,7 +90,8 @@ public final class BatchPickerScreen extends Screen {
     private int panelWidth;
     private int scroll;
     private long seenGraphVersion;
-    private int seenFolds = -1;
+    private long seenFoldVersion = -1;
+    private long seenAvailabilityVersion = -1;
 
     /**
      * One drawn line of a branch.
@@ -122,7 +125,8 @@ public final class BatchPickerScreen extends Screen {
     @Override
     protected void init() {
         this.seenGraphVersion = PlannerState.graphVersion();
-        this.seenFolds = TreeCollapse.foldCount();
+        this.seenFoldVersion = TreeCollapse.version();
+        this.seenAvailabilityVersion = PlannerState.availabilityVersion();
         if (this.minecraft.level == null) {
             // The world went away: nothing to decide in, so close. An empty branch
             // list stays open on purpose — the player clicked "Alternatives" and
@@ -142,8 +146,15 @@ public final class BatchPickerScreen extends Screen {
         // version the overlay watches: without this the window would keep drawing
         // a branch the overlay has already closed.
         if (PlannerState.graphVersion() != this.seenGraphVersion
-                || TreeCollapse.foldCount() != this.seenFolds) {
+                || TreeCollapse.version() != this.seenFoldVersion) {
             init();
+        } else if (PlannerState.availabilityVersion() != this.seenAvailabilityVersion) {
+            // The player moved materials around while deciding. The rows carry the
+            // inventory's verdict on what they name, so they are re-read — but the
+            // panel is not laid out again: nothing about the plan changed, and a
+            // relayout would slide the list under the cursor once a second.
+            this.seenAvailabilityVersion = PlannerState.availabilityVersion();
+            this.plan = PlanRows.rows();
         }
     }
 
@@ -342,7 +353,8 @@ public final class BatchPickerScreen extends Screen {
      */
     private void refreshKeeping(int anchorLine) {
         this.seenGraphVersion = PlannerState.graphVersion();
-        this.seenFolds = TreeCollapse.foldCount();
+        this.seenFoldVersion = TreeCollapse.version();
+        this.seenAvailabilityVersion = PlannerState.availabilityVersion();
         this.plan = PlanRows.rows();
         relayout();
         this.panelWidth = measure();
@@ -484,7 +496,7 @@ public final class BatchPickerScreen extends Screen {
         // A heading reserves room for the recipe button that ends it; the count that used
         // to be printed there lives in the tooltip now.
         int counterW = line.head() ? RECIPE_BTN : 0;
-        String amount = node.amountLabel() + (row.hiddenRows() > 0
+        String amount = AmountLabel.of(node) + (row.hiddenRows() > 0
                 ? " (+" + row.hiddenRows() + ")" : "");
         int nameX = contentLeft + TreeMetrics.labelX(depth);
         int nameRoom = contentRight - nameX - TEXT_GAP
@@ -493,7 +505,7 @@ public final class BatchPickerScreen extends Screen {
         graphics.drawString(this.font,
                 RecipeListLayout.trimToWidth(this.font::width, row.name(),
                         Math.max(0, nameRoom)),
-                nameX, textY, line.head() ? TEXT : lineInk(row), false);
+                nameX, textY, line.head() ? TEXT : NodeColors.forRow(row), false);
         graphics.drawString(this.font, amount,
                 contentRight - counterW - (counterW > 0 ? TEXT_GAP : 0) - this.font.width(amount),
                 textY, UiPalette.MUTED, false);
@@ -505,51 +517,13 @@ public final class BatchPickerScreen extends Screen {
         }
     }
 
-    /**
-     * The fold control, drawn the way the tree window draws it: a plate that fills
-     * the row and a mark made of two rules, so it reads without being hovered and
-     * does not shrink with the font.
-     */
-    private void drawFoldButton(GuiGraphics graphics, int x, int y, boolean folded, boolean aimed) {
-        int height = ROW_H - 4;
-        int top = y + (ROW_H - height) / 2;
-        int width = TreeMetrics.TOGGLE_W;
-        UiShapes.chip(graphics, x, top, width, height,
-                folded ? UiPalette.MARKER_FOLDED_BG
-                        : aimed ? UiPalette.FOLD_BTN_HOVER_BG : UiPalette.FOLD_BTN_BG,
-                aimed ? UiPalette.FOLD_BTN_HOVER_BORDER : UiPalette.FOLD_BTN_BORDER);
-        int ink = folded ? UiPalette.MARKER_FOLDED_TEXT : UiPalette.FOLD_BTN_TEXT;
-        int centreY = top + height / 2;
-        graphics.hLine(x + 2, x + width - 3, centreY, ink);
-        if (folded) {
-            graphics.vLine(x + width / 2, top + 3, top + height - 4, ink);
-        }
-    }
-
     /** The heading's counter: which of the engine's alternatives is in use. */
-    private String counterOf(RecipeNode node) {
+    private static String counterOf(RecipeNode node) {
         int total = node.options().size();
         int index = Math.min(node.selectedRecipeIndex(), total - 1);
-        return (index + 1) + "/" + total + " " + node.item().name().getString();
+        return (index + 1) + "/" + total;
     }
 
-    /** The same availability colouring the plan's own tree uses. */
-    private static int lineInk(TreeRow<RecipeNode> row) {
-        if (row.kind() == TreeRow.Kind.CYCLE) {
-            return NodeColors.CYCLE;
-        }
-        return switch (row.status()) {
-            case COVERED -> NodeColors.HAVE;
-            case PARTIAL -> NodeColors.PARTIAL;
-            case MISSING -> NodeColors.MISSING;
-            case UNKNOWN -> switch (row.kind()) {
-                case ROOT -> NodeColors.ROOT;
-                case ASSEMBLY -> NodeColors.INTERMEDIATE;
-                case MATERIAL -> NodeColors.RAW;
-                case CYCLE -> NodeColors.CYCLE;
-            };
-        };
-    }
 
     /** What a click would do, said before it is done. */
     private Component tooltipAt(int index, int mx, int my) {
@@ -564,7 +538,11 @@ public final class BatchPickerScreen extends Screen {
                     : "screen.craftplanner.tree.collapse.tooltip");
         }
         if (this.ambiguous.contains(row.node().item())) {
-            return Component.literal(counterOf(row.node()));
+            // Said with the words of the key that already exists for it: the counter
+            // and the item are facts about the row, but what the click is for belongs
+            // to the language files, where it used to sit unused.
+            return Component.translatable("screen.craftplanner.ambiguous.row.tooltip",
+                    counterOf(row.node()), row.node().displayName());
         }
         return null;
     }
@@ -583,17 +561,15 @@ public final class BatchPickerScreen extends Screen {
     private void drawScrollbar(GuiGraphics graphics, int left, int shown) {
         // A dozen alternatives scroll, so the list carries the same thumb the K
         // window draws — a wheel with no visible position reads as a broken list.
-        int hidden = maxScroll();
-        if (hidden <= 0) {
-            return;
+        if (maxScroll() > 0) {
+            Scrollbar.draw(graphics, bar(left, shown));
         }
-        int trackTop = bandTop();
-        int trackH = shown * ROW_H;
-        int barH = Math.max(8, trackH * shown / this.lines.size());
-        int barY = trackTop + (trackH - barH) * this.scroll / hidden;
-        int barX = left + this.panelWidth - 4;
-        graphics.fill(barX, trackTop, barX + 3, trackTop + trackH, UiPalette.SCROLL_TRACK);
-        graphics.fill(barX, barY, barX + 3, barY + barH, UiPalette.SCROLL_BAR);
+    }
+
+    /** The bar of this list: the same thumb the K window draws, in the same gutter. */
+    private Scrollbar.Geometry bar(int left, int shown) {
+        return Scrollbar.of(left + this.panelWidth - 4, bandTop(), shown * ROW_H, shown,
+                this.lines.size(), this.scroll, maxScroll(), 8);
     }
 
     @Override

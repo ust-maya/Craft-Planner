@@ -56,4 +56,10 @@ public final class JeiRuntimePlugin implements IModPlugin {
                 .flatMap(ITypedIngredient::getItemStack)
                 .filter(stack -> !stack.isEmpty());
     }
+
+    /** True while the player types into JEI's search box. */
+    public static boolean searchFocused() {
+        IJeiRuntime current = runtime;
+        return current != null && current.getIngredientListOverlay().hasKeyboardFocus();
+    }
 }

@@ -65,12 +65,4 @@ public final class InventorySnapshot {
     static long available(boolean componentSpecific, long exactAmount, long itemAmount) {
         return componentSpecific ? exactAmount : itemAmount;
     }
-
-    public boolean isEmpty() {
-        return exact.isEmpty();
-    }
-
-    public int distinctItems() {
-        return exact.size();
-    }
 }

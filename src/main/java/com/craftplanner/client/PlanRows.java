@@ -61,7 +61,8 @@ public final class PlanRows {
      */
     private static List<TreeRow<RecipeNode>> cached = List.of();
     private static long cachedGraphVersion = -1;
-    private static int cachedFoldCount = -1;
+    private static long cachedFoldVersion = -1;
+    private static int cachedPartialThreshold = -1;
     private static Map<ItemKey, Availability> cachedAvailability = null;
 
     private PlanRows() {
@@ -70,12 +71,14 @@ public final class PlanRows {
     /** Rows of the current plan, in draw order, honouring the folded branches. */
     public static List<TreeRow<RecipeNode>> rows() {
         long graphVersion = PlannerState.graphVersion();
-        int foldCount = TreeCollapse.foldCount();
+        long foldVersion = TreeCollapse.version();
+        int partialThreshold = Config.partialThresholdPercent();
         Map<ItemKey, Availability> availability = PlannerState.availability();
-        if (graphVersion != cachedGraphVersion || foldCount != cachedFoldCount
-                || availability != cachedAvailability) {
+        if (graphVersion != cachedGraphVersion || foldVersion != cachedFoldVersion
+                || partialThreshold != cachedPartialThreshold || availability != cachedAvailability) {
             cachedGraphVersion = graphVersion;
-            cachedFoldCount = foldCount;
+            cachedFoldVersion = foldVersion;
+            cachedPartialThreshold = partialThreshold;
             cachedAvailability = availability;
             ADAPTER.availability = availability;
             cached = TreeFlatten.flatten(PlannerState.graph().roots(), ADAPTER,
@@ -138,10 +141,11 @@ public final class PlanRows {
             if (state == null) {
                 return TreeRow.Status.UNKNOWN;
             }
-            if (state.satisfied()) {
-                return TreeRow.Status.COVERED;
-            }
-            return state.available() > 0 ? TreeRow.Status.PARTIAL : TreeRow.Status.MISSING;
+            return switch (state.status(Config.partialThresholdPercent())) {
+                case OK -> TreeRow.Status.COVERED;
+                case PARTIAL -> TreeRow.Status.PARTIAL;
+                case MISSING -> TreeRow.Status.MISSING;
+            };
         }
 
         private static TreeRow.Badge badgeOf(RecipeNode node, ItemKey item) {

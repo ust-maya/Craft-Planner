@@ -127,27 +127,4 @@ public final class CraftGraph {
         });
         return totals;
     }
-
-    /** Every distinct item used by the tree with its total demand. */
-    public Map<ItemKey, Long> aggregateAll() {
-        Map<ItemKey, Long> totals = new LinkedHashMap<>();
-        forEachNode(node -> {
-            if (!node.isFluidRequirement()) {
-                totals.merge(node.item(), node.required(), CraftMath::saturatingAdd);
-            }
-        });
-        return totals;
-    }
-
-    public int nodeCount() {
-        int[] count = {0};
-        forEachNode(node -> count[0]++);
-        return count[0];
-    }
-
-    public int maxDepth() {
-        int[] max = {0};
-        forEachNode(node -> max[0] = Math.max(max[0], node.depth()));
-        return max[0];
-    }
 }

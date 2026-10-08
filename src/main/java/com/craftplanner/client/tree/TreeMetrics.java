@@ -140,6 +140,17 @@ public final class TreeMetrics {
         return iconY(index, scroll) + ICON;
     }
 
+    /**
+     * A row's amount as both surfaces draw it: the availability sign, then the
+     * number. Measuring this string rather than the number alone is what makes the
+     * amount column wide enough for the sign, in the window and in the HUD alike —
+     * the sign is only worth having if it never pushes the number out of the panel.
+     */
+    public static String markedAmount(TreeRow.Status status, String amount) {
+        String mark = status.mark();
+        return mark.isEmpty() ? amount : mark + " " + amount;
+    }
+
     /** Pixel width a row of {@code depth} needs to show a label of {@code labelW}. */
     public static int rowWidth(int depth, int labelW) {
         return labelX(depth) + labelW;

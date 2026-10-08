@@ -18,11 +18,16 @@ public final class CraftMath {
         return ceilDiv(required, producedPerCraft);
     }
 
+    /**
+     * Divides rounding up. {@code Math.ceilDiv} rather than {@code (value + divisor - 1)
+     * / divisor}: the summand overflows for the saturated amounts a deep tree can
+     * reach, and the quotient then comes out negative.
+     */
     public static long ceilDiv(long value, long divisor) {
         if (divisor <= 0) {
             return 0;
         }
-        return (value + divisor - 1) / divisor;
+        return Math.ceilDiv(value, divisor);
     }
 
     /** Multiplies, clamping to {@link Long#MAX_VALUE} instead of overflowing. */

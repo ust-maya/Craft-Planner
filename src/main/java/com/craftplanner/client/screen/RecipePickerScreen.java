@@ -1,9 +1,11 @@
 package com.craftplanner.client.screen;
 
 import com.craftplanner.client.MachineNames;
+import com.craftplanner.client.AmountLabel;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
 import com.craftplanner.client.RecipePreview;
+import com.craftplanner.client.Scrollbar;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.overlay.NodeColors;
@@ -11,11 +13,9 @@ import com.craftplanner.client.tree.TreeMetrics;
 import com.craftplanner.client.tree.TreeRow;
 import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.RecipeNode;
-import com.craftplanner.client.resource.Availability;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -99,8 +99,6 @@ public final class RecipePickerScreen extends Screen {
     /** The amber of the tree's own markers, so "in use" reads the same everywhere. */
     private static final int ROW_SELECTED = UiPalette.MODAL_ROW_SELECTED;
     private static final int ROW_HOVER = UiPalette.MODAL_ROW_HOVER;
-    /** Thumb of the option band: the quiet grey of the plan panel's own scrollbar. */
-    private static final int SCROLL = UiPalette.SCROLL_BAR;
 
     /** The item whose recipes are offered; also the key of the choice. */
     private final ItemKey item;
@@ -118,6 +116,8 @@ public final class RecipePickerScreen extends Screen {
     private int scroll;
     /** Whether the first layout already put the row in use on screen. */
     private boolean centered;
+    /** Whether the recipe in use has had its branch opened; see {@link #init()}. */
+    private boolean usedOptionRevealed;
     private int panelWidth;
     private long seenGraphVersion;
 
@@ -181,8 +181,12 @@ public final class RecipePickerScreen extends Screen {
         }
         this.rows = built;
         // The recipe in use opens on its own: its tree is what the player is here to
-        // check, and the cost row above it is only a summary of it.
-        if (!this.expanded.contains(this.options.get(this.selected).id())) {
+        // check, and the cost row above it is only a summary of it. Only the first
+        // time: init() runs again on a window resize and whenever the plan changes
+        // under the open window, and re-expanding there would push back open the
+        // branch the player just closed by hand.
+        if (!this.usedOptionRevealed) {
+            this.usedOptionRevealed = true;
             this.expanded.add(this.options.get(this.selected).id());
         }
         this.expanded.retainAll(idsOf(this.options));
@@ -302,7 +306,7 @@ public final class RecipePickerScreen extends Screen {
             for (TreeRow<RecipeNode> row : preview) {
                 widest = Math.max(widest, optionGutterW() + TreeMetrics.labelX(depthOf(row))
                     + this.font.width(row.name()) + TEXT_GAP
-                    + this.font.width(row.node().amountLabel()));
+                    + this.font.width(AmountLabel.of(row.node())));
             }
         }
         widest = Math.max(widest, optionGutterW() + this.font.width(cutLabel()));
@@ -568,15 +572,9 @@ public final class RecipePickerScreen extends Screen {
         // A dozen machine alternatives scroll, and a wheel that finds nothing to show
         // for it reads as a broken list — so the band of lines carries the same
         // thumb the plan panel draws.
-        int hidden = maxScroll();
-        if (hidden > 0) {
-            int trackTop = bandTop();
-            int trackH = shown * ROW_H;
-            int barH = Math.max(6, trackH * shown / this.lines.size());
-            int barY = trackTop + (trackH - barH) * this.scroll / hidden;
-            int barX = left + this.panelWidth - 4;
-            graphics.fill(barX, trackTop, barX + 3, trackTop + trackH, UiPalette.SCROLL_TRACK);
-            graphics.fill(barX, barY, barX + 3, barY + barH, SCROLL);
+        if (maxScroll() > 0) {
+            Scrollbar.draw(graphics, Scrollbar.of(left + this.panelWidth - 4, bandTop(),
+                    shown * ROW_H, shown, this.lines.size(), this.scroll, maxScroll(), 6));
         }
 
         super.render(graphics, mouseX, mouseY, partialTick);
@@ -686,33 +684,16 @@ public final class RecipePickerScreen extends Screen {
 
         int textY = y + (ROW_H - this.font.lineHeight) / 2;
         int room = this.panelWidth - 2 * PAD - optionGutterW() - TreeMetrics.labelX(depth);
-        String amount = row.node().amountLabel();
+        String amount = AmountLabel.of(row.node());
         String name = RecipeListLayout.trimToWidth(this.font::width, row.name(),
                 Math.max(0, room - this.font.width(amount) - TEXT_GAP));
         int nameX = originX + TreeMetrics.labelX(depth);
         graphics.drawString(this.font, name, nameX, textY,
-                lineInk(row, PlannerState.availability()), false);
+                NodeColors.forRow(row), false);
         graphics.drawString(this.font, amount,
                 nameX + room - this.font.width(amount), textY, MUTED, false);
     }
 
-    /** The same availability colouring the plan's own tree uses. */
-    private static int lineInk(TreeRow<RecipeNode> row, Map<ItemKey, Availability> availability) {
-        if (row.kind() == TreeRow.Kind.CYCLE) {
-            return NodeColors.CYCLE;
-        }
-        return switch (row.status()) {
-            case COVERED -> NodeColors.HAVE;
-            case PARTIAL -> NodeColors.PARTIAL;
-            case MISSING -> NodeColors.MISSING;
-            case UNKNOWN -> switch (row.kind()) {
-                case ROOT -> NodeColors.ROOT;
-                case ASSEMBLY -> NodeColors.INTERMEDIATE;
-                case MATERIAL -> NodeColors.RAW;
-                case CYCLE -> NodeColors.CYCLE;
-            };
-        };
-    }
 
     /**
      * One row: its highlight, then mark, icon and text. The mark column and the

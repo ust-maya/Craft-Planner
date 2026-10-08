@@ -9,7 +9,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.Reader;
-import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -100,8 +99,8 @@ public final class PlanStore {
         json.add("roots", savedRoots);
 
         Path file = file();
-        try (Writer writer = Files.newBufferedWriter(file)) {
-            GSON.toJson(json, writer);
+        try {
+            JsonFiles.writeAtomically(file, json, GSON);
         } catch (Exception e) {
             LOGGER.warn("Craft Planner could not save the plan to {}.", file, e);
         }

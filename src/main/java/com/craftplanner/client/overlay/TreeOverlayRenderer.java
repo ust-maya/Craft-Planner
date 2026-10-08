@@ -3,8 +3,12 @@ package com.craftplanner.client.overlay;
 import com.craftplanner.Config;
 import com.craftplanner.Constants;
 import com.craftplanner.client.Keybinds;
+import com.craftplanner.client.MaterialTooltip;
+import com.craftplanner.client.UiLegend;
 import com.craftplanner.client.OverlayState;
+import com.craftplanner.client.AmountLabel;
 import com.craftplanner.client.PlanRows;
+import com.craftplanner.client.Scrollbar;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.TextMetrics;
 import com.craftplanner.client.UiPalette;
@@ -24,7 +28,6 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -126,7 +129,7 @@ public final class TreeOverlayRenderer {
      */
     private static int cachedNaturalW = -1;
     private static long cachedNaturalVersion = -1;
-    private static int cachedNaturalFolds = -1;
+    private static long cachedNaturalFoldVersion = -1;
     /** The font the cached measurement was taken with. */
     private static Font cachedNaturalFont;
 
@@ -134,7 +137,6 @@ public final class TreeOverlayRenderer {
     private static ScrollTrack scrollTrack;
     /** True while the layout editor holds that scrollbar. */
     private static boolean scrollGrab;
-    private static final int SCROLL_HIT = 3;
 
     /**
      * Edge of the recipe button at the end of a row, in layout pixels.
@@ -349,8 +351,8 @@ public final class TreeOverlayRenderer {
      */
     private static int naturalWidth(List<TreeRow<RecipeNode>> rows, Font font) {
         long version = PlannerState.graphVersion();
-        int folds = TreeCollapse.foldCount();
-        if (cachedNaturalW >= 0 && cachedNaturalVersion == version && cachedNaturalFolds == folds
+        long folds = TreeCollapse.version();
+        if (cachedNaturalW >= 0 && cachedNaturalVersion == version && cachedNaturalFoldVersion == folds
                 && cachedNaturalFont == font) {
             return cachedNaturalW;
         }
@@ -364,7 +366,7 @@ public final class TreeOverlayRenderer {
         widest += badgeLayoutW(rows);
         cachedNaturalW = widest;
         cachedNaturalVersion = version;
-        cachedNaturalFolds = folds;
+        cachedNaturalFoldVersion = folds;
         cachedNaturalFont = font;
         return widest;
     }
@@ -390,7 +392,7 @@ public final class TreeOverlayRenderer {
 
     /** The label of a row: what it is, how much of it, and what a fold is hiding. */
     private static String rowLabel(TreeRow<RecipeNode> row) {
-        return row.name() + " " + row.node().amountLabel()
+        return row.name() + " " + TreeMetrics.markedAmount(row.status(), AmountLabel.of(row.node()))
                 + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
     }
 
@@ -448,8 +450,7 @@ public final class TreeOverlayRenderer {
                 TreePanel.HUD_PAD);
         TreePanel.Plan rough = TreePanel.plan(withoutFooter, treeScroll);
 
-        Footer footer = buildFooter(availability, PlannerState.fluidRequirements(), metrics, rough.contentW(),
-                hotkeyLine(metrics, rough.contentW(), rough));
+        Footer footer = cachedFooter(availability, metrics, rough, mc);
         int footerBlock = footer.height() > 0 ? footer.height() + FOOTER_GAP : 0;
         TreePanel.Plan sized = TreePanel.plan(new TreePanel.Request(
                 withoutFooter.availW(), withoutFooter.availH(), withoutFooter.density(),
@@ -589,7 +590,7 @@ public final class TreeOverlayRenderer {
             String label = metrics.trim(rowLabel(row),
                     TreeMetrics.labelRoom(labelW, depth));
             graphics.drawString(font, label, TreeMetrics.labelX(depth),
-                    TreeMetrics.textY(r, first, font.lineHeight), ink(row, availability), false);
+                    TreeMetrics.textY(r, first, font.lineHeight), NodeColors.forRow(row), false);
             drawBadge(graphics, font, row, r, first, labelW, badgeW, panel);
         }
     }
@@ -620,23 +621,6 @@ public final class TreeOverlayRenderer {
                 null, row.node(), 0, 0, new TreeMetrics.Rect(x, y, BADGE, BADGE)));
     }
 
-    /** The row's label colour, from the same availability the shopping list uses. */
-    private static int ink(TreeRow<RecipeNode> row, Map<ItemKey, Availability> availability) {
-        if (row.kind() == TreeRow.Kind.CYCLE) {
-            return NodeColors.CYCLE;
-        }
-        return switch (row.status()) {
-            case COVERED -> NodeColors.HAVE;
-            case PARTIAL -> NodeColors.PARTIAL;
-            case MISSING -> NodeColors.MISSING;
-            case UNKNOWN -> switch (row.kind()) {
-                case ROOT -> NodeColors.ROOT;
-                case ASSEMBLY -> NodeColors.INTERMEDIATE;
-                case MATERIAL -> NodeColors.RAW;
-                case CYCLE -> NodeColors.CYCLE;
-            };
-        };
-    }
 
     /** Quiet 3 px track, brighter thumb under the cursor or while the editor drags it. */
     private static void drawScrollbar(GuiGraphics graphics, Minecraft mc, TreePanel.Plan panel,
@@ -646,19 +630,14 @@ public final class TreeOverlayRenderer {
         }
         int trackTop = panel.contentTop();
         int trackH = Math.max(1, panel.contentBottom() - trackTop);
-        int barH = TreePanel.thumbHeight(trackH, panel.visibleRows(), rowCount);
-        int barY = TreePanel.thumbTop(trackTop, trackH, barH, panel.scroll(), panel.maxScroll());
         int barX = left + panel.panelW() - SCROLL_ZONE + 2;
-        graphics.fill(barX, trackTop, barX + TreeMetrics.SCROLL_BAR_W, trackTop + trackH,
-                UiPalette.SCROLL_TRACK);
+        Scrollbar.Geometry bar = Scrollbar.of(barX, trackTop, trackH, panel.visibleRows(), rowCount,
+                panel.scroll(), panel.maxScroll(), TreeMetrics.MIN_THUMB_H);
         boolean hot = scrollGrab
-                || (mc.screen != null && mouseX(mc) >= barX - SCROLL_HIT
-                        && mouseX(mc) <= barX + TreeMetrics.SCROLL_BAR_W + SCROLL_HIT
-                        && mouseY(mc) >= trackTop && mouseY(mc) < trackTop + trackH);
-        graphics.fill(barX, barY, barX + TreeMetrics.SCROLL_BAR_W, barY + barH,
-                hot ? UiPalette.SCROLL_BAR_HOT : UiPalette.SCROLL_BAR);
-        scrollTrack = new ScrollTrack(barX - SCROLL_HIT, trackTop,
-                TreeMetrics.SCROLL_BAR_W + 2 * SCROLL_HIT, trackH, barH, panel.maxScroll());
+                || (mc.screen != null && Scrollbar.overColumn(bar, mouseX(mc), mouseY(mc)));
+        Scrollbar.draw(graphics, bar, hot);
+        scrollTrack = new ScrollTrack(barX - Scrollbar.HIT, trackTop,
+                Scrollbar.WIDTH + 2 * Scrollbar.HIT, trackH, bar.thumbHeight(), panel.maxScroll());
     }
 
     /**
@@ -667,35 +646,16 @@ public final class TreeOverlayRenderer {
      * title — a missing legend is better than an unreadable one, and the window
      * carries the authoritative copy of it.
      */
+
+
+
     private static void drawTreeLegend(GuiGraphics graphics, Font font, int contentW) {
-        int[] colors = {
-                NodeColors.HAVE, NodeColors.MISSING,
-                NodeColors.INTERMEDIATE, NodeColors.ROOT
-        };
-        Component[] labels = {
-                Component.translatable("overlay.craftplanner.legend.have"),
-                Component.translatable("overlay.craftplanner.legend.missing"),
-                Component.translatable("overlay.craftplanner.legend.intermediate"),
-                Component.translatable("overlay.craftplanner.legend.root")
-        };
-        final int gap = 6;
-        final int square = 6;
-        int[] itemW = new int[labels.length];
-        int total = 0;
-        for (int i = 0; i < labels.length; i++) {
-            itemW[i] = square + 2 + font.width(labels[i]);
-            total += itemW[i] + gap;
-        }
+        int total = UiLegend.totalWidth(font);
         int titleW = font.width(Component.translatable("overlay.craftplanner.title"));
-        if (titleW + gap + total > contentW) {
+        if (titleW + UiLegend.ENTRY_GAP + total > contentW) {
             return;
         }
-        int x = contentW - total;
-        for (int i = 0; i < labels.length; i++) {
-            graphics.fill(x, 2, x + square, 2 + square, colors[i]);
-            graphics.drawString(font, labels[i], x + square + 2, 0, NodeColors.TEXT, false);
-            x += itemW[i] + gap;
-        }
+        UiLegend.drawRow(graphics, font, 0, UiLegend.entries(font).size(), contentW, 0, false);
     }
 
     /**
@@ -805,7 +765,7 @@ public final class TreeOverlayRenderer {
         }
 
         String amountLabel() {
-            return isFluid() ? required + " mB" : Long.toString(required);
+            return isFluid() ? AmountLabel.millibuckets(required) : AmountLabel.bare(required);
         }
 
         int color() {
@@ -843,6 +803,46 @@ public final class TreeOverlayRenderer {
         }
         return footer;
     }
+
+    /**
+     * The footer block, or the cached one when nothing it is made of changed.
+     *
+     * <p>Building it sorts the whole shopping list, wraps it into lines twice over
+     * when the {@code +N} marker has to be squeezed in, and measures the hotkey
+     * hint — on a HUD that runs every frame while the numbers behind it move once
+     * a second at best. The keys are exactly what those numbers come from: the
+     * availability map and the fluid map (both replaced wholesale whenever they
+     * change, so identity is enough), the room the panel gives the footer, the
+     * density it is drawn at, whether the plan is trimmed, and the language the
+     * labels are read in.</p>
+     */
+    private static Footer cachedFooter(Map<ItemKey, Availability> availability, TextMetrics metrics,
+            TreePanel.Plan rough, Minecraft mc) {
+        String language = mc.getLanguageManager().getSelected();
+        Map<Fluid, Long> fluids = PlannerState.fluidRequirements();
+        if (footerCache != null && footerAvailability == availability && footerFluids == fluids
+                && footerWidth == rough.contentW() && footerScale == rough.scale()
+                && footerClipped == rough.clipped() && language.equals(footerLanguage)) {
+            return footerCache;
+        }
+        footerCache = buildFooter(availability, fluids, metrics, rough.contentW(),
+                hotkeyLine(metrics, rough.contentW(), rough));
+        footerAvailability = availability;
+        footerFluids = fluids;
+        footerWidth = rough.contentW();
+        footerScale = rough.scale();
+        footerClipped = rough.clipped();
+        footerLanguage = language;
+        return footerCache;
+    }
+
+    private static Map<ItemKey, Availability> footerAvailability;
+    private static Map<Fluid, Long> footerFluids;
+    private static int footerWidth = -1;
+    private static double footerScale = -1;
+    private static boolean footerClipped;
+    private static String footerLanguage = "";
+    private static Footer footerCache;
 
     /** Raw materials, worst shortage first, then largest demand. */
     private static List<FooterMaterial> shoppingList(Map<ItemKey, Availability> availability,
@@ -960,7 +960,7 @@ public final class TreeOverlayRenderer {
     private static boolean showTailTooltip(GuiGraphics graphics, Font font, Footer footer,
             Minecraft mc, int originX, int originY, double scale) {
         if (footer.hidden <= 0 || footer.tailX < 0 || footer.hiddenEntries.isEmpty()
-                || mc.screen == null) {
+                || !OverlayPlacement.editing()) {
             return false;
         }
         int mx = mouseX(mc);
@@ -976,7 +976,7 @@ public final class TreeOverlayRenderer {
         List<Component> lines = new ArrayList<>();
         for (FooterMaterial entry : footer.hiddenEntries) {
                 lines.add(entry.name().copy().append(Component.literal(" "
-                    + (entry.isFluid() ? entry.amountLabel() : "×" + entry.amountLabel()))));
+                    + (entry.isFluid() ? entry.amountLabel() : AmountLabel.times(entry.required())))));
         }
         showTooltip(graphics, font, mc, lines);
         return true;
@@ -989,9 +989,12 @@ public final class TreeOverlayRenderer {
      * pointing at an icon names it and splits the amount into needed, on hand and
      * still missing.
      *
-     * <p>Offered only while one of the planner's screens is open: with no screen
-     * the game grabs the cursor and pins it to the centre of the window, and the
-     * tooltip would follow a pointer the player cannot see or move.</p>
+     * <p>Offered only in the layout editor (O). Any open screen used to be enough,
+     * which put these notes on top of whatever the player was actually looking at
+     * — an inventory, EMI, a chest — where the HUD is behind a dim and the icons
+     * under the cursor belong to that screen, not to the panel. With no screen at
+     * all the game grabs the cursor and pins it to the middle of the window, so the
+     * pointer cannot reach an icon in the first place.</p>
      *
      * @param originX screen x of the footer pose the icons were drawn from
      * @param originY screen y of that pose
@@ -999,7 +1002,7 @@ public final class TreeOverlayRenderer {
      */
     private static void showMaterialTooltips(GuiGraphics graphics, Font font, Footer footer,
             Minecraft mc, int originX, int originY, double scale) {
-        if (footer.icons.isEmpty() || mc.screen == null) {
+        if (footer.icons.isEmpty() || !OverlayPlacement.editing()) {
             return;
         }
         int mx = mouseX(mc);
@@ -1018,25 +1021,10 @@ public final class TreeOverlayRenderer {
         }
     }
 
-    /**
-     * A material named, then what the plan asks of it: the amount the footer
-     * prints, plus the part the inventory already covers. Only a shortfall gets its
-     * own line — a material already in stock has nothing left to report.
-     */
+    /** The material's own tooltip lines, said the way every surface says them. */
     private static List<Component> materialLines(FooterMaterial material) {
-        List<Component> lines = new ArrayList<>();
-        lines.add(material.name().copy());
-        lines.add(Component.translatable("overlay.craftplanner.material.required",
-                material.amountLabel()));
-        if (material.availability() != null) {
-            lines.add(Component.translatable("overlay.craftplanner.material.have",
-                    Long.toString(material.availability().available())));
-            if (material.availability().missing() > 0) {
-                lines.add(Component.translatable("overlay.craftplanner.material.missing",
-                        Long.toString(material.availability().missing())));
-            }
-        }
-        return lines;
+        return MaterialTooltip.lines(material.name(), material.amountLabel(),
+                material.availability());
     }
 
     /**
@@ -1121,7 +1109,6 @@ public final class TreeOverlayRenderer {
     private static final int G_PADDING = 4;
     private static final int G_TITLE_SPACE = 11;
     private static final int G_FOOTER_SPACE = 24;
-    private static final int G_LEGEND_SQUARE = 6;
     /**
      * Floor for the automatic "shrink to fit" of the graph layout. Below this the
      * node-link view is unreadably small, and the overlay falls back to the
@@ -1269,66 +1256,24 @@ public final class TreeOverlayRenderer {
      */
     private static void drawLegend(GuiGraphics graphics, Font font, int left, int top,
             int panelWidth) {
-        int[] colors = {
-                NodeColors.HAVE, NodeColors.MISSING,
-                NodeColors.INTERMEDIATE, NodeColors.ROOT
-        };
-        Component[] labels = {
-                Component.translatable("overlay.craftplanner.legend.have"),
-                Component.translatable("overlay.craftplanner.legend.missing"),
-                Component.translatable("overlay.craftplanner.legend.intermediate"),
-                Component.translatable("overlay.craftplanner.legend.root")
-        };
-        int[] itemW = new int[labels.length];
-        int total = 0;
-        for (int i = 0; i < labels.length; i++) {
-            itemW[i] = G_LEGEND_SQUARE + 2 + font.width(labels[i]);
-            total += itemW[i] + 6;
-        }
-
+        int entries = UiLegend.entries(font).size();
+        int total = UiLegend.totalWidth(font);
         int titleW = font.width(Component.translatable("overlay.craftplanner.title"));
-        int firstRowRoom = panelWidth - 2 * G_PADDING - titleW - 6;
-        int fullRoom = panelWidth - 2 * G_PADDING;
+        int firstRowRoom = panelWidth - 2 * G_PADDING - titleW - UiLegend.ENTRY_GAP;
+        int right = left + panelWidth - G_PADDING;
         if (total <= firstRowRoom) {
-            drawLegendRow(graphics, font, colors, labels, itemW, 0, labels.length,
-                    left, top + 4, panelWidth, total);
+            UiLegend.drawRow(graphics, font, 0, entries, right, top + 2, true);
             return;
         }
 
         // Greedy split: as many entries as fit in the title row, the rest below.
-        int split = 0;
-        int firstTotal = 0;
-        for (int i = 0; i < labels.length; i++) {
-            int next = split == 0 ? itemW[i] : firstTotal + 6 + itemW[i];
-            if (next > firstRowRoom) {
-                break;
-            }
-            firstTotal = next;
-            split++;
-        }
-        int restTotal = 0;
-        for (int i = split; i < labels.length; i++) {
-            restTotal += itemW[i] + 6;
-        }
-        if (split == 0 || restTotal > fullRoom) {
+        int split = UiLegend.split(font, firstRowRoom);
+        int restTotal = UiLegend.rowWidth(font, split, entries);
+        if (split == 0 || restTotal > panelWidth - 2 * G_PADDING) {
             return;
         }
-        drawLegendRow(graphics, font, colors, labels, itemW, 0, split,
-                left, top + 4, panelWidth, firstTotal);
-        drawLegendRow(graphics, font, colors, labels, itemW, split, labels.length,
-                left, top + 4 + font.lineHeight, panelWidth, restTotal);
-    }
-
-    private static void drawLegendRow(GuiGraphics graphics, Font font, int[] colors,
-            Component[] labels, int[] itemW, int from, int to, int left, int y, int panelWidth,
-            int rowTotal) {
-        int x = left + panelWidth - G_PADDING - rowTotal;
-        for (int i = from; i < to; i++) {
-            graphics.fill(x, y, x + G_LEGEND_SQUARE, y + G_LEGEND_SQUARE, colors[i]);
-            UiShapes.ring(graphics, x, y, G_LEGEND_SQUARE, G_LEGEND_SQUARE, UiPalette.CHIP_BORDER);
-            graphics.drawString(font, labels[i], x + G_LEGEND_SQUARE + 2, y, NodeColors.TEXT, false);
-            x += itemW[i] + 6;
-        }
+        UiLegend.drawRow(graphics, font, 0, split, right, top + 2, true);
+        UiLegend.drawRow(graphics, font, split, entries, right, top + 2 + font.lineHeight, true);
     }
 
     /** Edges of the node-link view, in the colour of the goal they belong to. */
@@ -1365,7 +1310,7 @@ public final class TreeOverlayRenderer {
             graphics.fill(x - 1, y - 1, x + TreeLayout.ICON_SIZE + 1, y + TreeLayout.ICON_SIZE + 1,
                     0x40000000 | (color & 0x00FFFFFF));
             graphics.renderItem(node.displayStack(), x, y);
-                graphics.drawString(font, node.amountLabel(),
+                graphics.drawString(font, AmountLabel.of(node),
                     x, y + TreeLayout.ICON_SIZE + 1, color, false);
         }
     }

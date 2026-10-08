@@ -1,11 +1,15 @@
 package com.craftplanner.client.screen;
 
+import com.craftplanner.client.AmountLabel;
 import com.craftplanner.client.Keybinds;
+import com.craftplanner.client.MaterialTooltip;
 import com.craftplanner.client.PlanRows;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
+import com.craftplanner.client.Scrollbar;
 import com.craftplanner.client.TextMetrics;
 import com.craftplanner.client.UiPalette;
+import com.craftplanner.client.UiLegend;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.overlay.NodeColors;
 import com.craftplanner.client.overlay.TreeCollapse;
@@ -20,6 +24,7 @@ import com.craftplanner.graph.RecipeNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
@@ -77,8 +82,8 @@ public final class CraftTreeScreen extends Screen {
     private static final int MAX_NAME_W = 320;
     /** Edge of the square recipe button: a 16 px icon with a pixel of air around it. */
     private static final int RECIPE_BTN = 18;
-    /** Rows one wheel notch moves: at one row per notch a long plan barely stirred. */
-    private static final int WHEEL_ROWS = 3;
+    /** Air between two footer buttons — the same gap {@link #buildWidgets()} lays out with. */
+    private static final int FOOTER_GAP = 4;
 
     private List<TreeRow<RecipeNode>> rows = List.of();
     /** Panel-relative geometry; the panel is centred after it is known. */
@@ -93,13 +98,22 @@ public final class CraftTreeScreen extends Screen {
     private int maxDepth;
 
     private int scroll;
+    /**
+     * The row the keyboard is on, by its tree path rather than by index: a rebuild
+     * after a fold moves rows up and down the list, and an index would then light
+     * up whatever row happened to sit there. The path is the row the player chose.
+     */
+    private String focusPath;
+    /** {@link #focusPath} resolved against the current rows; -1 when it is not among them. */
     private int focus = -1;
     /** The explicit "choose this row's recipe" button, kept so its state can follow the focus. */
     private Button recipeButton;
     private boolean thumbDrag;
+    /** What the recipe button's tooltip currently describes; see {@link #syncRecipeButton()}. */
+    private String recipeButtonState;
     private long seenGraphVersion = -1;
     private long seenAvailabilityVersion = -1;
-    private int seenFoldCount = -1;
+    private long seenFoldVersion = -1;
 
     public CraftTreeScreen() {
         super(Component.translatable(KEY_TITLE));
@@ -116,7 +130,7 @@ public final class CraftTreeScreen extends Screen {
         // added from another screen, so the tree follows the plan rather than the
         // click that opened it.
         if (PlannerState.graphVersion() != this.seenGraphVersion
-                || TreeCollapse.foldCount() != this.seenFoldCount) {
+                || TreeCollapse.version() != this.seenFoldVersion) {
             rebuild();
         } else if (PlannerState.availabilityVersion() != this.seenAvailabilityVersion) {
             this.seenAvailabilityVersion = PlannerState.availabilityVersion();
@@ -128,7 +142,7 @@ public final class CraftTreeScreen extends Screen {
     private void rebuild() {
         this.seenGraphVersion = PlannerState.graphVersion();
         this.seenAvailabilityVersion = PlannerState.availabilityVersion();
-        this.seenFoldCount = TreeCollapse.foldCount();
+        this.seenFoldVersion = TreeCollapse.version();
         this.rows = PlanRows.rows();
         measure(this.font::width);
         // The plan comes back panel-relative, so centring cannot disagree with the
@@ -139,9 +153,7 @@ public final class CraftTreeScreen extends Screen {
         this.panelLeft = (this.width - this.plan.panelW()) / 2;
         this.panelTop = (this.height - this.plan.panelH()) / 2;
         this.scroll = this.plan.scroll();
-        if (this.focus >= this.rows.size()) {
-            this.focus = this.rows.size() - 1;
-        }
+        this.focus = resolveFocus();
         buildWidgets();
     }
 
@@ -163,8 +175,12 @@ public final class CraftTreeScreen extends Screen {
             anyChoice |= row.badge() != TreeRow.Badge.NONE;
         }
         this.nameW = Math.min(MAX_NAME_W, Math.max(MIN_NAME_W, widestName + 2));
-        this.amountW = Math.max(metrics.width(Long.toString(maxAmount) + " mB") + 8,
-            metrics.width("×9999"));
+        // The column is measured from the string a row actually draws, sign included:
+        // an availability mark that does not fit is a number pushed out of the panel,
+        // which is the one thing the mark must never do.
+        this.amountW = Math.max(metrics.width(AmountLabel.millibuckets(maxAmount)) + 8,
+                metrics.width(TreeMetrics.markedAmount(TreeRow.Status.MISSING,
+                        AmountLabel.times(Math.max(maxAmount, 9_999)))));
         // The recipe column is a square button, so it is measured rather than
         // fitted to text — and it is reserved whenever any row has a recipe at all,
         // not only when some row offers a choice, so the column a player learns to
@@ -173,9 +189,47 @@ public final class CraftTreeScreen extends Screen {
     }
 
     private int naturalContentW() {
-        return TreeMetrics.labelX(this.maxDepth) + this.nameW
+        // The rows decide how wide the tree wants to be; the footer decides how
+        // wide the window must be. A panel sized only by its rows puts the button
+        // row outside itself — most visibly on an empty plan, where the buttons are
+        // the whole content and their labels are as long as the language makes them.
+        return Math.max(TreeMetrics.labelX(this.maxDepth) + this.nameW
                 + (this.amountW > 0 ? COL_GAP + this.amountW : 0)
-                + (this.recipeW > 0 ? COL_GAP + this.recipeW : 0);
+                + (this.recipeW > 0 ? COL_GAP + this.recipeW : 0),
+                Math.max(footerButtonsWidth(), emptyMessageWidth()));
+    }
+
+    /**
+     * The footer buttons as {@link #buildWidgets()} places them: five labels, each
+     * at least its minimum width, with the gaps between them.
+     */
+    private int footerButtonsWidth() {
+        return buttonWidth(text(KEY_COLLAPSE), 60) + buttonWidth(text(KEY_EXPAND), 60)
+                + buttonWidth(text(KEY_RECIPE), 60) + buttonWidth(text(KEY_LIST), 60)
+                + buttonWidth(text(KEY_CLOSE), 48) + 4 * FOOTER_GAP;
+    }
+
+    /** One footer button: its label plus the padding it is measured with, over its floor. */
+    private int buttonWidth(String label, int minWidth) {
+        return Math.max(minWidth, this.font.width(label) + PAD);
+    }
+
+    /** The "nothing planned yet" line: it is centred inside the panel, so the panel must hold it. */
+    private int emptyMessageWidth() {
+        return this.rows.isEmpty() ? this.font.width(emptyMessage()) + 2 * PAD : 0;
+    }
+
+    /** The empty-plan line, naming the binding the player actually has. */
+    private String emptyMessage() {
+        return text(KEY_EMPTY, Keybinds.ADD_RECIPE.getKey().getDisplayName());
+    }
+
+    /**
+     * A translation as plain text: the footer is measured in pixels, and a width
+     * can only be taken from a string.
+     */
+    private static String text(String key, Object... args) {
+        return Component.translatable(key, args).getString();
     }
 
     /** Legend, two hint lines and the button row. */
@@ -187,12 +241,12 @@ public final class CraftTreeScreen extends Screen {
         clearWidgets();
         int rowLeft = this.panelLeft + PAD;
         int buttonsY = contentBottom() + footerH() - BUTTON_H - 4;
-        int gap = 4;
-        int collapseW = Math.max(60, this.font.width(tr(KEY_COLLAPSE)) + PAD);
-        int expandW = Math.max(60, this.font.width(tr(KEY_EXPAND)) + PAD);
-        int recipeW = Math.max(60, this.font.width(tr(KEY_RECIPE)) + PAD);
-        int listW = Math.max(60, this.font.width(tr(KEY_LIST)) + PAD);
-        int closeW = Math.max(48, this.font.width(tr(KEY_CLOSE)) + PAD);
+        int gap = FOOTER_GAP;
+        int collapseW = buttonWidth(text(KEY_COLLAPSE), 60);
+        int expandW = buttonWidth(text(KEY_EXPAND), 60);
+        int recipeW = buttonWidth(text(KEY_RECIPE), 60);
+        int listW = buttonWidth(text(KEY_LIST), 60);
+        int closeW = buttonWidth(text(KEY_CLOSE), 48);
         int right = this.panelLeft + this.plan.panelW() - PAD;
 
         if (!this.rows.isEmpty()) {
@@ -222,6 +276,43 @@ public final class CraftTreeScreen extends Screen {
                 tr(KEY_CLOSE), button -> onClose(), null));
     }
 
+    /** Remembers {@code r} as the focused row, by the path that identifies it. */
+    /**
+     * Moves the window over the plan without re-measuring it.
+     *
+     * <p>Scrolling decides which rows are drawn and nothing else: the panel is the
+     * same size, its columns hold the same text, and the footer widgets sit where
+     * {@link #buildWidgets()} put them. Rebuilding for a wheel notch threw that
+     * whole layout away sixty times a minute, along with the button the cursor was
+     * resting on — so a drag of the thumb stuttered, and a scroll ended with a
+     * re-created panel rather than a moved one.</p>
+     */
+    private void scrollTo(int target) {
+        this.scroll = TreePanel.clampScroll(target, this.rows.size(), this.plan.visibleRows());
+    }
+
+    private void setFocusRow(int r) {
+        this.focus = r;
+        this.focusPath = r >= 0 && r < this.rows.size() ? this.rows.get(r).path() : null;
+    }
+
+    /**
+     * The row {@link #focusPath} names in the current rows, or -1 when the plan no
+     * longer shows it — folded away, which is when the path is kept and the row
+     * comes back with the branch.
+     */
+    private int resolveFocus() {
+        if (this.focusPath == null) {
+            return -1;
+        }
+        for (int r = 0; r < this.rows.size(); r++) {
+            if (this.focusPath.equals(this.rows.get(r).path())) {
+                return r;
+            }
+        }
+        return -1;
+    }
+
     /** The row the keyboard is on, or {@code null} when the plan is empty or nothing is picked. */
     private TreeRow<RecipeNode> focusedRow() {
         return this.focus >= 0 && this.focus < this.rows.size() ? this.rows.get(this.focus) : null;
@@ -239,11 +330,22 @@ public final class CraftTreeScreen extends Screen {
         } else {
             TreeCollapse.unfoldAll();
         }
-        this.focus = Math.max(-1, Math.min(this.focus, this.rows.size() - 1));
         rebuild();
     }
 
     // --- drawing ------------------------------------------------------------
+
+    @Override
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        // Empty on purpose, like the list and the pickers: render() paints its own
+        // dim, and vanilla's blurred background would land on top of the rows.
+    }
+
+    /** The world keeps running: the plan is read while it is being gathered. */
+    @Override
+    public boolean isPauseScreen() {
+        return false;
+    }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
@@ -259,6 +361,7 @@ public final class CraftTreeScreen extends Screen {
 
         drawHeader(graphics);
         drawRows(graphics, mouseX, mouseY);
+        drawScrollbar(graphics, mouseX, mouseY);
 
         super.render(graphics, mouseX, mouseY, partialTick);
 
@@ -283,9 +386,7 @@ public final class CraftTreeScreen extends Screen {
 
     private void drawRows(GuiGraphics graphics, int mouseX, int mouseY) {
         if (this.rows.isEmpty()) {
-            graphics.drawCenteredString(this.font,
-                    Component.translatable(KEY_EMPTY,
-                            Keybinds.ADD_RECIPE.getKey().getDisplayName()).getString(),
+            graphics.drawCenteredString(this.font, emptyMessage(),
                     this.panelLeft + this.plan.panelW() / 2, contentTop() + 6, UiPalette.MUTED);
             return;
         }
@@ -298,6 +399,22 @@ public final class CraftTreeScreen extends Screen {
             drawRow(graphics, r, mouseX, mouseY);
         }
         graphics.disableScissor();
+    }
+
+    /**
+     * The plan is normally longer than the window, and until now the only sign of
+     * that was the rows shifting under the wheel — so the track and the thumb are
+     * drawn here as well, the same three quiet pixels the overlay and the list
+     * use. The thumb says both that there is more of the plan and how much of it
+     * is off screen; it brightens where the cursor is over its column, which is
+     * also the column the mouse can grab and drag.
+     */
+    private void drawScrollbar(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (this.plan.maxScroll() <= 0) {
+            return;
+        }
+        Scrollbar.Geometry bar = scrollBar();
+        Scrollbar.draw(graphics, bar, this.thumbDrag || Scrollbar.overColumn(bar, mouseX, mouseY));
     }
 
     /**
@@ -348,7 +465,7 @@ public final class CraftTreeScreen extends Screen {
         int yTop = rowTop(r);
         int left = contentLeft();
         int bandRight = labelRightEdge();
-        boolean hovered = r == hoveredRow(mouseY) && mouseX >= this.panelLeft;
+        boolean hovered = r == hoveredRow(mouseY) && overPanelColumn(mouseX);
         boolean focused = r == this.focus;
 
         if (row.depth() == 0) {
@@ -374,14 +491,14 @@ public final class CraftTreeScreen extends Screen {
                 TreeMetrics.iconRect(row.depth(), r, this.scroll), 1.0, left, contentTop());
         graphics.renderItem(row.node().displayStack(), icon.x(), icon.y());
 
-        int ink = ink(row);
+        int ink = NodeColors.forRow(row);
         int nameX = left + TreeMetrics.labelX(row.depth());
         String name = RecipeListLayout.trimToWidth(this.font::width, row.name(),
                 nameRightEdge() - nameX);
         graphics.drawString(this.font, name, nameX, textY(r), ink, false);
 
         if (this.amountW > 0) {
-                String amount = row.node().amountLabel()
+                String amount = TreeMetrics.markedAmount(row.status(), AmountLabel.of(row.node()))
                     + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
             String shown = RecipeListLayout.trimToWidth(this.font::width, amount, this.amountW);
             graphics.drawString(this.font, shown, nameRightEdge() - this.font.width(shown),
@@ -391,20 +508,6 @@ public final class CraftTreeScreen extends Screen {
                 recipeRect(r).contains(mouseX, mouseY));
     }
 
-    /** The row's label colour: how far the inventory covers what the plan asks. */
-    private static int ink(TreeRow<RecipeNode> row) {
-        return switch (row.status()) {
-            case COVERED -> NodeColors.HAVE;
-            case PARTIAL -> NodeColors.PARTIAL;
-            case MISSING -> NodeColors.MISSING;
-            case UNKNOWN -> switch (row.kind()) {
-                case ROOT -> NodeColors.ROOT;
-                case ASSEMBLY -> NodeColors.INTERMEDIATE;
-                case CYCLE -> NodeColors.CYCLE;
-                case MATERIAL -> NodeColors.RAW;
-            };
-        };
-    }
 
     /**
  * What the recipe button on a row means, said where the row can be looked up.
@@ -521,31 +624,7 @@ public final class CraftTreeScreen extends Screen {
 
     /** The material and plan colours, each named: the encoding the rows use. */
     private void drawLegend(GuiGraphics graphics, int x, int y) {
-        int[] colors = {NodeColors.HAVE, NodeColors.PARTIAL, NodeColors.MISSING,
-                NodeColors.INTERMEDIATE, NodeColors.ROOT};
-        String[] keys = {"overlay.craftplanner.legend.have", "overlay.craftplanner.legend.partial",
-                "overlay.craftplanner.legend.missing", "overlay.craftplanner.legend.intermediate",
-                "overlay.craftplanner.legend.root"};
-        int room = this.plan.panelW() - 2 * PAD;
-        int used = 0;
-        int line = 0;
-        for (int i = 0; i < keys.length; i++) {
-            String label = tr(keys[i]).getString();
-            int entryW = 8 + this.font.width(label) + 8;
-            if (used + entryW > room && used > 0) {
-                line++;
-                used = 0;
-            }
-            if (line > 1) {
-                return;
-            }
-            int entryX = x + used;
-            graphics.fill(entryX, y + line * LINE_H + 2, entryX + 6,
-                    y + line * LINE_H + 8, colors[i]);
-            graphics.drawString(this.font, label, entryX + 8, y + line * LINE_H,
-                    UiPalette.TEXT, false);
-            used += entryW;
-        }
+        UiLegend.draw(graphics, this.font, x, y, this.plan.panelW() - 2 * PAD, LINE_H);
     }
 
     private void drawMaterialSummary(GuiGraphics graphics, int x, int y) {
@@ -594,6 +673,20 @@ public final class CraftTreeScreen extends Screen {
 
     // --- input --------------------------------------------------------------
 
+    /**
+     * Whether the cursor is over the panel's own columns, rather than beside the
+     * window.
+     *
+     * <p>The rows are laid out inside the panel, but the hit test only knew about
+     * the vertical band, so a cursor sitting to the right of the window — over the
+     * game, or over the HUD — still highlighted a row and raised its tooltip. The
+     * scrim makes the panel edge visible, and the pointer belongs to whatever is
+     * under it.</p>
+     */
+    private boolean overPanelColumn(int mx) {
+        return mx >= this.panelLeft && mx < this.panelLeft + this.plan.panelW();
+    }
+
     private int hoveredRow(int mouseY) {
         int r = TreeMetrics.rowAt(contentTop(), contentBottom(), this.scroll, 1.0, mouseY);
         if (r < this.scroll || r >= this.rows.size()) {
@@ -612,15 +705,14 @@ public final class CraftTreeScreen extends Screen {
         }
         int jumped = trackJump((int) mouseX, (int) mouseY);
         if (jumped >= 0) {
-            this.scroll = jumped;
-            rebuild();
+            scrollTo(jumped);
             return true;
         }
         int r = hoveredRow((int) mouseY);
         if (r < 0) {
             return super.mouseClicked(mouseX, mouseY, button);
         }
-        this.focus = r;
+        setFocusRow(r);
         TreeRow<RecipeNode> row = this.rows.get(r);
         TreeMetrics.Rect toggle = TreeMetrics.toggleHit(row.depth(), r, this.scroll, 1.0,
                 contentLeft(), contentTop());
@@ -667,6 +759,15 @@ public final class CraftTreeScreen extends Screen {
         }
         TreeRow<RecipeNode> row = focusedRow();
         boolean pickable = row != null && row.badge() != TreeRow.Badge.NONE;
+        // The tooltip names the item under the focus, which is what the button acts
+        // on, so the row is its key: a frame that focuses the same row as the last
+        // has nothing to say, and building the component again every frame is work
+        // the screen does once per click.
+        String key = pickable ? row.path() + '/' + row.node().item() : null;
+        if (Objects.equals(key, this.recipeButtonState) && this.recipeButton.active == pickable) {
+            return;
+        }
+        this.recipeButtonState = key;
         this.recipeButton.active = pickable;
         this.recipeButton.setTooltip(Tooltip.create(pickable
                 ? Component.translatable("screen.craftplanner.tree.recipe.tooltip", row.node().displayName())
@@ -676,9 +777,7 @@ public final class CraftTreeScreen extends Screen {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (this.thumbDrag) {
-            this.scroll = TreePanel.scrollAt(contentTop(), trackHeight(), thumbHeight(),
-                    this.plan.maxScroll(), (int) mouseY);
-            rebuild();
+            scrollTo(Scrollbar.scrollAt(scrollBar(), (int) mouseY, this.plan.maxScroll()));
             return true;
         }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
@@ -691,14 +790,12 @@ public final class CraftTreeScreen extends Screen {
     }
 
     private boolean grabThumb(int mx, int my) {
-        if (this.plan.maxScroll() <= 0 || !thumbRect().contains(mx, my)) {
+        if (this.plan.maxScroll() <= 0 || !Scrollbar.overThumb(scrollBar(), mx, my)) {
             return false;
         }
         this.thumbDrag = true;
         // The thumb stays under the cursor instead of jumping its own height.
-        this.scroll = TreePanel.scrollAt(contentTop(), trackHeight(), thumbHeight(),
-                this.plan.maxScroll(), my);
-        rebuild();
+        scrollTo(Scrollbar.scrollAt(scrollBar(), my, this.plan.maxScroll()));
         return true;
     }
 
@@ -707,29 +804,20 @@ public final class CraftTreeScreen extends Screen {
         if (this.plan.maxScroll() <= 0) {
             return -1;
         }
-        int x = thumbRect().x();
-        if (mx < x - 3 || mx > x + TreeMetrics.SCROLL_BAR_W + 6
-                || my < contentTop() || my >= contentBottom()) {
-            return -1;
-        }
-        return TreePanel.scrollAt(contentTop(), trackHeight(), thumbHeight(),
-                this.plan.maxScroll(), my);
+        Scrollbar.Geometry bar = scrollBar();
+        return Scrollbar.overColumn(bar, mx, my)
+                ? Scrollbar.scrollAt(bar, my, this.plan.maxScroll())
+                : -1;
     }
 
-    private TreeMetrics.Rect thumbRect() {
-        int x = labelRightEdge() + 2;
-        return new TreeMetrics.Rect(x,
-                TreePanel.thumbTop(contentTop(), trackHeight(), thumbHeight(),
-                        this.scroll, this.plan.maxScroll()),
-                TreeMetrics.SCROLL_BAR_W + 4, thumbHeight());
-    }
-
-    private int trackHeight() {
-        return Math.max(1, contentBottom() - contentTop());
-    }
-
-    private int thumbHeight() {
-        return TreePanel.thumbHeight(trackHeight(), this.plan.visibleRows(), this.rows.size());
+    /**
+     * This window's bar: the thumb {@link TreePanel} sizes, in the gutter the panel
+     * plan reserved for it, drawn and aimed with the shared {@link Scrollbar}.
+     */
+    private Scrollbar.Geometry scrollBar() {
+        return Scrollbar.of(labelRightEdge() + 2, contentTop(),
+                Math.max(1, contentBottom() - contentTop()), this.plan.visibleRows(),
+                this.rows.size(), this.scroll, this.plan.maxScroll(), TreeMetrics.MIN_THUMB_H);
     }
 
     @Override
@@ -737,9 +825,7 @@ public final class CraftTreeScreen extends Screen {
         if (this.plan.maxScroll() <= 0) {
             return false;
         }
-        this.scroll = TreePanel.clampScroll(this.scroll + (scrollY > 0 ? -WHEEL_ROWS : WHEEL_ROWS),
-                this.rows.size(), this.plan.visibleRows());
-        rebuild();
+        scrollTo(this.scroll + (scrollY > 0 ? -TreePanel.WHEEL_ROWS : TreePanel.WHEEL_ROWS));
         return true;
     }
 
@@ -763,7 +849,14 @@ public final class CraftTreeScreen extends Screen {
                 return true;
             case GLFW.GLFW_KEY_ENTER:
             case GLFW.GLFW_KEY_KP_ENTER:
-                openPicker(this.rows.get(Math.max(0, this.focus)));
+                // A button that has the focus is what Enter belongs to: the player
+                // tabbed onto it, and the key must press that button rather than
+                // open the row underneath. Only with nothing focused does Enter
+                // mean "choose the recipe of the row the arrows stopped on".
+                if (getFocused() instanceof Button) {
+                    return super.keyPressed(keyCode, scanCode, modifiers);
+                }
+                openPicker(focusedRow());
                 return true;
             case GLFW.GLFW_KEY_PAGE_DOWN:
                 page(1);
@@ -772,12 +865,10 @@ public final class CraftTreeScreen extends Screen {
                 page(-1);
                 return true;
             case GLFW.GLFW_KEY_HOME:
-                this.scroll = 0;
-                rebuild();
+                scrollTo(0);
                 return true;
             case GLFW.GLFW_KEY_END:
-                this.scroll = this.plan.maxScroll();
-                rebuild();
+                scrollTo(this.plan.maxScroll());
                 return true;
             default:
                 break;
@@ -792,23 +883,20 @@ public final class CraftTreeScreen extends Screen {
     private void moveFocus(int delta) {
         int target = this.focus < 0 ? 0
                 : Math.max(0, Math.min(this.rows.size() - 1, this.focus + delta));
-        this.focus = target;
+        setFocusRow(target);
         if (target < this.scroll) {
-            this.scroll = target;
+            scrollTo(target);
         } else if (target >= this.scroll + this.plan.visibleRows()) {
-            this.scroll = target - this.plan.visibleRows() + 1;
+            scrollTo(target - this.plan.visibleRows() + 1);
         }
-        rebuild();
     }
 
     private void page(int direction) {
-        this.scroll = TreePanel.clampScroll(this.scroll + direction * this.plan.visibleRows(),
-                this.rows.size(), this.plan.visibleRows());
+        scrollTo(this.scroll + direction * this.plan.visibleRows());
         if (this.focus >= 0) {
-            this.focus = Math.max(this.scroll,
-                    Math.min(this.scroll + this.plan.visibleRows() - 1, this.focus));
+            setFocusRow(Math.max(this.scroll,
+                    Math.min(this.scroll + this.plan.visibleRows() - 1, this.focus)));
         }
-        rebuild();
     }
 
     private void foldFocused(boolean collapse) {
@@ -826,6 +914,11 @@ public final class CraftTreeScreen extends Screen {
     // --- tooltips -----------------------------------------------------------
 
     private void renderRowTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        // The row band spans the whole panel width, so a cursor that has left the
+        // window would still be told about the row it crossed vertically.
+        if (!overPanelColumn(mouseX)) {
+            return;
+        }
         int r = hoveredRow(mouseY);
         if (r < 0) {
             return;
@@ -860,20 +953,13 @@ public final class CraftTreeScreen extends Screen {
      * guess which of its three meanings applied.
      */
     private List<Component> rowTooltip(TreeRow<RecipeNode> row) {
-        List<Component> lines = new ArrayList<>();
-        lines.add(row.node().displayName().copy());
         Availability state = row.node().isFluidRequirement()
             ? null : PlannerState.availability().get(row.node().item());
-        lines.add(Component.translatable("overlay.craftplanner.material.required",
-            row.node().amountLabel()));
-        if (state != null) {
-            lines.add(Component.translatable("overlay.craftplanner.material.have",
-                    Long.toString(state.available())));
-            if (state.missing() > 0) {
-                lines.add(Component.translatable("overlay.craftplanner.material.missing",
-                        Long.toString(state.missing())));
-            }
-        }
+        // The material's own lines come from the same place the HUD's shopping list
+        // takes them, so the two surfaces cannot disagree about what "have" means.
+        List<Component> lines = new ArrayList<>(MaterialTooltip.lines(
+                row.node().displayName(), TreeMetrics.markedAmount(row.status(),
+                        AmountLabel.of(row.node())), state));
         if (row.hiddenRows() > 0) {
             lines.add(Component.translatable(KEY_HIDDEN, row.hiddenRows()));
         }

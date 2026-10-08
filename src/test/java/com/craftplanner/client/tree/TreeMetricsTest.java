@@ -2,6 +2,7 @@ package com.craftplanner.client.tree;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.craftplanner.client.TextMetrics;
@@ -184,5 +185,40 @@ class TreeMetricsTest {
                     maxWidth + "px got \"" + trimmed + "\" (" + metrics.width(trimmed) + "px)");
         }
         assertEquals("", metrics.trim(label, 1));
+    }
+
+    @Test
+    void everyAvailabilityStateHasItsOwnSign() {
+        // The sign is the version of the row's colour that survives a colour-blind
+        // player, a bright world behind the panel, and a monitor turned down.
+        assertNotEquals(TreeRow.Status.COVERED.mark(), TreeRow.Status.PARTIAL.mark());
+        assertNotEquals(TreeRow.Status.PARTIAL.mark(), TreeRow.Status.MISSING.mark());
+        assertNotEquals(TreeRow.Status.COVERED.mark(), TreeRow.Status.MISSING.mark());
+        assertTrue(TreeRow.Status.COVERED.mark().length() == 1);
+        assertTrue(TreeRow.Status.PARTIAL.mark().length() == 1);
+        assertTrue(TreeRow.Status.MISSING.mark().length() == 1);
+        // A row that has no inventory verdict — a sub-assembly, a fluid — carries no
+        // sign: three different things would otherwise read as one of them.
+        assertEquals("", TreeRow.Status.UNKNOWN.mark());
+    }
+
+    @Test
+    void aMarkedAmountIsTheRowLabelPlusTheSignOfItsState() {
+        assertEquals("x12", TreeMetrics.markedAmount(TreeRow.Status.UNKNOWN, "x12"));
+        String marked = TreeMetrics.markedAmount(TreeRow.Status.MISSING, "x12");
+        assertTrue(marked.endsWith("x12"), marked);
+        assertTrue(marked.length() > "x12".length(), marked);
+    }
+
+    @Test
+    void theSignIsWideEnoughThatTrimmingKeepsIt() {
+        // The window measures the amount column from exactly this string; if the sign
+        // could be trimmed away, the column would be measured for nothing.
+        TextMetrics metrics = text -> text.length() * 2;
+        String marked = TreeMetrics.markedAmount(TreeRow.Status.COVERED, "128");
+        assertEquals(marked, metrics.trim(marked, metrics.width(marked)));
+        String trimmed = metrics.trim(marked, metrics.width(marked) - 2);
+        assertTrue(trimmed.startsWith(TreeRow.Status.COVERED.mark()) || trimmed.isEmpty(),
+                "the sign is the first thing a cut label loses: " + trimmed);
     }
 }

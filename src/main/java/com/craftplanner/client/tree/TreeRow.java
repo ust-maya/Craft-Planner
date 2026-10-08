@@ -30,7 +30,25 @@ public final class TreeRow<N> {
         PARTIAL,
         MISSING,
         /** Not a material, or no inventory comparison available. */
-        UNKNOWN
+        UNKNOWN;
+
+        /**
+         * The sign drawn in front of the row's amount: the same fact the row's
+         * colour carries, said in a shape as well.
+         *
+         * <p>Colour alone is the one thing a HUD cannot assume: the two greens and
+         * ambers of a tree are the pair most often read alike, and a panel seen at
+         * an angle over bright snow is not a colour chart either. The sign costs two
+         * pixels of width and answers the question the colour answers.</p>
+         */
+        public String mark() {
+            return switch (this) {
+                case COVERED -> "✔";
+                case PARTIAL -> "~";
+                case MISSING -> "✘";
+                case UNKNOWN -> "";
+            };
+        }
     }
 
     /** What the recipe column of this row can do. */

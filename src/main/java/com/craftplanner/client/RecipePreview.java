@@ -41,15 +41,24 @@ public final class RecipePreview {
     }
 
     /**
-     * Previews by recipe id, dropped whenever the plan changes.
+     * Previews by recipe and item, dropped whenever the plan changes.
      *
      * <p>Every preview depends on the player's recipe choices and cuts, so a
      * plan change invalidates all of them. Keyed on {@link PlannerState#graphVersion()}
      * rather than a timer: switching a recipe is the one thing that invalidates it,
      * and it already bumps the version.</p>
+     *
+     * <p>The item is part of the key because the recipe id is not: one recipe can
+     * be offered as the way to make several things — a machine that yields both an
+     * ingot and a gas — and the tree below it is expanded for the item that was
+     * asked for, not for whatever the recipe lists first.</p>
      */
-    private static final Map<ResourceLocation, List<TreeRow<RecipeNode>>> CACHE = new HashMap<>();
+    private static final Map<PreviewKey, List<TreeRow<RecipeNode>>> CACHE = new HashMap<>();
     private static long cachedVersion = -1;
+
+    /** A preview depends on both the recipe and the item it is asked to make. */
+    private record PreviewKey(ResourceLocation recipe, ItemKey item) {
+    }
 
     /**
      * The dependencies of one option, as rows the tree layout can draw.
@@ -64,7 +73,7 @@ public final class RecipePreview {
             CACHE.clear();
             cachedVersion = version;
         }
-        return CACHE.computeIfAbsent(recipe.id(), id -> build(item, recipe));
+        return CACHE.computeIfAbsent(new PreviewKey(recipe.id(), item), key -> build(item, recipe));
     }
 
     private static List<TreeRow<RecipeNode>> build(ItemKey item, RecipeHolder<?> recipe) {
