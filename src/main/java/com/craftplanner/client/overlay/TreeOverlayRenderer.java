@@ -8,6 +8,7 @@ import com.craftplanner.client.UiLegend;
 import com.craftplanner.client.OverlayState;
 import com.craftplanner.client.AmountLabel;
 import com.craftplanner.client.PlanRows;
+import com.craftplanner.client.Scrollbar;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.TextMetrics;
 import com.craftplanner.client.UiPalette;
@@ -136,7 +137,6 @@ public final class TreeOverlayRenderer {
     private static ScrollTrack scrollTrack;
     /** True while the layout editor holds that scrollbar. */
     private static boolean scrollGrab;
-    private static final int SCROLL_HIT = 3;
 
     /**
      * Edge of the recipe button at the end of a row, in layout pixels.
@@ -630,19 +630,14 @@ public final class TreeOverlayRenderer {
         }
         int trackTop = panel.contentTop();
         int trackH = Math.max(1, panel.contentBottom() - trackTop);
-        int barH = TreePanel.thumbHeight(trackH, panel.visibleRows(), rowCount);
-        int barY = TreePanel.thumbTop(trackTop, trackH, barH, panel.scroll(), panel.maxScroll());
         int barX = left + panel.panelW() - SCROLL_ZONE + 2;
-        graphics.fill(barX, trackTop, barX + TreeMetrics.SCROLL_BAR_W, trackTop + trackH,
-                UiPalette.SCROLL_TRACK);
+        Scrollbar.Geometry bar = Scrollbar.of(barX, trackTop, trackH, panel.visibleRows(), rowCount,
+                panel.scroll(), panel.maxScroll(), TreeMetrics.MIN_THUMB_H);
         boolean hot = scrollGrab
-                || (mc.screen != null && mouseX(mc) >= barX - SCROLL_HIT
-                        && mouseX(mc) <= barX + TreeMetrics.SCROLL_BAR_W + SCROLL_HIT
-                        && mouseY(mc) >= trackTop && mouseY(mc) < trackTop + trackH);
-        graphics.fill(barX, barY, barX + TreeMetrics.SCROLL_BAR_W, barY + barH,
-                hot ? UiPalette.SCROLL_BAR_HOT : UiPalette.SCROLL_BAR);
-        scrollTrack = new ScrollTrack(barX - SCROLL_HIT, trackTop,
-                TreeMetrics.SCROLL_BAR_W + 2 * SCROLL_HIT, trackH, barH, panel.maxScroll());
+                || (mc.screen != null && Scrollbar.overColumn(bar, mouseX(mc), mouseY(mc)));
+        Scrollbar.draw(graphics, bar, hot);
+        scrollTrack = new ScrollTrack(barX - Scrollbar.HIT, trackTop,
+                Scrollbar.WIDTH + 2 * Scrollbar.HIT, trackH, bar.thumbHeight(), panel.maxScroll());
     }
 
     /**

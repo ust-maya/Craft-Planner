@@ -3,6 +3,7 @@ package com.craftplanner.client.screen;
 import com.craftplanner.client.Keybinds;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.TextMetrics;
+import com.craftplanner.client.Scrollbar;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.graph.RecipeNode;
@@ -438,12 +439,7 @@ public class RecipeListScreen extends Screen {
         renderFooter(graphics, font, m, left);
 
         if (maxScroll() > 0) {
-            int trackTop = top + RecipeListLayout.HEADER;
-            int trackHeight = visibleRows() * RecipeListLayout.ROW_HEIGHT;
-            int barHeight = Math.max(8, trackHeight * visibleRows() / this.roots.size());
-            int barY = trackTop + (trackHeight - barHeight) * this.scroll / maxScroll();
-            graphics.fill(right - 4, trackTop, right - 1, trackTop + trackHeight, UiPalette.SCROLL_TRACK);
-            graphics.fill(right - 4, barY, right - 1, barY + barHeight, UiPalette.SCROLL_BAR);
+            Scrollbar.draw(graphics, listBar(right));
         }
     }
 
@@ -518,15 +514,11 @@ public class RecipeListScreen extends Screen {
         if (maxScroll() <= 0) {
             return false;
         }
-        RecipeListLayout l = this.layout;
-        int right = panelLeft() + l.panelWidth;
-        int trackTop = panelTop() + RecipeListLayout.HEADER;
-        int trackHeight = visibleRows() * RecipeListLayout.ROW_HEIGHT;
-        if (mx < right - 6 || mx > right || my < trackTop || my >= trackTop + trackHeight) {
+        Scrollbar.Geometry bar = listBar(panelLeft() + this.layout.panelWidth);
+        if (!Scrollbar.overColumn(bar, mx, my)) {
             return false;
         }
-        this.scroll = Math.max(0, Math.min(maxScroll(),
-                (int) ((long) (my - trackTop) * maxScroll() / trackHeight)));
+        this.scroll = Scrollbar.scrollAt(bar, my, maxScroll());
         syncRowControls();
         return true;
     }
@@ -571,6 +563,14 @@ public class RecipeListScreen extends Screen {
      */
     private int visibleRows() {
         return RecipeListLayout.visibleRows(this.height, this.layout.footerH, this.roots.size());
+    }
+
+    /** The bar of this list, in the same gutter the track click aims at. */
+    private Scrollbar.Geometry listBar(int right) {
+        int trackTop = panelTop() + RecipeListLayout.HEADER;
+        int trackHeight = visibleRows() * RecipeListLayout.ROW_HEIGHT;
+        return Scrollbar.of(right - 4, trackTop, trackHeight, visibleRows(), this.roots.size(),
+                this.scroll, maxScroll(), 8);
     }
 
     private int maxScroll() {

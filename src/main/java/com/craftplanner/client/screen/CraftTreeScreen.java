@@ -6,6 +6,7 @@ import com.craftplanner.client.MaterialTooltip;
 import com.craftplanner.client.PlanRows;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
+import com.craftplanner.client.Scrollbar;
 import com.craftplanner.client.TextMetrics;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiLegend;
@@ -412,17 +413,8 @@ public final class CraftTreeScreen extends Screen {
         if (this.plan.maxScroll() <= 0) {
             return;
         }
-        TreeMetrics.Rect thumb = thumbRect();
-        int x = thumb.x();
-        int trackTop = contentTop();
-        int trackHeight = trackHeight();
-        graphics.fill(x, trackTop, x + TreeMetrics.SCROLL_BAR_W, trackTop + trackHeight,
-                UiPalette.SCROLL_TRACK);
-        boolean hot = this.thumbDrag
-                || (mouseX >= x - 3 && mouseX < x + TreeMetrics.SCROLL_BAR_W + 3
-                        && mouseY >= trackTop && mouseY < trackTop + trackHeight);
-        graphics.fill(x, thumb.y(), x + TreeMetrics.SCROLL_BAR_W, thumb.y() + thumb.h(),
-                hot ? UiPalette.SCROLL_BAR_HOT : UiPalette.SCROLL_BAR);
+        Scrollbar.Geometry bar = scrollBar();
+        Scrollbar.draw(graphics, bar, this.thumbDrag || Scrollbar.overColumn(bar, mouseX, mouseY));
     }
 
     /**
@@ -785,8 +777,7 @@ public final class CraftTreeScreen extends Screen {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (this.thumbDrag) {
-            scrollTo(TreePanel.scrollAt(contentTop(), trackHeight(), thumbHeight(),
-                    this.plan.maxScroll(), (int) mouseY));
+            scrollTo(Scrollbar.scrollAt(scrollBar(), (int) mouseY, this.plan.maxScroll()));
             return true;
         }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
@@ -799,13 +790,12 @@ public final class CraftTreeScreen extends Screen {
     }
 
     private boolean grabThumb(int mx, int my) {
-        if (this.plan.maxScroll() <= 0 || !thumbRect().contains(mx, my)) {
+        if (this.plan.maxScroll() <= 0 || !Scrollbar.overThumb(scrollBar(), mx, my)) {
             return false;
         }
         this.thumbDrag = true;
         // The thumb stays under the cursor instead of jumping its own height.
-        scrollTo(TreePanel.scrollAt(contentTop(), trackHeight(), thumbHeight(),
-                this.plan.maxScroll(), my));
+        scrollTo(Scrollbar.scrollAt(scrollBar(), my, this.plan.maxScroll()));
         return true;
     }
 
@@ -814,29 +804,20 @@ public final class CraftTreeScreen extends Screen {
         if (this.plan.maxScroll() <= 0) {
             return -1;
         }
-        int x = thumbRect().x();
-        if (mx < x - 3 || mx > x + TreeMetrics.SCROLL_BAR_W + 6
-                || my < contentTop() || my >= contentBottom()) {
-            return -1;
-        }
-        return TreePanel.scrollAt(contentTop(), trackHeight(), thumbHeight(),
-                this.plan.maxScroll(), my);
+        Scrollbar.Geometry bar = scrollBar();
+        return Scrollbar.overColumn(bar, mx, my)
+                ? Scrollbar.scrollAt(bar, my, this.plan.maxScroll())
+                : -1;
     }
 
-    private TreeMetrics.Rect thumbRect() {
-        int x = labelRightEdge() + 2;
-        return new TreeMetrics.Rect(x,
-                TreePanel.thumbTop(contentTop(), trackHeight(), thumbHeight(),
-                        this.scroll, this.plan.maxScroll()),
-                TreeMetrics.SCROLL_BAR_W + 4, thumbHeight());
-    }
-
-    private int trackHeight() {
-        return Math.max(1, contentBottom() - contentTop());
-    }
-
-    private int thumbHeight() {
-        return TreePanel.thumbHeight(trackHeight(), this.plan.visibleRows(), this.rows.size());
+    /**
+     * This window's bar: the thumb {@link TreePanel} sizes, in the gutter the panel
+     * plan reserved for it, drawn and aimed with the shared {@link Scrollbar}.
+     */
+    private Scrollbar.Geometry scrollBar() {
+        return Scrollbar.of(labelRightEdge() + 2, contentTop(),
+                Math.max(1, contentBottom() - contentTop()), this.plan.visibleRows(),
+                this.rows.size(), this.scroll, this.plan.maxScroll(), TreeMetrics.MIN_THUMB_H);
     }
 
     @Override

@@ -5,6 +5,7 @@ import com.craftplanner.client.AmountLabel;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
 import com.craftplanner.client.RecipePreview;
+import com.craftplanner.client.Scrollbar;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.overlay.NodeColors;
@@ -98,8 +99,6 @@ public final class RecipePickerScreen extends Screen {
     /** The amber of the tree's own markers, so "in use" reads the same everywhere. */
     private static final int ROW_SELECTED = UiPalette.MODAL_ROW_SELECTED;
     private static final int ROW_HOVER = UiPalette.MODAL_ROW_HOVER;
-    /** Thumb of the option band: the quiet grey of the plan panel's own scrollbar. */
-    private static final int SCROLL = UiPalette.SCROLL_BAR;
 
     /** The item whose recipes are offered; also the key of the choice. */
     private final ItemKey item;
@@ -573,15 +572,9 @@ public final class RecipePickerScreen extends Screen {
         // A dozen machine alternatives scroll, and a wheel that finds nothing to show
         // for it reads as a broken list — so the band of lines carries the same
         // thumb the plan panel draws.
-        int hidden = maxScroll();
-        if (hidden > 0) {
-            int trackTop = bandTop();
-            int trackH = shown * ROW_H;
-            int barH = Math.max(6, trackH * shown / this.lines.size());
-            int barY = trackTop + (trackH - barH) * this.scroll / hidden;
-            int barX = left + this.panelWidth - 4;
-            graphics.fill(barX, trackTop, barX + 3, trackTop + trackH, UiPalette.SCROLL_TRACK);
-            graphics.fill(barX, barY, barX + 3, barY + barH, SCROLL);
+        if (maxScroll() > 0) {
+            Scrollbar.draw(graphics, Scrollbar.of(left + this.panelWidth - 4, bandTop(),
+                    shown * ROW_H, shown, this.lines.size(), this.scroll, maxScroll(), 6));
         }
 
         super.render(graphics, mouseX, mouseY, partialTick);

@@ -3,6 +3,7 @@ package com.craftplanner.client.screen;
 import com.craftplanner.client.AmountLabel;
 import com.craftplanner.client.PlanRows;
 import com.craftplanner.client.PlannerState;
+import com.craftplanner.client.Scrollbar;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.overlay.NodeColors;
@@ -560,17 +561,15 @@ public final class BatchPickerScreen extends Screen {
     private void drawScrollbar(GuiGraphics graphics, int left, int shown) {
         // A dozen alternatives scroll, so the list carries the same thumb the K
         // window draws — a wheel with no visible position reads as a broken list.
-        int hidden = maxScroll();
-        if (hidden <= 0) {
-            return;
+        if (maxScroll() > 0) {
+            Scrollbar.draw(graphics, bar(left, shown));
         }
-        int trackTop = bandTop();
-        int trackH = shown * ROW_H;
-        int barH = Math.max(8, trackH * shown / this.lines.size());
-        int barY = trackTop + (trackH - barH) * this.scroll / hidden;
-        int barX = left + this.panelWidth - 4;
-        graphics.fill(barX, trackTop, barX + 3, trackTop + trackH, UiPalette.SCROLL_TRACK);
-        graphics.fill(barX, barY, barX + 3, barY + barH, UiPalette.SCROLL_BAR);
+    }
+
+    /** The bar of this list: the same thumb the K window draws, in the same gutter. */
+    private Scrollbar.Geometry bar(int left, int shown) {
+        return Scrollbar.of(left + this.panelWidth - 4, bandTop(), shown * ROW_H, shown,
+                this.lines.size(), this.scroll, maxScroll(), 8);
     }
 
     @Override
