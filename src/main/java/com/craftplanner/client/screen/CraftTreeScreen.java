@@ -268,6 +268,20 @@ public final class CraftTreeScreen extends Screen {
     }
 
     /** Remembers {@code r} as the focused row, by the path that identifies it. */
+    /**
+     * Moves the window over the plan without re-measuring it.
+     *
+     * <p>Scrolling decides which rows are drawn and nothing else: the panel is the
+     * same size, its columns hold the same text, and the footer widgets sit where
+     * {@link #buildWidgets()} put them. Rebuilding for a wheel notch threw that
+     * whole layout away sixty times a minute, along with the button the cursor was
+     * resting on — so a drag of the thumb stuttered, and a scroll ended with a
+     * re-created panel rather than a moved one.</p>
+     */
+    private void scrollTo(int target) {
+        this.scroll = TreePanel.clampScroll(target, this.rows.size(), this.plan.visibleRows());
+    }
+
     private void setFocusRow(int r) {
         this.focus = r;
         this.focusPath = r >= 0 && r < this.rows.size() ? this.rows.get(r).path() : null;
@@ -735,8 +749,7 @@ public final class CraftTreeScreen extends Screen {
         }
         int jumped = trackJump((int) mouseX, (int) mouseY);
         if (jumped >= 0) {
-            this.scroll = jumped;
-            rebuild();
+            scrollTo(jumped);
             return true;
         }
         int r = hoveredRow((int) mouseY);
@@ -799,9 +812,8 @@ public final class CraftTreeScreen extends Screen {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (this.thumbDrag) {
-            this.scroll = TreePanel.scrollAt(contentTop(), trackHeight(), thumbHeight(),
-                    this.plan.maxScroll(), (int) mouseY);
-            rebuild();
+            scrollTo(TreePanel.scrollAt(contentTop(), trackHeight(), thumbHeight(),
+                    this.plan.maxScroll(), (int) mouseY));
             return true;
         }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
@@ -819,9 +831,8 @@ public final class CraftTreeScreen extends Screen {
         }
         this.thumbDrag = true;
         // The thumb stays under the cursor instead of jumping its own height.
-        this.scroll = TreePanel.scrollAt(contentTop(), trackHeight(), thumbHeight(),
-                this.plan.maxScroll(), my);
-        rebuild();
+        scrollTo(TreePanel.scrollAt(contentTop(), trackHeight(), thumbHeight(),
+                this.plan.maxScroll(), my));
         return true;
     }
 
@@ -860,9 +871,7 @@ public final class CraftTreeScreen extends Screen {
         if (this.plan.maxScroll() <= 0) {
             return false;
         }
-        this.scroll = TreePanel.clampScroll(this.scroll + (scrollY > 0 ? -WHEEL_ROWS : WHEEL_ROWS),
-                this.rows.size(), this.plan.visibleRows());
-        rebuild();
+        scrollTo(this.scroll + (scrollY > 0 ? -WHEEL_ROWS : WHEEL_ROWS));
         return true;
     }
 
@@ -902,12 +911,10 @@ public final class CraftTreeScreen extends Screen {
                 page(-1);
                 return true;
             case GLFW.GLFW_KEY_HOME:
-                this.scroll = 0;
-                rebuild();
+                scrollTo(0);
                 return true;
             case GLFW.GLFW_KEY_END:
-                this.scroll = this.plan.maxScroll();
-                rebuild();
+                scrollTo(this.plan.maxScroll());
                 return true;
             default:
                 break;
@@ -924,21 +931,18 @@ public final class CraftTreeScreen extends Screen {
                 : Math.max(0, Math.min(this.rows.size() - 1, this.focus + delta));
         setFocusRow(target);
         if (target < this.scroll) {
-            this.scroll = target;
+            scrollTo(target);
         } else if (target >= this.scroll + this.plan.visibleRows()) {
-            this.scroll = target - this.plan.visibleRows() + 1;
+            scrollTo(target - this.plan.visibleRows() + 1);
         }
-        rebuild();
     }
 
     private void page(int direction) {
-        this.scroll = TreePanel.clampScroll(this.scroll + direction * this.plan.visibleRows(),
-                this.rows.size(), this.plan.visibleRows());
+        scrollTo(this.scroll + direction * this.plan.visibleRows());
         if (this.focus >= 0) {
             setFocusRow(Math.max(this.scroll,
                     Math.min(this.scroll + this.plan.visibleRows() - 1, this.focus)));
         }
-        rebuild();
     }
 
     private void foldFocused(boolean collapse) {
