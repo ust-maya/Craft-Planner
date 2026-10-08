@@ -88,7 +88,7 @@ public final class BatchPickerScreen extends Screen {
     private int panelWidth;
     private int scroll;
     private long seenGraphVersion;
-    private int seenFolds = -1;
+    private long seenFoldVersion = -1;
     private long seenAvailabilityVersion = -1;
 
     /**
@@ -123,7 +123,7 @@ public final class BatchPickerScreen extends Screen {
     @Override
     protected void init() {
         this.seenGraphVersion = PlannerState.graphVersion();
-        this.seenFolds = TreeCollapse.foldCount();
+        this.seenFoldVersion = TreeCollapse.version();
         this.seenAvailabilityVersion = PlannerState.availabilityVersion();
         if (this.minecraft.level == null) {
             // The world went away: nothing to decide in, so close. An empty branch
@@ -144,7 +144,7 @@ public final class BatchPickerScreen extends Screen {
         // version the overlay watches: without this the window would keep drawing
         // a branch the overlay has already closed.
         if (PlannerState.graphVersion() != this.seenGraphVersion
-                || TreeCollapse.foldCount() != this.seenFolds) {
+                || TreeCollapse.version() != this.seenFoldVersion) {
             init();
         } else if (PlannerState.availabilityVersion() != this.seenAvailabilityVersion) {
             // The player moved materials around while deciding. The rows carry the
@@ -351,7 +351,7 @@ public final class BatchPickerScreen extends Screen {
      */
     private void refreshKeeping(int anchorLine) {
         this.seenGraphVersion = PlannerState.graphVersion();
-        this.seenFolds = TreeCollapse.foldCount();
+        this.seenFoldVersion = TreeCollapse.version();
         this.seenAvailabilityVersion = PlannerState.availabilityVersion();
         this.plan = PlanRows.rows();
         relayout();

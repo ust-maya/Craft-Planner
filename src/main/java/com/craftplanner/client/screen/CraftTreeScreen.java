@@ -108,7 +108,7 @@ public final class CraftTreeScreen extends Screen {
     private boolean thumbDrag;
     private long seenGraphVersion = -1;
     private long seenAvailabilityVersion = -1;
-    private int seenFoldCount = -1;
+    private long seenFoldVersion = -1;
 
     public CraftTreeScreen() {
         super(Component.translatable(KEY_TITLE));
@@ -125,7 +125,7 @@ public final class CraftTreeScreen extends Screen {
         // added from another screen, so the tree follows the plan rather than the
         // click that opened it.
         if (PlannerState.graphVersion() != this.seenGraphVersion
-                || TreeCollapse.foldCount() != this.seenFoldCount) {
+                || TreeCollapse.version() != this.seenFoldVersion) {
             rebuild();
         } else if (PlannerState.availabilityVersion() != this.seenAvailabilityVersion) {
             this.seenAvailabilityVersion = PlannerState.availabilityVersion();
@@ -137,7 +137,7 @@ public final class CraftTreeScreen extends Screen {
     private void rebuild() {
         this.seenGraphVersion = PlannerState.graphVersion();
         this.seenAvailabilityVersion = PlannerState.availabilityVersion();
-        this.seenFoldCount = TreeCollapse.foldCount();
+        this.seenFoldVersion = TreeCollapse.version();
         this.rows = PlanRows.rows();
         measure(this.font::width);
         // The plan comes back panel-relative, so centring cannot disagree with the

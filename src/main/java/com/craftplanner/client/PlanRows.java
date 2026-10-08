@@ -61,7 +61,7 @@ public final class PlanRows {
      */
     private static List<TreeRow<RecipeNode>> cached = List.of();
     private static long cachedGraphVersion = -1;
-    private static int cachedFoldCount = -1;
+    private static long cachedFoldVersion = -1;
     private static int cachedPartialThreshold = -1;
     private static Map<ItemKey, Availability> cachedAvailability = null;
 
@@ -71,13 +71,13 @@ public final class PlanRows {
     /** Rows of the current plan, in draw order, honouring the folded branches. */
     public static List<TreeRow<RecipeNode>> rows() {
         long graphVersion = PlannerState.graphVersion();
-        int foldCount = TreeCollapse.foldCount();
+        long foldVersion = TreeCollapse.version();
         int partialThreshold = Config.partialThresholdPercent();
         Map<ItemKey, Availability> availability = PlannerState.availability();
-        if (graphVersion != cachedGraphVersion || foldCount != cachedFoldCount
+        if (graphVersion != cachedGraphVersion || foldVersion != cachedFoldVersion
                 || partialThreshold != cachedPartialThreshold || availability != cachedAvailability) {
             cachedGraphVersion = graphVersion;
-            cachedFoldCount = foldCount;
+            cachedFoldVersion = foldVersion;
             cachedPartialThreshold = partialThreshold;
             cachedAvailability = availability;
             ADAPTER.availability = availability;

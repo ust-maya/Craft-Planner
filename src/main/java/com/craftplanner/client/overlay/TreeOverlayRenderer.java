@@ -126,7 +126,7 @@ public final class TreeOverlayRenderer {
      */
     private static int cachedNaturalW = -1;
     private static long cachedNaturalVersion = -1;
-    private static int cachedNaturalFolds = -1;
+    private static long cachedNaturalFoldVersion = -1;
     /** The font the cached measurement was taken with. */
     private static Font cachedNaturalFont;
 
@@ -349,8 +349,8 @@ public final class TreeOverlayRenderer {
      */
     private static int naturalWidth(List<TreeRow<RecipeNode>> rows, Font font) {
         long version = PlannerState.graphVersion();
-        int folds = TreeCollapse.foldCount();
-        if (cachedNaturalW >= 0 && cachedNaturalVersion == version && cachedNaturalFolds == folds
+        long folds = TreeCollapse.version();
+        if (cachedNaturalW >= 0 && cachedNaturalVersion == version && cachedNaturalFoldVersion == folds
                 && cachedNaturalFont == font) {
             return cachedNaturalW;
         }
@@ -364,7 +364,7 @@ public final class TreeOverlayRenderer {
         widest += badgeLayoutW(rows);
         cachedNaturalW = widest;
         cachedNaturalVersion = version;
-        cachedNaturalFolds = folds;
+        cachedNaturalFoldVersion = folds;
         cachedNaturalFont = font;
         return widest;
     }

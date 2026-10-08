@@ -21,6 +21,8 @@ import java.util.Set;
 public final class TreeCollapse {
 
     private static final Set<String> FOLDED = new HashSet<>();
+    /** Bumped by every change to {@link #FOLDED}; see {@link #version()}. */
+    private static long version;
     /**
      * Read-only view of {@link #FOLDED}, handed out instead of the live set so
      * the row cache can hold it without a later toggle changing what an
@@ -41,29 +43,40 @@ public final class TreeCollapse {
     }
 
     /**
-     * How many branches are folded. {@code PlanRows} keys its cache on this: a
-     * fold changes which rows exist without changing the plan itself.
+     * A count of the folds made, changed by every fold and every unfold.
+     *
+     * <p>The row caches key on this: a fold changes which rows exist without
+     * changing the plan, so the graph version alone cannot tell them the list is
+     * stale. It is deliberately not {@code FOLDED.size()} — closing one branch and
+     * opening another keeps that count identical, and a cache keyed on it would
+     * keep drawing the row layout from before both clicks.</p>
      */
-    public static int foldCount() {
-        return FOLDED.size();
+    public static long version() {
+        return version;
     }
 
     public static void toggle(String path) {
         if (!FOLDED.remove(path)) {
             FOLDED.add(path);
         }
-        snapshot = Set.copyOf(FOLDED);
+        publish();
     }
 
     /** Folds every branch in {@code paths}, leaving the goals readable. */
     public static void foldAll(Collection<String> paths) {
         FOLDED.addAll(paths);
-        snapshot = Set.copyOf(FOLDED);
+        publish();
     }
 
     /** Unfolds everything: the whole plan at once. */
     public static void unfoldAll() {
         FOLDED.clear();
-        snapshot = Set.of();
+        publish();
+    }
+
+    /** Republishes the snapshot and moves the version the caches read. */
+    private static void publish() {
+        snapshot = Set.copyOf(FOLDED);
+        version++;
     }
 }
