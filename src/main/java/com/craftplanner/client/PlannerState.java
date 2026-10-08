@@ -50,8 +50,8 @@ public final class PlannerState {
      */
     private static final Set<ItemKey> CUTS = new LinkedHashSet<>();
     /**
-        * Whether the saved plan, {@link RecipeChoices} and {@link RecipeCuts} have
-        * been merged into live state.
+     * Whether the saved plan, {@link RecipeChoices} and {@link RecipeCuts} have
+     * been merged into live state.
      * Loaded on the first rebuild rather than at mod construction: at that point
      * the item registry still does not know about the items of the other mods,
      * and every saved choice would read as "item no longer exists".
@@ -327,8 +327,8 @@ public final class PlannerState {
     }
 
     /**
-        * Loads the saved roots, recipe choices and tree cuts once, before a tree
-        * is ever expanded against them.
+     * Loads the saved roots, recipe choices and tree cuts once, before a tree
+     * is ever expanded against them.
      */
     private static void ensureChoicesLoaded() {
         if (choicesLoaded) {
