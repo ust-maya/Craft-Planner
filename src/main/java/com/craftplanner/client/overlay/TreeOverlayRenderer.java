@@ -3,6 +3,7 @@ package com.craftplanner.client.overlay;
 import com.craftplanner.Config;
 import com.craftplanner.Constants;
 import com.craftplanner.client.Keybinds;
+import com.craftplanner.client.UiLegend;
 import com.craftplanner.client.OverlayState;
 import com.craftplanner.client.PlanRows;
 import com.craftplanner.client.PlannerState;
@@ -649,66 +650,17 @@ public final class TreeOverlayRenderer {
      * title — a missing legend is better than an unreadable one, and the window
      * carries the authoritative copy of it.
      */
+
+
+
     private static void drawTreeLegend(GuiGraphics graphics, Font font, int contentW) {
-        final int gap = 6;
-        Legend legend = cachedLegend(font);
-        if (legend.titleW() + gap + legend.total() > contentW) {
+        int total = UiLegend.totalWidth(font);
+        int titleW = font.width(Component.translatable("overlay.craftplanner.title"));
+        if (titleW + UiLegend.ENTRY_GAP + total > contentW) {
             return;
         }
-        int x = contentW - legend.total();
-        for (int i = 0; i < legend.labels().length; i++) {
-            graphics.fill(x, 2, x + legend.square(), 2 + legend.square(), legend.colors()[i]);
-            graphics.drawString(font, legend.labels()[i], x + legend.square() + 2, 0,
-                    NodeColors.TEXT, false);
-            x += legend.itemW()[i] + gap;
-        }
+        UiLegend.drawRow(graphics, font, 0, UiLegend.entries(font).size(), contentW, 0, false);
     }
-
-    /**
-     * The legend of the HUD, prepared: its four labels, their widths and the width
-     * of the title they have to share a line with.
-     *
-     * <p>Drawn every frame from four translations and three measurements, which is
-     * work the panel repeats sixty times a second for a line that changes when the
-     * language does. It is kept per font instance because {@code mc.font} is
-     * swapped when the game reloads its resources, and a width taken from the font
-     * before that is not a width of the one being drawn with now.</p>
-     */
-    private static Legend cachedLegend(Font font) {
-        if (legendCache != null && legendFont == font) {
-            return legendCache;
-        }
-        int[] colors = {
-                NodeColors.HAVE, NodeColors.MISSING,
-                NodeColors.INTERMEDIATE, NodeColors.ROOT
-        };
-        Component[] labels = {
-                Component.translatable("overlay.craftplanner.legend.have"),
-                Component.translatable("overlay.craftplanner.legend.missing"),
-                Component.translatable("overlay.craftplanner.legend.intermediate"),
-                Component.translatable("overlay.craftplanner.legend.root")
-        };
-        final int gap = 6;
-        final int square = 6;
-        int[] itemW = new int[labels.length];
-        int total = 0;
-        for (int i = 0; i < labels.length; i++) {
-            itemW[i] = square + 2 + font.width(labels[i]);
-            total += itemW[i] + gap;
-        }
-        legendCache = new Legend(colors, labels, itemW, total, square,
-                font.width(Component.translatable("overlay.craftplanner.title")));
-        legendFont = font;
-        return legendCache;
-    }
-
-    /** The prepared legend; see {@link #cachedLegend(Font)}. */
-    private record Legend(int[] colors, Component[] labels, int[] itemW, int total, int square,
-            int titleW) {
-    }
-
-    private static Legend legendCache;
-    private static Font legendFont;
 
     /**
      * Hotkey hint for the footer: the verbose line when it fits, the short one
@@ -1176,7 +1128,6 @@ public final class TreeOverlayRenderer {
     private static final int G_PADDING = 4;
     private static final int G_TITLE_SPACE = 11;
     private static final int G_FOOTER_SPACE = 24;
-    private static final int G_LEGEND_SQUARE = 6;
     /**
      * Floor for the automatic "shrink to fit" of the graph layout. Below this the
      * node-link view is unreadably small, and the overlay falls back to the
@@ -1324,66 +1275,24 @@ public final class TreeOverlayRenderer {
      */
     private static void drawLegend(GuiGraphics graphics, Font font, int left, int top,
             int panelWidth) {
-        int[] colors = {
-                NodeColors.HAVE, NodeColors.MISSING,
-                NodeColors.INTERMEDIATE, NodeColors.ROOT
-        };
-        Component[] labels = {
-                Component.translatable("overlay.craftplanner.legend.have"),
-                Component.translatable("overlay.craftplanner.legend.missing"),
-                Component.translatable("overlay.craftplanner.legend.intermediate"),
-                Component.translatable("overlay.craftplanner.legend.root")
-        };
-        int[] itemW = new int[labels.length];
-        int total = 0;
-        for (int i = 0; i < labels.length; i++) {
-            itemW[i] = G_LEGEND_SQUARE + 2 + font.width(labels[i]);
-            total += itemW[i] + 6;
-        }
-
+        int entries = UiLegend.entries(font).size();
+        int total = UiLegend.totalWidth(font);
         int titleW = font.width(Component.translatable("overlay.craftplanner.title"));
-        int firstRowRoom = panelWidth - 2 * G_PADDING - titleW - 6;
-        int fullRoom = panelWidth - 2 * G_PADDING;
+        int firstRowRoom = panelWidth - 2 * G_PADDING - titleW - UiLegend.ENTRY_GAP;
+        int right = left + panelWidth - G_PADDING;
         if (total <= firstRowRoom) {
-            drawLegendRow(graphics, font, colors, labels, itemW, 0, labels.length,
-                    left, top + 4, panelWidth, total);
+            UiLegend.drawRow(graphics, font, 0, entries, right, top + 2, true);
             return;
         }
 
         // Greedy split: as many entries as fit in the title row, the rest below.
-        int split = 0;
-        int firstTotal = 0;
-        for (int i = 0; i < labels.length; i++) {
-            int next = split == 0 ? itemW[i] : firstTotal + 6 + itemW[i];
-            if (next > firstRowRoom) {
-                break;
-            }
-            firstTotal = next;
-            split++;
-        }
-        int restTotal = 0;
-        for (int i = split; i < labels.length; i++) {
-            restTotal += itemW[i] + 6;
-        }
-        if (split == 0 || restTotal > fullRoom) {
+        int split = UiLegend.split(font, firstRowRoom);
+        int restTotal = UiLegend.rowWidth(font, split, entries);
+        if (split == 0 || restTotal > panelWidth - 2 * G_PADDING) {
             return;
         }
-        drawLegendRow(graphics, font, colors, labels, itemW, 0, split,
-                left, top + 4, panelWidth, firstTotal);
-        drawLegendRow(graphics, font, colors, labels, itemW, split, labels.length,
-                left, top + 4 + font.lineHeight, panelWidth, restTotal);
-    }
-
-    private static void drawLegendRow(GuiGraphics graphics, Font font, int[] colors,
-            Component[] labels, int[] itemW, int from, int to, int left, int y, int panelWidth,
-            int rowTotal) {
-        int x = left + panelWidth - G_PADDING - rowTotal;
-        for (int i = from; i < to; i++) {
-            graphics.fill(x, y, x + G_LEGEND_SQUARE, y + G_LEGEND_SQUARE, colors[i]);
-            UiShapes.ring(graphics, x, y, G_LEGEND_SQUARE, G_LEGEND_SQUARE, UiPalette.CHIP_BORDER);
-            graphics.drawString(font, labels[i], x + G_LEGEND_SQUARE + 2, y, NodeColors.TEXT, false);
-            x += itemW[i] + 6;
-        }
+        UiLegend.drawRow(graphics, font, 0, split, right, top + 2, true);
+        UiLegend.drawRow(graphics, font, split, entries, right, top + 2 + font.lineHeight, true);
     }
 
     /** Edges of the node-link view, in the colour of the goal they belong to. */

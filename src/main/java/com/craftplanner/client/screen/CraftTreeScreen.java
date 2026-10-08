@@ -6,6 +6,7 @@ import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
 import com.craftplanner.client.TextMetrics;
 import com.craftplanner.client.UiPalette;
+import com.craftplanner.client.UiLegend;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.overlay.NodeColors;
 import com.craftplanner.client.overlay.TreeCollapse;
@@ -627,31 +628,7 @@ public final class CraftTreeScreen extends Screen {
 
     /** The material and plan colours, each named: the encoding the rows use. */
     private void drawLegend(GuiGraphics graphics, int x, int y) {
-        int[] colors = {NodeColors.HAVE, NodeColors.PARTIAL, NodeColors.MISSING,
-                NodeColors.INTERMEDIATE, NodeColors.ROOT};
-        String[] keys = {"overlay.craftplanner.legend.have", "overlay.craftplanner.legend.partial",
-                "overlay.craftplanner.legend.missing", "overlay.craftplanner.legend.intermediate",
-                "overlay.craftplanner.legend.root"};
-        int room = this.plan.panelW() - 2 * PAD;
-        int used = 0;
-        int line = 0;
-        for (int i = 0; i < keys.length; i++) {
-            String label = tr(keys[i]).getString();
-            int entryW = 8 + this.font.width(label) + 8;
-            if (used + entryW > room && used > 0) {
-                line++;
-                used = 0;
-            }
-            if (line > 1) {
-                return;
-            }
-            int entryX = x + used;
-            graphics.fill(entryX, y + line * LINE_H + 2, entryX + 6,
-                    y + line * LINE_H + 8, colors[i]);
-            graphics.drawString(this.font, label, entryX + 8, y + line * LINE_H,
-                    UiPalette.TEXT, false);
-            used += entryW;
-        }
+        UiLegend.draw(graphics, this.font, x, y, this.plan.panelW() - 2 * PAD, LINE_H);
     }
 
     private void drawMaterialSummary(GuiGraphics graphics, int x, int y) {

@@ -67,6 +67,7 @@
   "overlay.craftplanner.legend.partial": "частично",
   "overlay.craftplanner.legend.missing": "нет",
   "overlay.craftplanner.legend.intermediate": "сборка",
+  "overlay.craftplanner.legend.raw": "материал",
   "overlay.craftplanner.legend.root": "цель",
   "screen.craftplanner.quantity.hint": "Колесо мыши: ±1 (Shift — ±10) · Enter — добавить",
   "screen.craftplanner.list.header.item": "Предмет",
