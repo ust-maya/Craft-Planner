@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
@@ -98,6 +99,8 @@ public final class BatchPickerScreen extends Screen {
     private long seenGraphVersion;
     private long seenFoldVersion = -1;
     private long seenAvailabilityVersion = -1;
+    /** The window's close button: the same chip every planner window closes with. */
+    private Button closeButton;
 
     /**
      * One drawn line of a branch.
@@ -144,6 +147,13 @@ public final class BatchPickerScreen extends Screen {
         relayout();
         this.panelWidth = measure();
         this.scroll = Math.min(this.scroll, maxScroll());
+        // init() is also called from tick() on every plan change, past vanilla's
+        // rebuildWidgets(), so the old button is dropped here before a new one is made.
+        clearWidgets();
+        Component close = Component.translatable("screen.craftplanner.list.close");
+        this.closeButton = addRenderableWidget(FitButton.create(0, 0,
+                Math.max(48, this.font.width(close) + 2 * PAD), RecipeListLayout.BUTTON_H,
+                close, button -> onClose(), null));
     }
 
     @Override
@@ -294,19 +304,6 @@ public final class BatchPickerScreen extends Screen {
         return this.scroll + offset / ROW_H;
     }
 
-    /** The control row under a point, or {@code -1}. */
-    private int hitControl(int mx, int my) {
-        int left = panelLeft();
-        if (mx < left + PAD || mx >= left + this.panelWidth - PAD) {
-            return -1;
-        }
-        int offset = my - (bandTop() + visibleLines() * ROW_H);
-        if (offset < 0 || offset >= CONTROL_ROWS * ROW_H) {
-            return -1;
-        }
-        return offset / ROW_H;
-    }
-
     /**
      * Whether a point is on a line's fold button.
      *
@@ -323,6 +320,11 @@ public final class BatchPickerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // Widgets first: the close button sits in the control row this method used
+        // to hit-test by hand.
+        if (super.mouseClicked(mouseX, mouseY, button)) {
+            return true;
+        }
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             return false;
         }
@@ -356,10 +358,6 @@ public final class BatchPickerScreen extends Screen {
             if (this.ambiguous.contains(row.node().item())) {
                 this.minecraft.setScreen(new RecipePickerScreen(row.node().item(), this));
             }
-            return true;
-        }
-        if (hitControl(mx, my) == 0) {
-            this.onClose();
             return true;
         }
         return false;
@@ -461,7 +459,13 @@ public final class BatchPickerScreen extends Screen {
             }
         }
 
-        drawControl(graphics, left, bandTop() + shown * ROW_H, hitControl(mouseX, mouseY) == 0);
+        // The panel is re-measured on folds without a new init(), so the button is
+        // placed where the control row is on this frame, right-aligned like the tree's.
+        if (this.closeButton != null) {
+            int controlTop = bandTop() + shown * ROW_H;
+            this.closeButton.setX(left + this.panelWidth - PAD - this.closeButton.getWidth());
+            this.closeButton.setY(controlTop + (ROW_H - this.closeButton.getHeight()) / 2);
+        }
         drawScrollbar(graphics, left, shown, mouseX, mouseY);
 
         super.render(graphics, mouseX, mouseY, partialTick);
@@ -632,17 +636,6 @@ public final class BatchPickerScreen extends Screen {
                     counterOf(row.node()), row.node().displayName());
         }
         return null;
-    }
-
-    private void drawControl(GuiGraphics graphics, int left, int y, boolean hovered) {
-        int width = this.panelWidth - 2 * PAD;
-        if (hovered) {
-            graphics.fill(left + PAD, y, left + PAD + width, y + ROW_H, UiPalette.MODAL_ROW_HOVER);
-        }
-        graphics.drawString(this.font,
-                Component.translatable("screen.craftplanner.list.close").getString(),
-                left + PAD + TreeMetrics.TOGGLE_W,
-                y + (ROW_H - this.font.lineHeight) / 2, TEXT, false);
     }
 
     private void drawScrollbar(GuiGraphics graphics, int left, int shown, int mouseX, int mouseY) {
