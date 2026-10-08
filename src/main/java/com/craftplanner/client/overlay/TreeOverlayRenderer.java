@@ -38,7 +38,8 @@ import net.neoforged.neoforge.client.event.RenderGuiEvent;
  *
  * <p>Two layouts are available, picked by {@code overlay.mode} in the client
  * config: {@code "tree"} (default) — the nested list this class is built around,
- * and {@code "graph"} — the classic node-link view, kept below unchanged.</p>
+ * and {@code "graph"} — the classic node-link view, kept unchanged in
+ * {@link GraphOverlayRenderer}.</p>
  *
  * <p><b>The overlay is a summary, not the tool.</b> A HUD has no cursor: while
  * no screen is open the game grabs the mouse, pins it to the centre of the
@@ -70,6 +71,12 @@ import net.neoforged.neoforge.client.event.RenderGuiEvent;
  * flattened plan against {@link PlannerState#graphVersion()} and the fold count,
  * which is also what lets the panel width be measured from the labels once per
  * rebuild instead of being recomputed sixty times a second.</p>
+ *
+ * <p>This class draws the tree panel and routes the two events it subscribes
+ * to. The pieces that grew around it live beside it, moved out unchanged:
+ * the shopping-list footer is {@link ShoppingListFooter}, the node-link mode
+ * is {@link GraphOverlayRenderer}, and the fold/badge/scrollbar hit map the
+ * layout editor clicks through is {@link HudHitMap}.</p>
  */
 @EventBusSubscriber(modid = Constants.MODID, value = Dist.CLIENT)
 public final class TreeOverlayRenderer {
