@@ -154,6 +154,9 @@ public final class RecipeIndex {
         cached = null;
         cachedManager = null;
         UNREADABLE.clear();
+        // Which item counts as a base material is a tag question, and tags belong to the
+        // datapacks of the world this index is being dropped for.
+        BaseMaterials.clearCache();
     }
 
     public static RecipeIndex build(RecipeManager manager, HolderLookup.Provider registries) {
@@ -320,6 +323,9 @@ public final class RecipeIndex {
         }
         for (int pass = 0; pass < COST_PASSES; pass++) {
             boolean changed = false;
+            // A cost can only fall while some chain gets shorter, so a pass that
+            // changes nothing means the prices have settled: the remaining passes
+            // would recompute the same answer for every recipe in the game.
             for (Map.Entry<ItemKey, List<RecipeHolder<?>>> entry : byOutput.entrySet()) {
                 ItemKey key = entry.getKey();
                 if (BaseMaterials.isBaseMaterial(key)) {
@@ -336,7 +342,15 @@ public final class RecipeIndex {
                 unitCosts.put(key, current);
             }
             if (!changed) {
+                LOGGER.debug("Craft Planner settled recipe costs in {} passes.", pass + 1);
                 break;
+            }
+            if (pass == COST_PASSES - 1) {
+                // Still moving after the whole budget: two items price each other
+                // through a loop (A from B, B from A), so each pass finds a shorter
+                // way round. The ladder stops here rather than chasing it forever.
+                LOGGER.warn("Craft Planner ran out of cost passes with prices still moving:"
+                        + " a recipe cycle is being priced. Costs are taken as they stand.");
             }
         }
         for (Map.Entry<ItemKey, Cost> entry : unitCosts.entrySet()) {

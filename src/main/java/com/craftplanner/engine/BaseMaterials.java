@@ -1,7 +1,9 @@
 package com.craftplanner.engine;
 
 import com.craftplanner.graph.ItemKey;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
@@ -42,7 +44,23 @@ public final class BaseMaterials {
 
     private static final String PLANKS_SUFFIX = "_planks";
 
+    /**
+     * The verdict per item. Tag membership is read through a stack, and the tree
+     * asks about planks for every branch that uses wood, so the answer is kept
+     * rather than recomputed.
+     *
+     * <p>The cache belongs to one recipe set: {@link RecipeIndex#invalidateCache()}
+     * clears it, because a datapack reload can move an item into or out of the
+     * {@code minecraft:planks} tag, and an item cannot mean two things at once.</p>
+     */
+    private static final Map<Item, Boolean> VERDICTS = new HashMap<>();
+
     private BaseMaterials() {
+    }
+
+    /** Drops the per-item verdicts; call whenever tags or recipes are reloaded. */
+    public static void clearCache() {
+        VERDICTS.clear();
     }
 
     /**
@@ -59,10 +77,13 @@ public final class BaseMaterials {
         if (item == null) {
             return false;
         }
-        if (inAnyTag(item, PLANKS_TAGS)) {
-            return true;
+        Boolean known = VERDICTS.get(item);
+        if (known != null) {
+            return known;
         }
-        return pathOf(item).endsWith(PLANKS_SUFFIX);
+        boolean planks = inAnyTag(item, PLANKS_TAGS) || pathOf(item).endsWith(PLANKS_SUFFIX);
+        VERDICTS.put(item, planks);
+        return planks;
     }
 
     private static boolean inAnyTag(Item item, List<TagKey<Item>> tags) {
