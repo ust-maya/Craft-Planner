@@ -3,7 +3,6 @@ package com.craftplanner.client.overlay;
 import com.craftplanner.Config;
 import com.craftplanner.Constants;
 import com.craftplanner.client.Keybinds;
-import com.craftplanner.client.MaterialTooltip;
 import com.craftplanner.client.UiLegend;
 import com.craftplanner.client.OverlayState;
 import com.craftplanner.client.AmountLabel;
@@ -32,10 +31,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.level.material.Fluid;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -87,31 +82,10 @@ public final class TreeOverlayRenderer {
     private static final int TITLE_H = 12;
     /** Gap between the last tree row and the footer block. */
     private static final int FOOTER_GAP = 3;
-    /** Air between the shopping list and the hotkey line, in layout pixels. */
-    private static final int FOOTER_KEYS_GAP = 2;
-    /** Gap between two shopping-list entries. */
-    private static final int FOOTER_ENTRY_GAP = 6;
-    /**
-     * Slack kept by the wrap. The content width is exact in layout pixels but
-     * rounded in screen pixels, so two pixels are left free rather than risk the
-     * last icon of a line being cut by the panel edge.
-     */
-    private static final int FOOTER_SAFE = 2;
-    /** Height of one text line of the footer (9 px glyphs + 2 px leading). */
-    private static final int FOOTER_TEXT_H = 11;
-    /** Height of one shopping-list line (icon + 2 px leading). */
-    private static final int FOOTER_LINE_H = TreeMetrics.ICON + 2;
-    /**
-     * Cap on shopping-list lines. Three lines already cost more vertical space
-     * than the tree can usually spare; anything beyond is reported as {@code +N}
-     * and stays reachable through the K window.
-     */
-    private static final int MAX_FOOTER_LINES = 3;
     /** Zone at the panel's right edge for the scrollbar, in screen pixels. */
     private static final int SCROLL_ZONE = TreeMetrics.SCROLL_GUTTER;
     private static final int PANEL_BG = UiPalette.HUD_PANEL_BG;
     private static final int PANEL_BORDER = UiPalette.HUD_PANEL_BORDER;
-    private static final int MUTED = UiPalette.HUD_MUTED;
 
     /** Vertical scroll of the tree layout, in rows (tree mode only). */
     private static int treeScroll;
@@ -413,11 +387,11 @@ public final class TreeOverlayRenderer {
     }
 
     /** Cursor position in GUI-scaled pixels, the space the panel is drawn in. */
-    private static int mouseX(Minecraft mc) {
+    static int mouseX(Minecraft mc) {
         return (int) (mc.mouseHandler.xpos() / mc.getWindow().getGuiScale());
     }
 
-    private static int mouseY(Minecraft mc) {
+    static int mouseY(Minecraft mc) {
         return (int) (mc.mouseHandler.ypos() / mc.getWindow().getGuiScale());
     }
 
@@ -450,7 +424,7 @@ public final class TreeOverlayRenderer {
                 TreePanel.HUD_PAD);
         TreePanel.Plan rough = TreePanel.plan(withoutFooter, treeScroll);
 
-        Footer footer = cachedFooter(availability, metrics, rough, mc);
+        ShoppingListFooter.Footer footer = ShoppingListFooter.cachedFooter(availability, metrics, rough, mc);
         int footerBlock = footer.height() > 0 ? footer.height() + FOOTER_GAP : 0;
         TreePanel.Plan sized = TreePanel.plan(new TreePanel.Request(
                 withoutFooter.availW(), withoutFooter.availH(), withoutFooter.density(),
@@ -505,11 +479,11 @@ public final class TreeOverlayRenderer {
             pose.pushPose();
             pose.translate(contentLeft, footerTop, 0);
             pose.scale((float) scale, (float) scale, 1f);
-            drawFooter(graphics, font, footer, contentW);
+            ShoppingListFooter.drawFooter(graphics, font, footer, contentW);
             pose.popPose();
             graphics.disableScissor();
-            if (!showTailTooltip(graphics, font, footer, mc, contentLeft, footerTop, scale)) {
-                showMaterialTooltips(graphics, font, footer, mc, contentLeft, footerTop, scale);
+            if (!ShoppingListFooter.showTailTooltip(graphics, font, footer, mc, contentLeft, footerTop, scale)) {
+                ShoppingListFooter.showMaterialTooltips(graphics, font, footer, mc, contentLeft, footerTop, scale);
             }
         }
 
@@ -666,7 +640,7 @@ public final class TreeOverlayRenderer {
      * <p>When the plan does not fit the panel, the hint swaps to the one line that
      * matters: what to press to see the rest.</p>
      */
-    private static Component hotkeyLine(TextMetrics metrics, int contentW, TreePanel.Plan panel) {
+    static Component hotkeyLine(TextMetrics metrics, int contentW, TreePanel.Plan panel) {
         if (panel.clipped()) {
             // A plan trimmed at the panel edge says what to press to see the rest;
             // silently cutting a row mid-word was what made users think the tree
@@ -696,356 +670,6 @@ public final class TreeOverlayRenderer {
                 Keybinds.OPEN_RECIPES.getKey().getDisplayName(),
                 Keybinds.OPEN_TREE.getKey().getDisplayName(),
                 Keybinds.EDIT_LAYOUT.getKey().getDisplayName());
-    }
-
-    // ---------------------------------------------------------------------
-    // Footer: shopping list + totals
-    // ---------------------------------------------------------------------
-
-    /** Prepared footer block: wrapped shopping list plus the hotkey line. */
-    private static final class Footer {
-        final List<List<FooterMaterial>> lines = new ArrayList<>();
-        /** Materials dropped because {@link #MAX_FOOTER_LINES} was reached. */
-        int hidden;
-        /** The dropped materials, as the tooltip content of the {@code +N} marker. */
-        List<FooterMaterial> hiddenEntries = List.of();
-        /**
-         * Icons actually drawn, so hovering one can name the material behind it.
-         * Filled while the footer is drawn, in layout pixels like {@link #tailX}.
-         */
-        final List<MaterialIcon> icons = new ArrayList<>();
-        /**
-         * Rectangle of the {@code +N} marker in layout pixels, set while the
-         * footer is drawn; {@code tailX < 0} means nothing was drawn.
-         */
-        int tailX = -1;
-        int tailY;
-        int tailW;
-        int tailH;
-        /** Null when the hotkey line does not fit — it is never cut. */
-        final Component keys;
-
-        Footer(Component keys) {
-            this.keys = keys;
-        }
-
-        int height() {
-            int h = lines.isEmpty() ? 0 : lines.size() * FOOTER_LINE_H;
-            if (keys != null) {
-                h += FOOTER_KEYS_GAP + FOOTER_TEXT_H;
-            }
-            return h;
-        }
-    }
-
-    /** One drawn shopping-list icon: what it stands for and where it was put. */
-    private record FooterMaterial(ItemKey item, Fluid fluid, long required, Availability availability) {
-        static FooterMaterial item(ItemKey key, Availability value) {
-            return new FooterMaterial(key, null, value.required(), value);
-        }
-
-        static FooterMaterial fluid(Fluid fluid, long amount) {
-            return new FooterMaterial(null, fluid, amount, null);
-        }
-
-        boolean isFluid() {
-            return fluid != null;
-        }
-
-        ItemStack icon() {
-            if (!isFluid()) {
-                return item.toStack();
-            }
-            ItemStack bucket = new ItemStack(fluid.getBucket());
-            return bucket.isEmpty() ? new ItemStack(Items.BUCKET) : bucket;
-        }
-
-        Component name() {
-            return isFluid() ? Component.translatable(fluid.getFluidType().getDescriptionId()) : item.name();
-        }
-
-        String amountLabel() {
-            return isFluid() ? AmountLabel.millibuckets(required) : AmountLabel.bare(required);
-        }
-
-        int color() {
-            return availability == null ? NodeColors.RAW : NodeColors.forAvailability(availability);
-        }
-    }
-
-    private record MaterialIcon(FooterMaterial material, int x, int y) {
-    }
-
-    /**
-     * Builds the footer for a content width given in layout pixels. The shopping
-     * list is sorted by shortage first, so what the player still has to gather is
-     * what they see.
-     *
-     * <p>{@code keys} may be null — the hotkey line is dropped rather than cut
-     * when the panel is narrower than even the short hint. The width check has to
-     * test for that first, or {@code Font.width(null)} throws and takes the game
-     * down with it.</p>
-     */
-    private static Footer buildFooter(Map<ItemKey, Availability> availability, Map<Fluid, Long> fluids,
-            TextMetrics metrics, int contentW, Component keys) {
-        Footer footer = new Footer(
-                keys != null && metrics.width(keys.getString()) <= contentW ? keys : null);
-        List<FooterMaterial> entries = shoppingList(availability, fluids);
-        wrapShoppingList(footer, entries, metrics, contentW, 0);
-        if (footer.hidden > 0) {
-            // Something was dropped: redo the wrap with room for the "+N" tail. The
-            // reserve is sized for the largest possible number, so the marker can
-            // never be pushed out by its own growth.
-            Footer retry = new Footer(footer.keys);
-            wrapShoppingList(retry, entries, metrics, contentW,
-                    metrics.width("+" + entries.size()) + 3);
-            footer = retry;
-        }
-        return footer;
-    }
-
-    /**
-     * The footer block, or the cached one when nothing it is made of changed.
-     *
-     * <p>Building it sorts the whole shopping list, wraps it into lines twice over
-     * when the {@code +N} marker has to be squeezed in, and measures the hotkey
-     * hint — on a HUD that runs every frame while the numbers behind it move once
-     * a second at best. The keys are exactly what those numbers come from: the
-     * availability map and the fluid map (both replaced wholesale whenever they
-     * change, so identity is enough), the room the panel gives the footer, the
-     * density it is drawn at, whether the plan is trimmed, and the language the
-     * labels are read in.</p>
-     */
-    private static Footer cachedFooter(Map<ItemKey, Availability> availability, TextMetrics metrics,
-            TreePanel.Plan rough, Minecraft mc) {
-        String language = mc.getLanguageManager().getSelected();
-        Map<Fluid, Long> fluids = PlannerState.fluidRequirements();
-        if (footerCache != null && footerAvailability == availability && footerFluids == fluids
-                && footerWidth == rough.contentW() && footerScale == rough.scale()
-                && footerClipped == rough.clipped() && language.equals(footerLanguage)) {
-            return footerCache;
-        }
-        footerCache = buildFooter(availability, fluids, metrics, rough.contentW(),
-                hotkeyLine(metrics, rough.contentW(), rough));
-        footerAvailability = availability;
-        footerFluids = fluids;
-        footerWidth = rough.contentW();
-        footerScale = rough.scale();
-        footerClipped = rough.clipped();
-        footerLanguage = language;
-        return footerCache;
-    }
-
-    private static Map<ItemKey, Availability> footerAvailability;
-    private static Map<Fluid, Long> footerFluids;
-    private static int footerWidth = -1;
-    private static double footerScale = -1;
-    private static boolean footerClipped;
-    private static String footerLanguage = "";
-    private static Footer footerCache;
-
-    /** Raw materials, worst shortage first, then largest demand. */
-    private static List<FooterMaterial> shoppingList(Map<ItemKey, Availability> availability,
-            Map<Fluid, Long> fluids) {
-        List<FooterMaterial> entries = new ArrayList<>();
-        availability.forEach((key, value) -> entries.add(FooterMaterial.item(key, value)));
-        fluids.forEach((fluid, amount) -> entries.add(FooterMaterial.fluid(fluid, amount)));
-        entries.sort((a, b) -> {
-            long missingA = a.availability() == null ? 0 : a.availability().missing();
-            long missingB = b.availability() == null ? 0 : b.availability().missing();
-            int byShortage = Long.compare(missingB, missingA);
-            return byShortage != 0
-                    ? byShortage
-                    : Long.compare(b.required(), a.required());
-        });
-        return entries;
-    }
-
-    private static int entryWidth(TextMetrics metrics, FooterMaterial material) {
-        return TreeMetrics.ICON + 1 + metrics.width(material.amountLabel()) + FOOTER_ENTRY_GAP;
-    }
-
-    /**
-     * Greedy wrap of the shopping list into at most {@link #MAX_FOOTER_LINES}
-     * lines. {@code reserveLast} is the room kept free at the end of the last line
-     * for the {@code +N} marker (0 on the first pass).
-     */
-    private static void wrapShoppingList(Footer footer, List<FooterMaterial> entries,
-            TextMetrics metrics, int contentW, int reserveLast) {
-        List<FooterMaterial> current = new ArrayList<>();
-        int used = 0;
-        int index = 0;
-        while (index < entries.size()) {
-            FooterMaterial entry = entries.get(index);
-            int width = entryWidth(metrics, entry);
-            boolean lastLine = footer.lines.size() == MAX_FOOTER_LINES - 1;
-            int capacity = (lastLine ? contentW - reserveLast : contentW) - FOOTER_SAFE;
-            if (!current.isEmpty() && used + width > capacity) {
-                footer.lines.add(current);
-                if (footer.lines.size() == MAX_FOOTER_LINES) {
-                    footer.hidden = entries.size() - index;
-                    footer.hiddenEntries = List.copyOf(entries.subList(index, entries.size()));
-                    return;
-                }
-                current = new ArrayList<>();
-                used = 0;
-                continue;
-            }
-            current.add(entry);
-            used += width;
-            index++;
-        }
-        if (!current.isEmpty()) {
-            footer.lines.add(current);
-        }
-    }
-
-    /** Draws the footer in layout pixels; the caller owns the scaled pose. */
-    private static void drawFooter(GuiGraphics graphics, Font font, Footer footer, int contentW) {
-        footer.icons.clear();
-        int y = 0;
-        for (int i = 0; i < footer.lines.size(); i++) {
-            boolean last = i == footer.lines.size() - 1;
-            int hidden = last ? footer.hidden : 0;
-            int tailX = drawShoppingLine(graphics, font, footer, footer.lines.get(i), y, hidden);
-            if (tailX >= 0) {
-                footer.tailX = tailX;
-                footer.tailY = y + (TreeMetrics.ICON - font.lineHeight) / 2 + 1;
-                footer.tailW = font.width("+" + hidden);
-                footer.tailH = font.lineHeight;
-            }
-            y += FOOTER_LINE_H;
-        }
-        if (footer.keys != null) {
-            graphics.drawCenteredString(font, footer.keys, contentW / 2,
-                    y + FOOTER_KEYS_GAP, MUTED);
-        }
-    }
-
-    /**
-     * One line of the shopping list: icon, total amount, colour by availability —
-     * no names, so nothing has to be trimmed.
-     *
-     * @return the layout-x where the {@code +N} marker was drawn, {@code -1} when
-     *         the line has no marker (used to hover-test the tail tooltip)
-     */
-    private static int drawShoppingLine(GuiGraphics graphics, Font font, Footer footer,
-            List<FooterMaterial> line, int y, int hidden) {
-        int textY = y + (TreeMetrics.ICON - font.lineHeight) / 2 + 1;
-        int x = 0;
-        for (FooterMaterial entry : line) {
-            graphics.renderItem(entry.icon(), x, y);
-            footer.icons.add(new MaterialIcon(entry, x, y));
-            String amount = entry.amountLabel();
-                graphics.drawString(font, amount, x + TreeMetrics.ICON + 1, textY,
-                    entry.color(), false);
-            x += entryWidth(font::width, entry);
-        }
-        if (hidden > 0) {
-            graphics.drawString(font, "+" + hidden, x, textY, MUTED, false);
-            return x;
-        }
-        return -1;
-    }
-
-    /**
-     * Hover feedback for the {@code +N} marker: the number alone does not say
-     * <em>what</em> is hidden, so pointing at it lists the dropped materials.
-     *
-     * @param originX screen x of the footer pose the marker was drawn from
-     * @param originY screen y of that pose
-     * @param scale   scale factor of that pose
-     * @return true when the cursor was on the marker and a tooltip was shown
-     */
-    private static boolean showTailTooltip(GuiGraphics graphics, Font font, Footer footer,
-            Minecraft mc, int originX, int originY, double scale) {
-        if (footer.hidden <= 0 || footer.tailX < 0 || footer.hiddenEntries.isEmpty()
-                || !OverlayPlacement.editing()) {
-            return false;
-        }
-        int mx = mouseX(mc);
-        int my = mouseY(mc);
-        final int pad = 2;
-        int x1 = originX + (int) ((footer.tailX - pad) * scale);
-        int y1 = originY + (int) ((footer.tailY - pad) * scale);
-        int x2 = originX + (int) Math.ceil((footer.tailX + footer.tailW + pad) * scale);
-        int y2 = originY + (int) Math.ceil((footer.tailY + footer.tailH + pad) * scale);
-        if (mx < x1 || mx > x2 || my < y1 || my > y2) {
-            return false;
-        }
-        List<Component> lines = new ArrayList<>();
-        for (FooterMaterial entry : footer.hiddenEntries) {
-                lines.add(entry.name().copy().append(Component.literal(" "
-                    + (entry.isFluid() ? entry.amountLabel() : AmountLabel.times(entry.required())))));
-        }
-        showTooltip(graphics, font, mc, lines);
-        return true;
-    }
-
-    /**
-     * Hover feedback for a shopping-list icon: the footer shows one number per
-     * material — how much the whole plan asks for — which says nothing about
-     * <em>which</em> item it is or how much of it the player already carries. So
-     * pointing at an icon names it and splits the amount into needed, on hand and
-     * still missing.
-     *
-     * <p>Offered only in the layout editor (O). Any open screen used to be enough,
-     * which put these notes on top of whatever the player was actually looking at
-     * — an inventory, EMI, a chest — where the HUD is behind a dim and the icons
-     * under the cursor belong to that screen, not to the panel. With no screen at
-     * all the game grabs the cursor and pins it to the middle of the window, so the
-     * pointer cannot reach an icon in the first place.</p>
-     *
-     * @param originX screen x of the footer pose the icons were drawn from
-     * @param originY screen y of that pose
-     * @param scale   scale factor of that pose
-     */
-    private static void showMaterialTooltips(GuiGraphics graphics, Font font, Footer footer,
-            Minecraft mc, int originX, int originY, double scale) {
-        if (footer.icons.isEmpty() || !OverlayPlacement.editing()) {
-            return;
-        }
-        int mx = mouseX(mc);
-        int my = mouseY(mc);
-        final int pad = 1;
-        for (MaterialIcon icon : footer.icons) {
-            int x1 = originX + (int) ((icon.x() - pad) * scale);
-            int y1 = originY + (int) ((icon.y() - pad) * scale);
-            int x2 = originX + (int) Math.ceil((icon.x() + TreeMetrics.ICON + pad) * scale);
-            int y2 = originY + (int) Math.ceil((icon.y() + TreeMetrics.ICON + pad) * scale);
-            if (mx < x1 || mx > x2 || my < y1 || my > y2) {
-                continue;
-            }
-            showTooltip(graphics, font, mc, materialLines(icon.material()));
-            return;
-        }
-    }
-
-    /** The material's own tooltip lines, said the way every surface says them. */
-    private static List<Component> materialLines(FooterMaterial material) {
-        return MaterialTooltip.lines(material.name(), material.amountLabel(),
-                material.availability());
-    }
-
-    /**
-     * Shows tooltip lines for the point the cursor is at. While a screen is open
-     * they are handed to it instead of being drawn here: Minecraft paints the HUD —
-     * and so every tooltip the overlay could draw — <em>before</em> the screen, and
-     * the planner's screens dim the whole view on top of it, which left the player
-     * with a dark box and unreadable text. A screen draws what it was handed as the
-     * last thing of its own render pass, above everything it painted, and wraps it
-     * to the vanilla tooltip width.
-     */
-    private static void showTooltip(GuiGraphics graphics, Font font, Minecraft mc,
-            List<Component> lines) {
-        if (lines.isEmpty()) {
-            return;
-        }
-        MutableComponent joined = lines.get(0).copy();
-        for (int i = 1; i < lines.size(); i++) {
-            joined.append(Component.literal("\n")).append(lines.get(i).copy());
-        }
-        mc.screen.setTooltipForNextRenderPass(joined);
     }
 
     // ---------------------------------------------------------------------
@@ -1163,7 +787,7 @@ public final class TreeOverlayRenderer {
         Map<ItemKey, Availability> availability = PlannerState.availability();
         int footerLayoutW = Math.max(1, (int) ((panelWidth - 2 * G_PADDING) / density));
         TextMetrics metrics = font::width;
-        Footer footer = buildFooter(availability, PlannerState.fluidRequirements(), metrics, footerLayoutW,
+        ShoppingListFooter.Footer footer = ShoppingListFooter.buildFooter(availability, PlannerState.fluidRequirements(), metrics, footerLayoutW,
                 graphKeysHint(metrics, footerLayoutW));
         int footerSpace = Math.max(G_FOOTER_SPACE, (int) Math.round(footer.height() * density) + 2);
 
@@ -1224,11 +848,11 @@ public final class TreeOverlayRenderer {
         pose.pushPose();
         pose.translate(left + G_PADDING, footerTop, 0);
         pose.scale((float) density, (float) density, 1f);
-        drawFooter(graphics, font, footer, footerLayoutW);
+        ShoppingListFooter.drawFooter(graphics, font, footer, footerLayoutW);
         pose.popPose();
         graphics.disableScissor();
-        if (!showTailTooltip(graphics, font, footer, mc, left + G_PADDING, footerTop, density)) {
-            showMaterialTooltips(graphics, font, footer, mc, left + G_PADDING, footerTop, density);
+        if (!ShoppingListFooter.showTailTooltip(graphics, font, footer, mc, left + G_PADDING, footerTop, density)) {
+            ShoppingListFooter.showMaterialTooltips(graphics, font, footer, mc, left + G_PADDING, footerTop, density);
         }
         OverlayPlacement.reportDrawn(left, top, panelWidth, panelHeight);
         drawEditChrome(graphics, mc, font, left, top, panelWidth, panelHeight,
