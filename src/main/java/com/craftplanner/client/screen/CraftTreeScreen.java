@@ -2,6 +2,7 @@ package com.craftplanner.client.screen;
 
 import com.craftplanner.client.AmountLabel;
 import com.craftplanner.client.Keybinds;
+import com.craftplanner.client.MaterialTooltip;
 import com.craftplanner.client.PlanRows;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
@@ -971,20 +972,13 @@ public final class CraftTreeScreen extends Screen {
      * guess which of its three meanings applied.
      */
     private List<Component> rowTooltip(TreeRow<RecipeNode> row) {
-        List<Component> lines = new ArrayList<>();
-        lines.add(row.node().displayName().copy());
         Availability state = row.node().isFluidRequirement()
             ? null : PlannerState.availability().get(row.node().item());
-        lines.add(Component.translatable("overlay.craftplanner.material.required",
-            AmountLabel.of(row.node())));
-        if (state != null) {
-            lines.add(Component.translatable("overlay.craftplanner.material.have",
-                    Long.toString(state.available())));
-            if (state.missing() > 0) {
-                lines.add(Component.translatable("overlay.craftplanner.material.missing",
-                        Long.toString(state.missing())));
-            }
-        }
+        // The material's own lines come from the same place the HUD's shopping list
+        // takes them, so the two surfaces cannot disagree about what "have" means.
+        List<Component> lines = new ArrayList<>(MaterialTooltip.lines(
+                row.node().displayName(), TreeMetrics.markedAmount(row.status(),
+                        AmountLabel.of(row.node())), state));
         if (row.hiddenRows() > 0) {
             lines.add(Component.translatable(KEY_HIDDEN, row.hiddenRows()));
         }

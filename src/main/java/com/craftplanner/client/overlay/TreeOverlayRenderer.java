@@ -3,6 +3,7 @@ package com.craftplanner.client.overlay;
 import com.craftplanner.Config;
 import com.craftplanner.Constants;
 import com.craftplanner.client.Keybinds;
+import com.craftplanner.client.MaterialTooltip;
 import com.craftplanner.client.UiLegend;
 import com.craftplanner.client.OverlayState;
 import com.craftplanner.client.AmountLabel;
@@ -1025,25 +1026,10 @@ public final class TreeOverlayRenderer {
         }
     }
 
-    /**
-     * A material named, then what the plan asks of it: the amount the footer
-     * prints, plus the part the inventory already covers. Only a shortfall gets its
-     * own line — a material already in stock has nothing left to report.
-     */
+    /** The material's own tooltip lines, said the way every surface says them. */
     private static List<Component> materialLines(FooterMaterial material) {
-        List<Component> lines = new ArrayList<>();
-        lines.add(material.name().copy());
-        lines.add(Component.translatable("overlay.craftplanner.material.required",
-                material.amountLabel()));
-        if (material.availability() != null) {
-            lines.add(Component.translatable("overlay.craftplanner.material.have",
-                    Long.toString(material.availability().available())));
-            if (material.availability().missing() > 0) {
-                lines.add(Component.translatable("overlay.craftplanner.material.missing",
-                        Long.toString(material.availability().missing())));
-            }
-        }
-        return lines;
+        return MaterialTooltip.lines(material.name(), material.amountLabel(),
+                material.availability());
     }
 
     /**
