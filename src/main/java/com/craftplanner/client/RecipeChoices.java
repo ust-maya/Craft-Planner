@@ -7,7 +7,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.Reader;
-import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -91,8 +90,8 @@ public final class RecipeChoices {
             json.addProperty(entry.getKey().id().toString(), entry.getValue().toString());
         }
         Path file = file();
-        try (Writer writer = Files.newBufferedWriter(file)) {
-            GSON.toJson(json, writer);
+        try {
+            JsonFiles.writeAtomically(file, json, GSON);
         } catch (Exception e) {
             LOGGER.warn("Craft Planner could not save recipe choices to {}.", file, e);
         }
