@@ -424,7 +424,7 @@ public final class CraftTreeScreen extends Screen {
         int yTop = rowTop(r);
         int left = contentLeft();
         int bandRight = labelRightEdge();
-        boolean hovered = r == hoveredRow(mouseY) && mouseX >= this.panelLeft;
+        boolean hovered = r == hoveredRow(mouseY) && overPanelColumn(mouseX);
         boolean focused = r == this.focus;
 
         if (row.depth() == 0) {
@@ -676,6 +676,20 @@ public final class CraftTreeScreen extends Screen {
 
     // --- input --------------------------------------------------------------
 
+    /**
+     * Whether the cursor is over the panel's own columns, rather than beside the
+     * window.
+     *
+     * <p>The rows are laid out inside the panel, but the hit test only knew about
+     * the vertical band, so a cursor sitting to the right of the window — over the
+     * game, or over the HUD — still highlighted a row and raised its tooltip. The
+     * scrim makes the panel edge visible, and the pointer belongs to whatever is
+     * under it.</p>
+     */
+    private boolean overPanelColumn(int mx) {
+        return mx >= this.panelLeft && mx < this.panelLeft + this.plan.panelW();
+    }
+
     private int hoveredRow(int mouseY) {
         int r = TreeMetrics.rowAt(contentTop(), contentBottom(), this.scroll, 1.0, mouseY);
         if (r < this.scroll || r >= this.rows.size()) {
@@ -908,6 +922,11 @@ public final class CraftTreeScreen extends Screen {
     // --- tooltips -----------------------------------------------------------
 
     private void renderRowTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        // The row band spans the whole panel width, so a cursor that has left the
+        // window would still be told about the row it crossed vertically.
+        if (!overPanelColumn(mouseX)) {
+            return;
+        }
         int r = hoveredRow(mouseY);
         if (r < 0) {
             return;
