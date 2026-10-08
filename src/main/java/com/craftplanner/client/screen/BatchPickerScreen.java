@@ -89,6 +89,7 @@ public final class BatchPickerScreen extends Screen {
     private int scroll;
     private long seenGraphVersion;
     private int seenFolds = -1;
+    private long seenAvailabilityVersion = -1;
 
     /**
      * One drawn line of a branch.
@@ -123,6 +124,7 @@ public final class BatchPickerScreen extends Screen {
     protected void init() {
         this.seenGraphVersion = PlannerState.graphVersion();
         this.seenFolds = TreeCollapse.foldCount();
+        this.seenAvailabilityVersion = PlannerState.availabilityVersion();
         if (this.minecraft.level == null) {
             // The world went away: nothing to decide in, so close. An empty branch
             // list stays open on purpose — the player clicked "Alternatives" and
@@ -144,6 +146,13 @@ public final class BatchPickerScreen extends Screen {
         if (PlannerState.graphVersion() != this.seenGraphVersion
                 || TreeCollapse.foldCount() != this.seenFolds) {
             init();
+        } else if (PlannerState.availabilityVersion() != this.seenAvailabilityVersion) {
+            // The player moved materials around while deciding. The rows carry the
+            // inventory's verdict on what they name, so they are re-read — but the
+            // panel is not laid out again: nothing about the plan changed, and a
+            // relayout would slide the list under the cursor once a second.
+            this.seenAvailabilityVersion = PlannerState.availabilityVersion();
+            this.plan = PlanRows.rows();
         }
     }
 
@@ -343,6 +352,7 @@ public final class BatchPickerScreen extends Screen {
     private void refreshKeeping(int anchorLine) {
         this.seenGraphVersion = PlannerState.graphVersion();
         this.seenFolds = TreeCollapse.foldCount();
+        this.seenAvailabilityVersion = PlannerState.availabilityVersion();
         this.plan = PlanRows.rows();
         relayout();
         this.panelWidth = measure();
