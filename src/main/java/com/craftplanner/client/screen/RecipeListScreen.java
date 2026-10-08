@@ -445,8 +445,11 @@ public class RecipeListScreen extends Screen {
             return false;
         }
         int next = this.scroll + (scrollY > 0 ? -1 : 1);
+        // Which rows are drawn is the only thing a notch of the wheel decides: the
+        // panel is the same size and its widgets — the header, the footer buttons —
+        // sit outside the list. refresh() rebuilt those widgets, so scrolling cost a
+        // layout pass and dropped the button the cursor was resting on.
         this.scroll = Math.max(0, Math.min(max, next));
-        refresh();
         return true;
     }
 
