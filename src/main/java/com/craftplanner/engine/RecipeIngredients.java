@@ -1,8 +1,10 @@
 package com.craftplanner.engine;
 
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import net.minecraft.core.NonNullList;
 import net.minecraft.world.item.crafting.Ingredient;
@@ -130,8 +132,13 @@ public final class RecipeIngredients {
         return expanded;
     }
 
-    /** Cache of the reflection verdict per recipe class. */
-    private static final Map<Class<?>, Integer> COUNT_ACCESSORS = new HashMap<>();
+    /**
+     * The {@code count()} accessor per recipe class, empty for a class that has none.
+     * The accessor is what is cached, never the value: every forge-hammer recipe is
+     * one class, and caching the count of whichever recipe was read first gave all
+     * of them that one count — {@code 2 tin ingots -> 1 plate} read as 1:1.
+     */
+    private static final Map<Class<?>, Optional<Method>> COUNT_ACCESSORS = new HashMap<>();
 
     /**
      * The {@code count()} of a recognised hammer-shaped recipe, or 1 when the
@@ -140,25 +147,42 @@ public final class RecipeIngredients {
      * {@code count()} method of a different shape is left alone.
      */
     private static int externalCount(Recipe<?> recipe) {
-        Class<?> cls = recipe.getClass();
-        Integer cached = COUNT_ACCESSORS.get(cls);
-        if (cached != null) {
-            return cached;
+        Method accessor = COUNT_ACCESSORS
+                .computeIfAbsent(recipe.getClass(), RecipeIngredients::countAccessor)
+                .orElse(null);
+        if (accessor == null) {
+            return 1;
         }
-        int count = 1;
-        if (cls.getName().startsWith("aztech.modern_industrialization.")
-                && cls.getSimpleName().toLowerCase().contains("hammer")) {
-            try {
-                Object raw = cls.getMethod("count").invoke(recipe);
-                if (raw instanceof Integer n && n > 1) {
-                    count = n;
-                }
-            } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
-                LOGGER.debug("Craft Planner could not read count() from a {} recipe.", cls, e);
-            }
+        try {
+            Object raw = accessor.invoke(recipe);
+            return raw instanceof Integer n && n > 1 ? n : 1;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            LOGGER.debug("Craft Planner could not read count() from a {} recipe.", recipe.getClass(), e);
+            return 1;
         }
-        COUNT_ACCESSORS.put(cls, count);
-        return count;
+    }
+
+    /**
+     * The {@code count()} method of a recognised hammer-shaped recipe class. The
+     * class name is checked before the method, so a mod that merely has a
+     * {@code count()} of a different meaning is left alone.
+     */
+    private static Optional<Method> countAccessor(Class<?> cls) {
+        if (!isMiHammer(cls)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(cls.getMethod("count"));
+        } catch (NoSuchMethodException | RuntimeException | LinkageError e) {
+            LOGGER.debug("Craft Planner found no count() on {}.", cls, e);
+            return Optional.empty();
+        }
+    }
+
+    /** Modern Industrialization's forge hammer, recognised by name: MI is a soft dependency. */
+    private static boolean isMiHammer(Class<?> cls) {
+        return cls.getName().startsWith("aztech.modern_industrialization.")
+                && cls.getSimpleName().toLowerCase().contains("hammer");
     }
 
     /**
