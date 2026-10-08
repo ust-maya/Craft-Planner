@@ -246,6 +246,18 @@ public final class CraftTreeScreen extends Screen {
     // --- drawing ------------------------------------------------------------
 
     @Override
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        // Empty on purpose, like the list and the pickers: render() paints its own
+        // dim, and vanilla's blurred background would land on top of the rows.
+    }
+
+    /** The world keeps running: the plan is read while it is being gathered. */
+    @Override
+    public boolean isPauseScreen() {
+        return false;
+    }
+
+    @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         graphics.fill(0, 0, this.width, this.height, UiPalette.MODAL_SCRIM);
         // The recipe button acts on whatever the focus is on, and the focus moves
@@ -299,6 +311,7 @@ public final class CraftTreeScreen extends Screen {
         }
         graphics.disableScissor();
     }
+
 
     /**
      * One 3 px bar per planned goal, spanning the full height of its subtree.
