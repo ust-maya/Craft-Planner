@@ -119,4 +119,17 @@ class TreePanelTest {
         }
         assertEquals(0, TreePanel.scrollAt(trackTop, trackH, thumb, 0, 120));
     }
+
+    @Test
+    void aThumbDragIsMeasuredFromTheGrab() {
+        // Taking hold of the thumb must not scroll anything: only the mouse movement
+        // that follows does, and it maps by the track's travel, not by the cursor.
+        assertEquals(7, TreePanel.scrollDragged(7, 0, 100, 20, 30));
+        assertEquals(30, TreePanel.scrollDragged(0, 80, 100, 20, 30));
+        assertEquals(0, TreePanel.scrollDragged(30, -80, 100, 20, 30));
+        assertEquals(15, TreePanel.scrollDragged(0, 40, 100, 20, 30));
+        assertEquals(30, TreePanel.scrollDragged(0, 1000, 100, 20, 30));
+        assertEquals(0, TreePanel.scrollDragged(5, -1000, 100, 20, 30));
+        assertEquals(0, TreePanel.scrollDragged(3, 10, 100, 20, 0));
+    }
 }

@@ -143,4 +143,21 @@ public final class TreePanel {
         return Math.max(0, Math.min(maxScroll,
                 Math.round((my - trackTop - thumbH / 2f) * maxScroll / travel)));
     }
+
+    /**
+     * Scroll offset after the thumb was dragged {@code dy} pixels from where it was
+     * grabbed. Relative to the grab rather than to the cursor, so taking hold of
+     * the thumb never moves it: only moving the mouse does.
+     *
+     * @param grabScroll scroll offset at the moment the thumb was grabbed
+     * @param dy         cursor movement since the grab, positive downwards
+     */
+    public static int scrollDragged(int grabScroll, int dy, int trackH, int thumbH, int maxScroll) {
+        if (maxScroll <= 0) {
+            return 0;
+        }
+        int travel = Math.max(1, trackH - thumbH);
+        return Math.max(0, Math.min(maxScroll,
+                grabScroll + Math.round((float) dy * maxScroll / travel)));
+    }
 }

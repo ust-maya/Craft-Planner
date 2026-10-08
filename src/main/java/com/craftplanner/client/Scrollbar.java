@@ -93,4 +93,9 @@ public final class Scrollbar {
     public static int scrollAt(Geometry bar, int my, int maxScroll) {
         return TreePanel.scrollAt(bar.trackTop(), bar.trackHeight(), bar.thumbHeight(), maxScroll, my);
     }
+
+    /** The row a drag that started at {@code grabScroll} has reached after {@code dy} pixels. */
+    public static int scrollDragged(Geometry bar, int grabScroll, int dy, int maxScroll) {
+        return TreePanel.scrollDragged(grabScroll, dy, bar.trackHeight(), bar.thumbHeight(), maxScroll);
+    }
 }
