@@ -15,6 +15,7 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RecipesUpdatedEvent;
@@ -39,6 +40,9 @@ import org.lwjgl.glfw.GLFW;
 @EventBusSubscriber(modid = Constants.MODID, value = Dist.CLIENT)
 public class ClientEvents {
 
+    /** Ticks since the last availability re-scan; a second of them, whatever the world clock does. */
+    private static int tickCounter;
+
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
@@ -46,8 +50,12 @@ public class ClientEvents {
             return;
         }
 
-        // Stage 9: keep the availability colours fresh (once per second).
-        if (mc.level.getGameTime() % 20 == 0) {
+        // Stage 9: keep the availability colours fresh (once per second). Own
+        // counter rather than the level's game time: while the game is paused the
+        // world clock stops, and `getGameTime() % 20 == 0` then reads true on
+        // every tick, turning a once-a-second inventory scan into a per-tick one.
+        if (++tickCounter >= 20) {
+            tickCounter = 0;
             PlannerState.refreshAvailability();
         }
 
@@ -92,6 +100,21 @@ public class ClientEvents {
     public static void onRecipesUpdated(RecipesUpdatedEvent event) {
         RecipeIndex.invalidateCache();
         PlannerState.rebuild();
+    }
+
+    /**
+     * Leaving a world — disconnect, server shutdown, or back to the title
+     * screen: drop the recipe index.
+     *
+     * <p>Its cached {@link RecipeIndex} holds recipe holders and registry
+     * handles from the world that just closed, and its "this recipe type cannot
+     * be read" set carries judgements made under the datapacks of that server.
+     * Both would otherwise survive into a singleplayer world with a different
+     * pack, where the answer could be the other way round.</p>
+     */
+    @SubscribeEvent
+    public static void onLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        RecipeIndex.invalidateCache();
     }
 
     /** Same actions as above, but for presses made while a GUI is open. */

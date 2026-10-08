@@ -40,8 +40,9 @@ public final class JeiIntegration {
      *
      * <p>The presence flag is set once, but JEI can still disappear during the
      * session (its own mod failed, the runtime was unloaded): then touching
-     * {@link JeiRuntimePlugin} would raise a linkage error. The capture hotkey
-     * must degrade to "nothing hovered", never crash.</p>
+     * {@link JeiRuntimePlugin} would raise a linkage error, and a runtime that
+     * is half torn down can just as well throw an ordinary one. The capture
+     * hotkey must degrade to "nothing hovered", never crash.</p>
      */
     public static Optional<ItemStack> hovered() {
         if (!isPresent()) {
@@ -49,7 +50,7 @@ public final class JeiIntegration {
         }
         try {
             return JeiRuntimePlugin.hoveredStack();
-        } catch (LinkageError jeiGone) {
+        } catch (RuntimeException | LinkageError e) {
             return Optional.empty();
         }
     }

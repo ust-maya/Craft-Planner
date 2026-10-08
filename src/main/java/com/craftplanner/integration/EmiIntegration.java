@@ -18,7 +18,10 @@ import net.minecraft.world.item.ItemStack;
  * </pre>
  *
  * <p>Every reflective lookup happens once; any failure (EMI missing or a
- * changed API) disables the integration silently instead of crashing.</p>
+ * changed API) disables the integration silently instead of crashing. A lookup
+ * that fails while the game runs is only fatal after {@code MAX_FAILURES} of
+ * them in a row — one exception in one frame should not cost the rest of the
+ * session, while a series of them means the API really has moved.</p>
  */
 public final class EmiIntegration {
 
@@ -30,13 +33,22 @@ public final class EmiIntegration {
     private static final String EMI_STACK = "dev.emi.emi.api.stack.EmiStack";
 
     private static boolean checked;
-    private static boolean available;
+    /** Read from the key handler and the tick thread; the resolution writes it once. */
+    private static volatile boolean available;
     private static Method getHoveredStack;
     private static Method getStack;
     private static Method getEmiStacks;
     private static Method getItemStack;
     /** {@code EmiApi.isSearchFocused()}, or null when this EMI build has no such method. */
     private static Method isSearchFocused;
+    /**
+     * Reflective lookups that failed one after another. EMI is asked on a key
+     * press, so a single failure is a bad moment rather than a broken install:
+     * the integration gives up only after {@link #MAX_FAILURES} in a row, and a
+     * lookup that works resets the count.
+     */
+    private static int failures;
+    private static final int MAX_FAILURES = 5;
 
     private EmiIntegration() {
     }
@@ -96,10 +108,14 @@ public final class EmiIntegration {
                 return Optional.empty();
             }
             ItemStack stack = (ItemStack) getItemStack.invoke(stacks.get(0));
+            failures = 0;
             return stack == null || stack.isEmpty() ? Optional.empty() : Optional.of(stack.copy());
-        } catch (ReflectiveOperationException | ClassCastException e) {
+        } catch (ReflectiveOperationException | RuntimeException e) {
             LOGGER.log(System.Logger.Level.WARNING, "EMI hovered-stack lookup failed", e);
-            available = false;
+            // One failure is a bad frame, not a broken install; a run of them is.
+            if (++failures >= MAX_FAILURES) {
+                available = false;
+            }
             return Optional.empty();
         }
     }

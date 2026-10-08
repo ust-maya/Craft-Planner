@@ -142,10 +142,18 @@ public final class RecipeIndex {
         return index;
     }
 
-    /** Drops the cached index so the next {@link #cachedFor} rebuilds it. */
+    /**
+     * Drops the cached index so the next {@link #cachedFor} rebuilds it.
+     *
+     * <p>The set of recipe types that failed to parse goes with it: it is a
+     * judgement about the recipes of one world and its datapacks, and the next
+     * connection can answer it differently — a server pack can make a type
+     * readable again, and the old verdict would keep excluding it forever.</p>
+     */
     public static void invalidateCache() {
         cached = null;
         cachedManager = null;
+        UNREADABLE.clear();
     }
 
     public static RecipeIndex build(RecipeManager manager, HolderLookup.Provider registries) {
