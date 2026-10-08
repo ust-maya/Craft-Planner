@@ -960,7 +960,7 @@ public final class TreeOverlayRenderer {
     private static boolean showTailTooltip(GuiGraphics graphics, Font font, Footer footer,
             Minecraft mc, int originX, int originY, double scale) {
         if (footer.hidden <= 0 || footer.tailX < 0 || footer.hiddenEntries.isEmpty()
-                || mc.screen == null) {
+                || !OverlayPlacement.editing()) {
             return false;
         }
         int mx = mouseX(mc);
@@ -989,9 +989,12 @@ public final class TreeOverlayRenderer {
      * pointing at an icon names it and splits the amount into needed, on hand and
      * still missing.
      *
-     * <p>Offered only while one of the planner's screens is open: with no screen
-     * the game grabs the cursor and pins it to the centre of the window, and the
-     * tooltip would follow a pointer the player cannot see or move.</p>
+     * <p>Offered only in the layout editor (O). Any open screen used to be enough,
+     * which put these notes on top of whatever the player was actually looking at
+     * — an inventory, EMI, a chest — where the HUD is behind a dim and the icons
+     * under the cursor belong to that screen, not to the panel. With no screen at
+     * all the game grabs the cursor and pins it to the middle of the window, so the
+     * pointer cannot reach an icon in the first place.</p>
      *
      * @param originX screen x of the footer pose the icons were drawn from
      * @param originY screen y of that pose
@@ -999,7 +1002,7 @@ public final class TreeOverlayRenderer {
      */
     private static void showMaterialTooltips(GuiGraphics graphics, Font font, Footer footer,
             Minecraft mc, int originX, int originY, double scale) {
-        if (footer.icons.isEmpty() || mc.screen == null) {
+        if (footer.icons.isEmpty() || !OverlayPlacement.editing()) {
             return;
         }
         int mx = mouseX(mc);
