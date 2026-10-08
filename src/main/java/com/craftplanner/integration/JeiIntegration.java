@@ -54,6 +54,21 @@ public final class JeiIntegration {
         }
     }
 
+    /**
+     * True when JEI has its search box focused, false when JEI is missing, has
+     * no runtime yet, or cannot say.
+     */
+    public static boolean isSearchFocused() {
+        if (!isPresent()) {
+            return false;
+        }
+        try {
+            return JeiRuntimePlugin.searchFocused();
+        } catch (RuntimeException | LinkageError e) {
+            return false;
+        }
+    }
+
     private static boolean resolve() {
         try {
             Class.forName(JEI_PLUGIN);

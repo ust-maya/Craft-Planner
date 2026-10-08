@@ -35,6 +35,8 @@ public final class EmiIntegration {
     private static Method getStack;
     private static Method getEmiStacks;
     private static Method getItemStack;
+    /** {@code EmiApi.isSearchFocused()}, or null when this EMI build has no such method. */
+    private static Method isSearchFocused;
 
     private EmiIntegration() {
     }
@@ -46,6 +48,32 @@ public final class EmiIntegration {
             available = resolve();
         }
         return available;
+    }
+
+    /**
+     * Whether EMI's own search box holds the keyboard.
+     *
+     * <p>EMI draws its search field inside its own screen, so a planner key
+     * pressed while the player types a query is a letter, not a command. The
+     * query is reflective like the rest of this class: a build of EMI without
+     * {@code EmiApi.isSearchFocused()} keeps the cached method {@code null} and
+     * answers "not focused", which is what the planner did before the check
+     * existed.</p>
+     */
+    public static boolean isSearchFocused() {
+        if (!isPresent()) {
+            return false;
+        }
+        Method method = isSearchFocused;
+        if (method == null) {
+            return false;
+        }
+        try {
+            return Boolean.TRUE.equals(method.invoke(null));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            LOGGER.log(System.Logger.Level.WARNING, "EMI search-focus lookup failed", e);
+            return false;
+        }
     }
 
     /** Item currently hovered in an EMI panel, or empty. */
@@ -87,6 +115,15 @@ public final class EmiIntegration {
             getStack = interaction.getMethod("getStack");
             getEmiStacks = ingredient.getMethod("getEmiStacks");
             getItemStack = stack.getMethod("getItemStack");
+            // The search-focus query is looked up separately and tolerated absent:
+            // it is a courtesy check for the hotkeys, not part of the capture
+            // chain, and disabling the whole integration over it would throw away
+            // working functionality on a build of EMI that only lacks this method.
+            try {
+                isSearchFocused = api.getMethod("isSearchFocused");
+            } catch (NoSuchMethodException absent) {
+                isSearchFocused = null;
+            }
             return true;
         } catch (ClassNotFoundException expected) {
             return false; // EMI not installed

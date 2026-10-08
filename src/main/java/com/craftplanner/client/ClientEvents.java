@@ -6,8 +6,10 @@ import com.craftplanner.client.screen.OverlayLayoutScreen;
 import com.craftplanner.client.screen.QuantityPopupScreen;
 import com.craftplanner.client.screen.RecipeListScreen;
 import com.craftplanner.engine.RecipeIndex;
+import com.craftplanner.integration.ViewerIntegration;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.neoforged.api.distmarker.Dist;
@@ -105,6 +107,9 @@ public class ClientEvents {
         if (mc.level == null || screen == null || !readsItemsFrom(screen)) {
             return;
         }
+        if (isTyping(screen)) {
+            return;
+        }
 
         int keyCode = event.getKey();
         int scanCode = event.getScanCode();
@@ -127,6 +132,23 @@ public class ClientEvents {
     private static boolean matches(KeyMapping mapping, int keyCode, int scanCode) {
         return mapping.matches(keyCode, scanCode)
                 && mapping.getKeyModifier().isActive(mapping.getKeyConflictContext());
+    }
+
+    /**
+     * Whether the keyboard belongs to a text field rather than to the planner.
+     *
+     * <p>JEI and EMI search boxes, and the creative screen's, are {@link EditBox}
+     * widgets of the open screen; the viewers also keep focus inside their own
+     * text widget, which vanilla does not report through {@code getFocused()}
+     * the same way, so they are asked directly. Without this, typing the letter
+     * of a bound key into a search box opens the planner on top of the search
+     * the player is in the middle of.</p>
+     */
+    private static boolean isTyping(Screen screen) {
+        if (screen.getFocused() instanceof EditBox box && box.isFocused()) {
+            return true;
+        }
+        return ViewerIntegration.isSearchFocused();
     }
 
     /**
