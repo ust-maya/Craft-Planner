@@ -694,8 +694,10 @@ public final class RecipePickerScreen extends Screen {
         boolean empty = preview == null || preview.isEmpty();
         boolean open = !empty && this.expanded.contains(this.options.get(option).id());
         int height = ROW_H - 4;
+        // The plate takes "folded", as in every tree: a closed option with a tree
+        // behind it shows "+", an open one or one with nothing to open shows "−".
         UiShapes.foldButton(graphics, left + PAD, y + (ROW_H - height) / 2, TOGGLE_W, height,
-                open, hovered);
+                !empty && !open, hovered);
     }
 
     /** One row of an opened tree: guide, icon, name and how much of it is needed. */
