@@ -27,7 +27,14 @@ public final class NodeColors {
 
     public static final int RAW = 0xFFB8B8B8;
     public static final int INTERMEDIATE = 0xFF8FD3FF;
-    public static final int ROOT = 0xFFFFE08F;
+    /**
+     * A planned goal, kept well apart from {@link #PARTIAL}. The two were one warm
+     * hue forty brightness points apart, and a player who reads colour before shape
+     * took a half-covered material for a goal. This is the pale end of that family:
+     * light enough that only a covered or a missing row can be mistaken for it, and
+     * the sign in front of the amount says which.
+     */
+    public static final int ROOT = 0xFFFFF3C4;
     public static final int CYCLE = 0xFFFF7FD0;
     public static final int HAVE = 0xFF7BE08A;
     public static final int PARTIAL = 0xFFE0C040;

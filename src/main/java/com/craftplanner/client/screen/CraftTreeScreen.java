@@ -173,8 +173,12 @@ public final class CraftTreeScreen extends Screen {
             anyChoice |= row.badge() != TreeRow.Badge.NONE;
         }
         this.nameW = Math.min(MAX_NAME_W, Math.max(MIN_NAME_W, widestName + 2));
+        // The column is measured from the string a row actually draws, sign included:
+        // an availability mark that does not fit is a number pushed out of the panel,
+        // which is the one thing the mark must never do.
         this.amountW = Math.max(metrics.width(AmountLabel.millibuckets(maxAmount)) + 8,
-                metrics.width(AmountLabel.times(9999)));
+                metrics.width(TreeMetrics.markedAmount(TreeRow.Status.MISSING,
+                        AmountLabel.times(Math.max(maxAmount, 9_999)))));
         // The recipe column is a square button, so it is measured rather than
         // fitted to text — and it is reserved whenever any row has a recipe at all,
         // not only when some row offers a choice, so the column a player learns to
@@ -501,7 +505,7 @@ public final class CraftTreeScreen extends Screen {
         graphics.drawString(this.font, name, nameX, textY(r), ink, false);
 
         if (this.amountW > 0) {
-                String amount = AmountLabel.of(row.node())
+                String amount = TreeMetrics.markedAmount(row.status(), AmountLabel.of(row.node()))
                     + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
             String shown = RecipeListLayout.trimToWidth(this.font::width, amount, this.amountW);
             graphics.drawString(this.font, shown, nameRightEdge() - this.font.width(shown),
