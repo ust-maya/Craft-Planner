@@ -3,6 +3,7 @@ package com.craftplanner.client.screen;
 import com.craftplanner.client.TextMetrics;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Pure geometry of the {@code K} window ({@link RecipeListScreen}).
@@ -308,6 +309,56 @@ final class RecipeListLayout {
             remaining = remaining.length() > line.length()
                     ? remaining.substring(line.length()).trim()
                     : "";
+        }
+        return lines;
+    }
+
+    /**
+     * Breaks a hint made of entries joined by {@code separator} ("N — add · G — tree")
+     * between whole entries, so a key is never torn from what it does and no line
+     * starts or ends with a dangling separator. An entry wider than the whole line
+     * falls back to {@link #wrapText}. When the text needs more than {@code maxLines},
+     * the last line says so with an ellipsis instead of silently dropping entries.
+     */
+    static List<String> wrapSegments(TextMetrics metrics, String text, int maxWidth, int maxLines,
+            String separator) {
+        List<String> lines = new ArrayList<>();
+        if (maxWidth <= 0 || maxLines <= 0) {
+            return lines;
+        }
+        List<String> segments = new ArrayList<>();
+        for (String part : text.split(Pattern.quote(separator))) {
+            if (!part.isBlank()) {
+                segments.add(part.trim());
+            }
+        }
+        String line = "";
+        int next = 0;
+        while (next < segments.size() && lines.size() < maxLines) {
+            String segment = segments.get(next);
+            String candidate = line.isEmpty() ? segment : line + separator + segment;
+            if (metrics.width(candidate) <= maxWidth) {
+                line = candidate;
+                next++;
+            } else if (!line.isEmpty()) {
+                lines.add(line);
+                line = "";
+            } else {
+                lines.addAll(wrapText(metrics, segment, maxWidth, maxLines - lines.size()));
+                next++;
+            }
+        }
+        boolean dropped = next < segments.size();
+        if (!line.isEmpty()) {
+            if (lines.size() < maxLines) {
+                lines.add(line);
+            } else {
+                dropped = true;
+            }
+        }
+        if (dropped && !lines.isEmpty()) {
+            int last = lines.size() - 1;
+            lines.set(last, trimToWidth(metrics, lines.get(last) + " …", maxWidth));
         }
         return lines;
     }
