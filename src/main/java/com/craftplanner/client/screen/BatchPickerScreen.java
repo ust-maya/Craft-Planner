@@ -6,6 +6,7 @@ import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.Scrollbar;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
+import com.craftplanner.client.MachineNames;
 import com.craftplanner.client.overlay.NodeColors;
 import com.craftplanner.client.overlay.TreeCollapse;
 import com.craftplanner.client.tree.TreeFlatten;
@@ -599,7 +600,8 @@ public final class BatchPickerScreen extends Screen {
             // The heading ends in the same button the tree rows end in, so "this is
             // the row you choose on" looks the same in both windows.
             UiShapes.recipeButton(graphics, contentRight - RECIPE_BTN, y + (ROW_H - RECIPE_BTN) / 2,
-                    RECIPE_BTN, UiPalette.FOLD_BTN_BG, UiPalette.FOLD_BTN_BORDER);
+                    RECIPE_BTN, UiPalette.FOLD_BTN_BG, UiPalette.FOLD_BTN_BORDER,
+                    MachineNames.iconOf(node.recipe()));
         }
     }
 

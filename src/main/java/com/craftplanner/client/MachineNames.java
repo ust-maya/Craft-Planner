@@ -10,6 +10,9 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.locale.Language;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 
@@ -60,6 +63,8 @@ public final class MachineNames {
     private static final Map<ResourceLocation, String> NAMES = new HashMap<>();
     /** Cached blocks per recipe type; a remembered null means "no block runs it". */
     private static final Map<ResourceLocation, Block> MACHINE_BLOCKS = new HashMap<>();
+    /** Cached icons per recipe type, so a HUD row does not build a stack every frame. */
+    private static final Map<ResourceLocation, ItemStack> ICONS = new HashMap<>();
     /** Block ids grouped by namespace, in the order the lookup prefers them. */
     private static final Map<String, List<RegisteredBlock>> BLOCKS_BY_NAMESPACE = new HashMap<>();
     private static Language cachedLanguage;
@@ -103,6 +108,27 @@ public final class MachineNames {
             MACHINE_BLOCKS.put(typeId, found);
         }
         return MACHINE_BLOCKS.get(typeId);
+    }
+
+    /**
+     * The machine a recipe runs in, as the icon a recipe button carries: the block
+     * {@link #blockOf} finds for the recipe's type, as an item. A type no block
+     * claims, a block with no item form and a missing recipe all fall back to the
+     * crafting table — the button still has to read as "recipe" when the machine
+     * cannot be named.
+     */
+    public static ItemStack iconOf(RecipeHolder<?> recipe) {
+        ResourceLocation typeId = recipe == null ? null
+                : BuiltInRegistries.RECIPE_TYPE.getKey(recipe.value().getType());
+        if (typeId == null) {
+            return new ItemStack(Items.CRAFTING_TABLE);
+        }
+        dropCachesIfLanguageChanged();
+        return ICONS.computeIfAbsent(typeId, id -> {
+            Block machine = blockOf(id);
+            ItemStack stack = machine == null ? ItemStack.EMPTY : new ItemStack(machine.asItem());
+            return stack.isEmpty() ? new ItemStack(Items.CRAFTING_TABLE) : stack;
+        });
     }
 
     /**
@@ -159,6 +185,7 @@ public final class MachineNames {
         if (cachedLanguage != language) {
             NAMES.clear();
             MACHINE_BLOCKS.clear();
+            ICONS.clear();
             cachedLanguage = language;
         }
     }
