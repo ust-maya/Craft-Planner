@@ -266,15 +266,12 @@ public class RecipeListScreen extends Screen {
                 Keybinds.EDIT_LAYOUT.getTranslatedKeyMessage()).getString();
     }
 
-    /**
-     * Label of the ore switch. The leading mark is the state indicator the
-     * plain text lacked: ✓ when ores are shown in the tree, ✗ when the filter
-     * keeps them out.
-     */
+    /** Label of the ore switch, which says in words whether ores are in the tree. */
     private static Component oresLabel() {
         boolean hidden = PlannerState.hideOres();
-        return Component.literal(hidden ? "✗ " : "✓ ")
-                .append(Component.translatable(hidden ? KEY_ORES_HIDDEN : KEY_ORES_SHOWN));
+        // The state is in the words ("hidden" / "shown"); a ✗ in front of them read
+        // as a close button.
+        return Component.translatable(hidden ? KEY_ORES_HIDDEN : KEY_ORES_SHOWN);
     }
 
     /** The controls of one visible row; see {@link #rowControls}. */
