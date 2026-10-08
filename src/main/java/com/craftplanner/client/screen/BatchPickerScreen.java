@@ -459,7 +459,7 @@ public final class BatchPickerScreen extends Screen {
         }
 
         drawControl(graphics, left, bandTop() + shown * ROW_H, hitControl(mouseX, mouseY) == 0);
-        drawScrollbar(graphics, left, shown);
+        drawScrollbar(graphics, left, shown, mouseX, mouseY);
 
         super.render(graphics, mouseX, mouseY, partialTick);
     }
@@ -619,11 +619,14 @@ public final class BatchPickerScreen extends Screen {
                 y + (ROW_H - this.font.lineHeight) / 2, TEXT, false);
     }
 
-    private void drawScrollbar(GuiGraphics graphics, int left, int shown) {
+    private void drawScrollbar(GuiGraphics graphics, int left, int shown, int mouseX, int mouseY) {
         // A dozen alternatives scroll, so the list carries the same thumb the K
         // window draws — a wheel with no visible position reads as a broken list.
+        // It brightens under the cursor and while held, the one sign that it can be
+        // grabbed rather than only scrolled over.
         if (maxScroll() > 0) {
-            Scrollbar.draw(graphics, bar(left, shown));
+            Scrollbar.Geometry bar = bar(left, shown);
+            Scrollbar.draw(graphics, bar, this.thumbDrag || Scrollbar.overColumn(bar, mouseX, mouseY));
         }
     }
 
