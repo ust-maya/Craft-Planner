@@ -320,7 +320,8 @@ public final class RecipePickerScreen extends Screen {
             for (TreeRow<RecipeNode> row : preview) {
                 widest = Math.max(widest, optionGutterW() + TreeMetrics.labelX(depthOf(row))
                     + this.font.width(row.name()) + TEXT_GAP
-                    + this.font.width(AmountLabel.of(row.node())));
+                    + this.font.width(TreeMetrics.markedAmount(row.status(),
+                            AmountLabel.of(row.node()))));
             }
         }
         widest = Math.max(widest, optionGutterW() + this.font.width(cutLabel()));
@@ -714,14 +715,14 @@ public final class RecipePickerScreen extends Screen {
 
         int textY = y + (ROW_H - this.font.lineHeight) / 2;
         int room = this.panelWidth - 2 * PAD - optionGutterW() - TreeMetrics.labelX(depth);
-        String amount = AmountLabel.of(row.node());
+        String amount = TreeMetrics.markedAmount(row.status(), AmountLabel.of(row.node()));
         String name = RecipeListLayout.trimToWidth(this.font::width, row.name(),
                 Math.max(0, room - this.font.width(amount) - TEXT_GAP));
         int nameX = originX + TreeMetrics.labelX(depth);
         graphics.drawString(this.font, name, nameX, textY,
                 NodeColors.forRow(row), false);
         graphics.drawString(this.font, amount,
-                nameX + room - this.font.width(amount), textY, MUTED, false);
+                nameX + room - this.font.width(amount), textY, NodeColors.forRow(row), false);
     }
 
 

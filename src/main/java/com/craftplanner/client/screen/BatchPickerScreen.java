@@ -236,7 +236,8 @@ public final class BatchPickerScreen extends Screen {
      */
     private int measure() {
         int widest = this.font.width(this.title);
-        int amountW = this.font.width("×9999 (+9999)");
+        int amountW = this.font.width(TreeMetrics.markedAmount(TreeRow.Status.MISSING, "×9999")
+                + " (+9999)");
         int counterW = RECIPE_BTN + TEXT_GAP + this.font.width("9/9");
         for (Line line : this.lines) {
             TreeRow<RecipeNode> row = this.plan.get(line.planRow());
@@ -583,8 +584,10 @@ public final class BatchPickerScreen extends Screen {
         // A heading reserves room for the recipe button that ends it; the count that used
         // to be printed there lives in the tooltip now.
         int counterW = line.head() ? RECIPE_BTN : 0;
-        String amount = AmountLabel.of(node) + (row.hiddenRows() > 0
-                ? " (+" + row.hiddenRows() + ")" : "");
+        // The sign the tree and the overlay put in front of the amount: colour
+        // alone is the one cue a red-green reader loses.
+        String amount = TreeMetrics.markedAmount(row.status(), AmountLabel.of(node))
+                + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
         int nameX = contentLeft + TreeMetrics.labelX(depth);
         int nameRoom = contentRight - nameX - TEXT_GAP
                 - this.font.width(amount) - (counterW > 0 ? TEXT_GAP + counterW : 0);
@@ -595,7 +598,7 @@ public final class BatchPickerScreen extends Screen {
                 nameX, textY, line.head() ? TEXT : NodeColors.forRow(row), false);
         graphics.drawString(this.font, amount,
                 contentRight - counterW - (counterW > 0 ? TEXT_GAP : 0) - this.font.width(amount),
-                textY, UiPalette.MUTED, false);
+                textY, NodeColors.forRow(row), false);
         if (line.head()) {
             // The heading ends in the same button the tree rows end in, so "this is
             // the row you choose on" looks the same in both windows.
