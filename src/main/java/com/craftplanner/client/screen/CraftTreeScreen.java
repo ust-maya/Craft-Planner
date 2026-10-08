@@ -109,6 +109,9 @@ public final class CraftTreeScreen extends Screen {
     /** The explicit "choose this row's recipe" button, kept so its state can follow the focus. */
     private Button recipeButton;
     private boolean thumbDrag;
+    /** Cursor row and scroll offset at the moment the thumb was taken, for a drag relative to them. */
+    private int grabY;
+    private int grabScroll;
     /** What the recipe button's tooltip currently describes; see {@link #syncRecipeButton()}. */
     private String recipeButtonState;
     private long seenGraphVersion = -1;
@@ -706,6 +709,9 @@ public final class CraftTreeScreen extends Screen {
         int jumped = trackJump((int) mouseX, (int) mouseY);
         if (jumped >= 0) {
             scrollTo(jumped);
+            // The bare track brings the thumb under the cursor; holding the button
+            // then drags it from there, as on any other scrollbar.
+            startThumbDrag((int) mouseY);
             return true;
         }
         int r = hoveredRow((int) mouseY);
@@ -777,7 +783,8 @@ public final class CraftTreeScreen extends Screen {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (this.thumbDrag) {
-            scrollTo(Scrollbar.scrollAt(scrollBar(), (int) mouseY, this.plan.maxScroll()));
+            scrollTo(Scrollbar.scrollDragged(scrollBar(), this.grabScroll,
+                    (int) mouseY - this.grabY, this.plan.maxScroll()));
             return true;
         }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
@@ -793,10 +800,15 @@ public final class CraftTreeScreen extends Screen {
         if (this.plan.maxScroll() <= 0 || !Scrollbar.overThumb(scrollBar(), mx, my)) {
             return false;
         }
-        this.thumbDrag = true;
-        // The thumb stays under the cursor instead of jumping its own height.
-        scrollTo(Scrollbar.scrollAt(scrollBar(), my, this.plan.maxScroll()));
+        // Taking hold of the thumb does not move it; only the drag that follows does.
+        startThumbDrag(my);
         return true;
+    }
+
+    private void startThumbDrag(int my) {
+        this.thumbDrag = true;
+        this.grabY = my;
+        this.grabScroll = this.scroll;
     }
 
     /** A click on the bare track pages the plan to that point. */
