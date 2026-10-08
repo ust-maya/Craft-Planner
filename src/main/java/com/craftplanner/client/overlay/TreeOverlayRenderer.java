@@ -486,7 +486,8 @@ public final class TreeOverlayRenderer {
                 || (mc.screen != null && Scrollbar.overColumn(bar, mouseX(mc), mouseY(mc)));
         Scrollbar.draw(graphics, bar, hot);
         HudHitMap.setTrack(new HudHitMap.ScrollTrack(barX - Scrollbar.HIT, trackTop,
-                Scrollbar.WIDTH + 2 * Scrollbar.HIT, trackH, bar.thumbHeight(), panel.maxScroll()));
+                Scrollbar.WIDTH + 2 * Scrollbar.HIT, trackH, bar.thumbHeight(), bar.thumbTop(),
+                panel.maxScroll()));
     }
 
     /**

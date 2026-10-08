@@ -24,6 +24,9 @@ public final class HudHitMap {
     private static ScrollTrack scrollTrack;
     /** True while the layout editor holds that scrollbar. */
     private static boolean scrollGrab;
+    /** Cursor row and scroll offset at the moment the thumb was taken, for a drag relative to them. */
+    private static int grabY;
+    private static int grabScroll;
 
     /**
      * The fold toggles and recipe badges of the last drawn frame, in screen
@@ -70,7 +73,7 @@ public final class HudHitMap {
      * The scrollbar in screen pixels, with the mapping from a cursor row back to a
      * scroll offset.
      */
-    record ScrollTrack(int x, int y, int w, int h, int barH, int maxScroll) {
+    record ScrollTrack(int x, int y, int w, int h, int barH, int thumbTop, int maxScroll) {
 
         boolean contains(int mx, int my) {
             return mx >= x && mx <= x + w && my >= y && my <= y + h;
@@ -79,6 +82,16 @@ public final class HudHitMap {
         /** Rows to scroll so the middle of the thumb lands under {@code my}. */
         int scrollAt(int my) {
             return TreePanel.scrollAt(y, h, barH, maxScroll, my);
+        }
+
+        /** Whether {@code my} is on the thumb rather than on the bare track. */
+        boolean overThumb(int my) {
+            return my >= thumbTop && my < thumbTop + barH;
+        }
+
+        /** Rows to scroll after a drag of {@code dy} pixels that started at {@code grabScroll}. */
+        int scrollDragged(int grabScroll, int dy) {
+            return TreePanel.scrollDragged(grabScroll, dy, h, barH, maxScroll);
         }
     }
 
@@ -130,8 +143,9 @@ public final class HudHitMap {
     }
 
     /**
-     * Takes a click on the scrollbar: the thumb jumps under the cursor and stays
-     * there until the drag is released, the way a browser track behaves.
+     * Takes a click on the scrollbar: a click on the thumb takes hold of it where
+     * it is, a click on the bare track jumps the thumb under the cursor first.
+     * Either way the thumb then follows the drag until release.
      *
      * @return true when the point was the scrollbar and the click is consumed
      */
@@ -141,7 +155,13 @@ public final class HudHitMap {
             return false;
         }
         scrollGrab = true;
-        TreeOverlayRenderer.setTreeScroll(track.scrollAt(my));
+        if (!track.overThumb(my)) {
+            // The bare track brings the thumb under the cursor first; a click on
+            // the thumb itself leaves it where it is.
+            TreeOverlayRenderer.setTreeScroll(track.scrollAt(my));
+        }
+        grabY = my;
+        grabScroll = TreeOverlayRenderer.treeScroll();
         return true;
     }
 
@@ -149,7 +169,7 @@ public final class HudHitMap {
     public static void dragScroll(int my) {
         ScrollTrack track = scrollTrack;
         if (track != null) {
-            TreeOverlayRenderer.setTreeScroll(track.scrollAt(my));
+            TreeOverlayRenderer.setTreeScroll(track.scrollDragged(grabScroll, my - grabY));
         }
     }
 
