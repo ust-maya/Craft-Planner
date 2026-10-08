@@ -12,6 +12,7 @@
   "screen.craftplanner.quantity.cancel": "Отмена",
   "screen.craftplanner.list.title": "Запланированные рецепты",
   "screen.craftplanner.list.clear": "Очистить всё",
+  "screen.craftplanner.list.clear.ask": "Точно?",
   "screen.craftplanner.list.close": "Закрыть",
   "screen.craftplanner.list.empty": "Пока ничего не добавлено",
   "unit.craftplanner.millibuckets": "%s мВ",

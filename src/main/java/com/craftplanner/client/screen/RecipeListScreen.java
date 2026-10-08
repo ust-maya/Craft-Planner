@@ -47,6 +47,8 @@ public class RecipeListScreen extends Screen {
     // --- translation keys --------------------------------------------------
     private static final String KEY_TITLE = "screen.craftplanner.list.title";
     private static final String KEY_CLEAR = "screen.craftplanner.list.clear";
+    /** The same button's label while it waits to be pressed a second time. */
+    private static final String KEY_CLEAR_ASK = "screen.craftplanner.list.clear.ask";
     private static final String KEY_CLOSE = "screen.craftplanner.list.close";
     private static final String KEY_EMPTY = "screen.craftplanner.list.empty";
     private static final String KEY_HINT = "screen.craftplanner.list.hint";
@@ -84,6 +86,12 @@ public class RecipeListScreen extends Screen {
     private TextMetrics metrics;
     /** Graph generation the widgets were last built from (see {@link #tick()}). */
     private long seenGraphVersion;
+    /** The "Clear all" button, kept so its label can become the question it asks. */
+    private Button clearButton;
+    /** Until when a second press of "Clear all" really clears; 0 when it does not ask. */
+    private long clearAskedUntil;
+    /** How long the button stays on "Sure?" before it goes back to "Clear all". */
+    private static final long CLEAR_ASK_MS = 3_000;
 
     public RecipeListScreen() {
         super(Component.translatable(KEY_TITLE));
@@ -109,7 +117,36 @@ public class RecipeListScreen extends Screen {
     public void tick() {
         if (PlannerState.graphVersion() != this.seenGraphVersion) {
             refresh();
+            return;
         }
+        // The question is a moment, not a mode: once it has gone unanswered for
+        // CLEAR_ASK_MS the button says again what it always says.
+        if (this.clearButton != null && this.clearAskedUntil != 0L
+                && System.currentTimeMillis() >= this.clearAskedUntil) {
+            this.clearAskedUntil = 0L;
+            this.clearButton.setMessage(Component.translatable(KEY_CLEAR));
+        }
+    }
+
+    /**
+     * "Clear all" empties the whole plan at once and cannot be undone, so one press
+     * is only a question: the button asks, and a second press while it asks is the
+     * confirmation. The label changes because the button does the same work either
+     * way — the player has to see that this press means something else than the
+     * last one.
+     */
+    private void askThenClear() {
+        long now = System.currentTimeMillis();
+        if (this.clearAskedUntil == 0L || now >= this.clearAskedUntil) {
+            this.clearAskedUntil = now + CLEAR_ASK_MS;
+            if (this.clearButton != null) {
+                this.clearButton.setMessage(Component.translatable(KEY_CLEAR_ASK));
+            }
+            return;
+        }
+        this.clearAskedUntil = 0L;
+        PlannerState.clear();
+        refresh();
     }
 
     /**
@@ -181,14 +218,13 @@ public class RecipeListScreen extends Screen {
         syncRowControls();
 
         int footerY = footerTop() + l.buttonsY;
+        this.clearButton = null;
         if (!this.roots.isEmpty()) {
-            addRenderableWidget(FitButton.create(left + l.clearX, footerY, l.clearW, RecipeListLayout.BUTTON_H,
-                    Component.translatable(KEY_CLEAR),
-                    button -> {
-                        PlannerState.clear();
-                        refresh();
-                    },
-                    Component.translatable("screen.craftplanner.list.clear.tooltip")));
+            this.clearButton = FitButton.create(left + l.clearX, footerY, l.clearW,
+                    RecipeListLayout.BUTTON_H, Component.translatable(KEY_CLEAR),
+                    button -> askThenClear(),
+                    Component.translatable("screen.craftplanner.list.clear.tooltip"));
+            addRenderableWidget(this.clearButton);
         }
         addRenderableWidget(FitButton.create(left + l.closeX, footerY, l.closeW, RecipeListLayout.BUTTON_H,
                 Component.translatable(KEY_CLOSE),

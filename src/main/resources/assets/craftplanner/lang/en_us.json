@@ -12,6 +12,7 @@
   "screen.craftplanner.quantity.cancel": "Cancel",
   "screen.craftplanner.list.title": "Planned recipes",
   "screen.craftplanner.list.clear": "Clear all",
+  "screen.craftplanner.list.clear.ask": "Sure?",
   "screen.craftplanner.list.close": "Close",
   "screen.craftplanner.list.empty": "No recipes added yet",
   "unit.craftplanner.millibuckets": "%s mB",
