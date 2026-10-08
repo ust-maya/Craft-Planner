@@ -185,6 +185,45 @@ public final class RecipeIngredients {
                 && cls.getSimpleName().toLowerCase().contains("hammer");
     }
 
+    /** The {@code hammerDamage()} accessor per recipe class, as for {@link #COUNT_ACCESSORS}. */
+    private static final Map<Class<?>, Optional<Method>> DAMAGE_ACCESSORS = new HashMap<>();
+
+    /**
+     * Durability a forge-hammer recipe takes from the hammer tool, or 0 for every
+     * recipe that needs no tool. MI ships most hammer recipes twice — plain, and a
+     * {@code _with_tool} variant that consumes fewer ingots or yields more but
+     * wears the tool down — and without this the two read as the same recipe.
+     */
+    public static int hammerDamage(Recipe<?> recipe) {
+        Method accessor = DAMAGE_ACCESSORS
+                .computeIfAbsent(recipe.getClass(), RecipeIngredients::damageAccessor)
+                .orElse(null);
+        if (accessor == null) {
+            return 0;
+        }
+        try {
+            Object raw = accessor.invoke(recipe);
+            return raw instanceof Integer n && n > 0 ? n : 0;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            LOGGER.debug("Craft Planner could not read hammerDamage() from a {} recipe.",
+                    recipe.getClass(), e);
+            return 0;
+        }
+    }
+
+    /** The {@code hammerDamage()} method of a recognised hammer-shaped recipe class. */
+    private static Optional<Method> damageAccessor(Class<?> cls) {
+        if (!isMiHammer(cls)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(cls.getMethod("hammerDamage"));
+        } catch (NoSuchMethodException | RuntimeException | LinkageError e) {
+            LOGGER.debug("Craft Planner found no hammerDamage() on {}.", cls, e);
+            return Optional.empty();
+        }
+    }
+
     /**
      * The three smithing slots, in the order the smithing table shows them:
      * template, base, addition. The template is a real cost — the upgrade

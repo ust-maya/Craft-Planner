@@ -65,6 +65,7 @@
   "gui.craftplanner.picker.tree.readonly": "Part of what this recipe needs. Click the option itself to pick that recipe",
   "gui.craftplanner.recipe.output": "Makes: %1$s ×%2$s",
   "gui.craftplanner.recipe.needs": "Needs: %1$s",
+  "gui.craftplanner.recipe.tool": "hammer tool −%1$s durability",
   "gui.craftplanner.recipe.none": "Needs nothing",
   "overlay.craftplanner.legend.have": "have",
   "overlay.craftplanner.legend.partial": "partial",

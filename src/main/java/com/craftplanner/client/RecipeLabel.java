@@ -99,6 +99,16 @@ public final class RecipeLabel {
                     .append(" ×")
                     .append(entry.getValue().longValue());
         }
+        // A hammer recipe that wears the tool down is a different deal from the one
+        // that does not, and it says so in the line the picker shows, not only in the
+        // tooltip: the inputs alone can read the same.
+        int damage = RecipeIngredients.hammerDamage(holder.value());
+        if (damage > 0) {
+            if (needs.length() > 0) {
+                needs.append(", ");
+            }
+            needs.append(Component.translatable("gui.craftplanner.recipe.tool", damage).getString());
+        }
         lines.add(needs.length() == 0
                 ? Component.translatable("gui.craftplanner.recipe.none")
                 : Component.translatable("gui.craftplanner.recipe.needs", needs.toString()));
