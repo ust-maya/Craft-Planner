@@ -448,8 +448,7 @@ public final class TreeOverlayRenderer {
                 TreePanel.HUD_PAD);
         TreePanel.Plan rough = TreePanel.plan(withoutFooter, treeScroll);
 
-        Footer footer = buildFooter(availability, PlannerState.fluidRequirements(), metrics, rough.contentW(),
-                hotkeyLine(metrics, rough.contentW(), rough));
+        Footer footer = cachedFooter(availability, metrics, rough, mc);
         int footerBlock = footer.height() > 0 ? footer.height() + FOOTER_GAP : 0;
         TreePanel.Plan sized = TreePanel.plan(new TreePanel.Request(
                 withoutFooter.availW(), withoutFooter.availH(), withoutFooter.density(),
@@ -668,6 +667,34 @@ public final class TreeOverlayRenderer {
      * carries the authoritative copy of it.
      */
     private static void drawTreeLegend(GuiGraphics graphics, Font font, int contentW) {
+        final int gap = 6;
+        Legend legend = cachedLegend(font);
+        if (legend.titleW() + gap + legend.total() > contentW) {
+            return;
+        }
+        int x = contentW - legend.total();
+        for (int i = 0; i < legend.labels().length; i++) {
+            graphics.fill(x, 2, x + legend.square(), 2 + legend.square(), legend.colors()[i]);
+            graphics.drawString(font, legend.labels()[i], x + legend.square() + 2, 0,
+                    NodeColors.TEXT, false);
+            x += legend.itemW()[i] + gap;
+        }
+    }
+
+    /**
+     * The legend of the HUD, prepared: its four labels, their widths and the width
+     * of the title they have to share a line with.
+     *
+     * <p>Drawn every frame from four translations and three measurements, which is
+     * work the panel repeats sixty times a second for a line that changes when the
+     * language does. It is kept per font instance because {@code mc.font} is
+     * swapped when the game reloads its resources, and a width taken from the font
+     * before that is not a width of the one being drawn with now.</p>
+     */
+    private static Legend cachedLegend(Font font) {
+        if (legendCache != null && legendFont == font) {
+            return legendCache;
+        }
         int[] colors = {
                 NodeColors.HAVE, NodeColors.MISSING,
                 NodeColors.INTERMEDIATE, NodeColors.ROOT
@@ -686,17 +713,19 @@ public final class TreeOverlayRenderer {
             itemW[i] = square + 2 + font.width(labels[i]);
             total += itemW[i] + gap;
         }
-        int titleW = font.width(Component.translatable("overlay.craftplanner.title"));
-        if (titleW + gap + total > contentW) {
-            return;
-        }
-        int x = contentW - total;
-        for (int i = 0; i < labels.length; i++) {
-            graphics.fill(x, 2, x + square, 2 + square, colors[i]);
-            graphics.drawString(font, labels[i], x + square + 2, 0, NodeColors.TEXT, false);
-            x += itemW[i] + gap;
-        }
+        legendCache = new Legend(colors, labels, itemW, total, square,
+                font.width(Component.translatable("overlay.craftplanner.title")));
+        legendFont = font;
+        return legendCache;
     }
+
+    /** The prepared legend; see {@link #cachedLegend(Font)}. */
+    private record Legend(int[] colors, Component[] labels, int[] itemW, int total, int square,
+            int titleW) {
+    }
+
+    private static Legend legendCache;
+    private static Font legendFont;
 
     /**
      * Hotkey hint for the footer: the verbose line when it fits, the short one
@@ -843,6 +872,46 @@ public final class TreeOverlayRenderer {
         }
         return footer;
     }
+
+    /**
+     * The footer block, or the cached one when nothing it is made of changed.
+     *
+     * <p>Building it sorts the whole shopping list, wraps it into lines twice over
+     * when the {@code +N} marker has to be squeezed in, and measures the hotkey
+     * hint — on a HUD that runs every frame while the numbers behind it move once
+     * a second at best. The keys are exactly what those numbers come from: the
+     * availability map and the fluid map (both replaced wholesale whenever they
+     * change, so identity is enough), the room the panel gives the footer, the
+     * density it is drawn at, whether the plan is trimmed, and the language the
+     * labels are read in.</p>
+     */
+    private static Footer cachedFooter(Map<ItemKey, Availability> availability, TextMetrics metrics,
+            TreePanel.Plan rough, Minecraft mc) {
+        String language = mc.getLanguageManager().getSelected();
+        Map<Fluid, Long> fluids = PlannerState.fluidRequirements();
+        if (footerCache != null && footerAvailability == availability && footerFluids == fluids
+                && footerWidth == rough.contentW() && footerScale == rough.scale()
+                && footerClipped == rough.clipped() && language.equals(footerLanguage)) {
+            return footerCache;
+        }
+        footerCache = buildFooter(availability, fluids, metrics, rough.contentW(),
+                hotkeyLine(metrics, rough.contentW(), rough));
+        footerAvailability = availability;
+        footerFluids = fluids;
+        footerWidth = rough.contentW();
+        footerScale = rough.scale();
+        footerClipped = rough.clipped();
+        footerLanguage = language;
+        return footerCache;
+    }
+
+    private static Map<ItemKey, Availability> footerAvailability;
+    private static Map<Fluid, Long> footerFluids;
+    private static int footerWidth = -1;
+    private static double footerScale = -1;
+    private static boolean footerClipped;
+    private static String footerLanguage = "";
+    private static Footer footerCache;
 
     /** Raw materials, worst shortage first, then largest demand. */
     private static List<FooterMaterial> shoppingList(Map<ItemKey, Availability> availability,
