@@ -74,7 +74,7 @@ public final class Config {
     private static final ModConfigSpec.ConfigValue<String> OVERLAY_MODE = BUILDER
             .comment("Overlay layout: 'tree' shows the plan as a nested list on the left (each item keeps its icon,",
                     "with ├──/└──/│ connector lines). 'graph' shows the classic node-link craft tree.")
-            .define("overlay.mode", "tree");
+            .defineInList("overlay.mode", "tree", List.of("tree", "graph"));
 
     private static final ModConfigSpec.DoubleValue OVERLAY_SCALE = BUILDER
             .comment("Density of the overlay: 1.0 keeps the full-size item icons and text, 0.85 is the",

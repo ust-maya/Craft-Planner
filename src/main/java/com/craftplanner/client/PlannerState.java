@@ -124,12 +124,22 @@ public final class PlannerState {
         return fluidRequirements;
     }
 
+    /**
+     * A planned quantity the tree can still reason about: at least one, and no
+     * more than {@code quantity.maxAmount}. The floor of the popup's steppers is
+     * the same setting, so the plan and the window that edits it cannot disagree
+     * about what a root's amount may be.
+     */
+    private static long clampedAmount(long amount) {
+        return Math.min(Config.maxAmount(), Math.max(1, amount));
+    }
+
     /** Adds (or merges) a target and rebuilds the tree. */
     public static void add(ItemStack stack, long amount) {
         LOCK.lock();
         try {
             ensureChoicesLoaded();
-            GRAPH.addRoot(ItemKey.of(stack), Math.max(1, amount));
+            GRAPH.addRoot(ItemKey.of(stack), clampedAmount(amount));
             writePlanStore();
             rebuild();
         } finally {
@@ -141,7 +151,7 @@ public final class PlannerState {
         LOCK.lock();
         try {
             ensureChoicesLoaded();
-            GRAPH.setRootAmount(key, Math.max(1, amount));
+            GRAPH.setRootAmount(key, clampedAmount(amount));
             writePlanStore();
             rebuild();
         } finally {
