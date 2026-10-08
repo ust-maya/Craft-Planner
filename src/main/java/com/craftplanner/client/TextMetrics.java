@@ -19,6 +19,13 @@ public interface TextMetrics {
      * entirely when not even the ellipsis fits, rather than returning a string
      * that still overflows. The result is therefore never wider than
      * {@code maxWidth} — the contract every column and row label relies on.
+     *
+     * <p>The cut point is found by searching the prefix length rather than by
+     * shortening one character at a time: this runs per label per frame, and the
+     * old loop measured the whole shrinking string each step — a long row label
+     * in a narrow column cost as many width calls as it had characters, so a
+     * hundred-character label cost five thousand. Width grows with the prefix, so
+     * the search can halve the remaining range every step.</p>
      */
     default String trim(String text, int maxWidth) {
         if (width(text) <= maxWidth) {
@@ -28,10 +35,16 @@ public interface TextMetrics {
         if (maxWidth < ellipsis) {
             return "";
         }
-        StringBuilder sb = new StringBuilder(text);
-        while (sb.length() > 0 && width(sb.toString()) + ellipsis > maxWidth) {
-            sb.setLength(sb.length() - 1);
+        int lo = 0;
+        int hi = text.length();
+        while (lo < hi) {
+            int mid = (lo + hi + 1) >>> 1;
+            if (width(text.substring(0, mid)) + ellipsis <= maxWidth) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
         }
-        return sb + "…";
+        return text.substring(0, lo) + "…";
     }
 }
