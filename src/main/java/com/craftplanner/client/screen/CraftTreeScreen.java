@@ -20,6 +20,7 @@ import com.craftplanner.graph.RecipeNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
@@ -106,6 +107,8 @@ public final class CraftTreeScreen extends Screen {
     /** The explicit "choose this row's recipe" button, kept so its state can follow the focus. */
     private Button recipeButton;
     private boolean thumbDrag;
+    /** What the recipe button's tooltip currently describes; see {@link #syncRecipeButton()}. */
+    private String recipeButtonState;
     private long seenGraphVersion = -1;
     private long seenAvailabilityVersion = -1;
     private long seenFoldVersion = -1;
@@ -803,6 +806,15 @@ public final class CraftTreeScreen extends Screen {
         }
         TreeRow<RecipeNode> row = focusedRow();
         boolean pickable = row != null && row.badge() != TreeRow.Badge.NONE;
+        // The tooltip names the item under the focus, which is what the button acts
+        // on, so the row is its key: a frame that focuses the same row as the last
+        // has nothing to say, and building the component again every frame is work
+        // the screen does once per click.
+        String key = pickable ? row.path() + '/' + row.node().item() : null;
+        if (Objects.equals(key, this.recipeButtonState) && this.recipeButton.active == pickable) {
+            return;
+        }
+        this.recipeButtonState = key;
         this.recipeButton.active = pickable;
         this.recipeButton.setTooltip(Tooltip.create(pickable
                 ? Component.translatable("screen.craftplanner.tree.recipe.tooltip", row.node().displayName())
