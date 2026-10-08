@@ -7,6 +7,7 @@ import com.craftplanner.graph.RecipeNode;
 import com.craftplanner.client.tree.TreeFlatten;
 import com.craftplanner.client.tree.TreeRow;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -88,8 +89,14 @@ public final class RecipePreview {
 
         CraftGraph preview = new CraftGraph();
         preview.addRoot(item, 1);
+        // The item itself is never cut in its own preview: the picker exists to show
+        // what each recipe would pull in, and a cut at the root would empty every
+        // option's tree — exactly when the player is deciding whether to lift the cut.
+        // Cuts further down still apply, so the branch matches the plan below it.
+        Set<ItemKey> cuts = new HashSet<>(PlannerState.cuts());
+        cuts.remove(item);
         CraftTreeBuilder.rebuild(preview, mc.level, preferences, PlannerState.hideOres(),
-                PlannerState.cuts());
+                cuts);
 
         List<TreeRow<RecipeNode>> rows =
                 TreeFlatten.flatten(preview.roots(), PlanRows.source(), Set.of());
