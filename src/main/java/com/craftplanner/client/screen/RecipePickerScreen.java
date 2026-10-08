@@ -176,8 +176,8 @@ public final class RecipePickerScreen extends Screen {
         List<Option> built = new ArrayList<>(this.options.size());
         for (RecipeHolder<?> option : this.options) {
             List<Component> lines = RecipeLabel.describe(option, registries);
-            built.add(new Option(costOf(lines), RecipeLabel.of(option).getString(),
-                    machineIcon(option), join(lines)));
+            built.add(new Option(costOf(lines) + yieldOf(option, registries),
+                    RecipeLabel.of(option).getString(), machineIcon(option), join(lines)));
         }
         this.rows = built;
         // The recipe in use opens on its own: its tree is what the player is here to
@@ -262,6 +262,20 @@ public final class RecipePickerScreen extends Screen {
      */
     private static String costOf(List<Component> lines) {
         return lines.isEmpty() ? "" : lines.get(lines.size() - 1).getString();
+    }
+
+    /**
+     * {@code " → ×2"} when one run of the recipe makes more than one of the item
+     * this window is about, empty otherwise. Two recipes can ask for the same
+     * thing and differ only in how much they give back, and the row is where the
+     * options are compared.
+     */
+    private String yieldOf(RecipeHolder<?> option, HolderLookup.Provider registries) {
+        ItemStack result = option.value().getResultItem(registries);
+        if (result.isEmpty() || result.getCount() <= 1 || !ItemKey.of(result).equals(this.item)) {
+            return "";
+        }
+        return " " + Component.translatable("gui.craftplanner.picker.yield", result.getCount()).getString();
     }
 
     /** The block that runs the recipe, so rows differ by more than their text. */
