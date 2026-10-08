@@ -80,6 +80,7 @@
   "screen.craftplanner.list.header.amount": "Кол-во",
   "screen.craftplanner.list.header.remove": "Удалить",
   "screen.craftplanner.list.hint": "Наведите курсор на предмет и нажмите %1$s. %2$s — окно «Дерево крафта»: его можно сворачивать, прокручивать и выбирать рецепты мышью или клавиатурой. %3$s — размер и положение окна плана.",
+  "screen.craftplanner.list.decrease": "Уменьшить количество (Shift — на 10)",
   "screen.craftplanner.list.increase": "Увеличить количество (Shift — на 10)",
   "screen.craftplanner.list.remove.tooltip": "Удалить из плана",
   "screen.craftplanner.list.recipe.tooltip": "Рецепт %1$s/%2$s — нажмите, чтобы выбрать другой",

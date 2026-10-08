@@ -80,6 +80,7 @@
   "screen.craftplanner.list.header.amount": "Qty",
   "screen.craftplanner.list.header.remove": "Del",
   "screen.craftplanner.list.hint": "Hover an item and press %1$s to plan it. %2$s opens the craft tree window — fold it, scroll it and choose recipes by mouse or keyboard. %3$s adjusts the plan overlay's size and place.",
+  "screen.craftplanner.list.decrease": "Decrease amount (Shift — by 10)",
   "screen.craftplanner.list.increase": "Increase amount (Shift — by 10)",
   "screen.craftplanner.list.remove.tooltip": "Remove from plan",
   "screen.craftplanner.list.recipe.tooltip": "Recipe %1$s/%2$s — click to pick another",
