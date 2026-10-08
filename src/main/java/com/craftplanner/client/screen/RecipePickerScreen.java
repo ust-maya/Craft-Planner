@@ -118,6 +118,8 @@ public final class RecipePickerScreen extends Screen {
     private int scroll;
     /** Whether the first layout already put the row in use on screen. */
     private boolean centered;
+    /** Whether the recipe in use has had its branch opened; see {@link #init()}. */
+    private boolean usedOptionRevealed;
     private int panelWidth;
     private long seenGraphVersion;
 
@@ -181,8 +183,12 @@ public final class RecipePickerScreen extends Screen {
         }
         this.rows = built;
         // The recipe in use opens on its own: its tree is what the player is here to
-        // check, and the cost row above it is only a summary of it.
-        if (!this.expanded.contains(this.options.get(this.selected).id())) {
+        // check, and the cost row above it is only a summary of it. Only the first
+        // time: init() runs again on a window resize and whenever the plan changes
+        // under the open window, and re-expanding there would push back open the
+        // branch the player just closed by hand.
+        if (!this.usedOptionRevealed) {
+            this.usedOptionRevealed = true;
             this.expanded.add(this.options.get(this.selected).id());
         }
         this.expanded.retainAll(idsOf(this.options));
