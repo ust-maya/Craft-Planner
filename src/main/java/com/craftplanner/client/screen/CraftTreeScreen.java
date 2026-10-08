@@ -271,6 +271,7 @@ public final class CraftTreeScreen extends Screen {
 
         drawHeader(graphics);
         drawRows(graphics, mouseX, mouseY);
+        drawScrollbar(graphics, mouseX, mouseY);
 
         super.render(graphics, mouseX, mouseY, partialTick);
 
@@ -312,6 +313,30 @@ public final class CraftTreeScreen extends Screen {
         graphics.disableScissor();
     }
 
+    /**
+     * The plan is normally longer than the window, and until now the only sign of
+     * that was the rows shifting under the wheel — so the track and the thumb are
+     * drawn here as well, the same three quiet pixels the overlay and the list
+     * use. The thumb says both that there is more of the plan and how much of it
+     * is off screen; it brightens where the cursor is over its column, which is
+     * also the column the mouse can grab and drag.
+     */
+    private void drawScrollbar(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (this.plan.maxScroll() <= 0) {
+            return;
+        }
+        TreeMetrics.Rect thumb = thumbRect();
+        int x = thumb.x();
+        int trackTop = contentTop();
+        int trackHeight = trackHeight();
+        graphics.fill(x, trackTop, x + TreeMetrics.SCROLL_BAR_W, trackTop + trackHeight,
+                UiPalette.SCROLL_TRACK);
+        boolean hot = this.thumbDrag
+                || (mouseX >= x - 3 && mouseX < x + TreeMetrics.SCROLL_BAR_W + 3
+                        && mouseY >= trackTop && mouseY < trackTop + trackHeight);
+        graphics.fill(x, thumb.y(), x + TreeMetrics.SCROLL_BAR_W, thumb.y() + thumb.h(),
+                hot ? UiPalette.SCROLL_BAR_HOT : UiPalette.SCROLL_BAR);
+    }
 
     /**
      * One 3 px bar per planned goal, spanning the full height of its subtree.
