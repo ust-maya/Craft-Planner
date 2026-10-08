@@ -516,10 +516,10 @@ public final class BatchPickerScreen extends Screen {
     }
 
     /** The heading's counter: which of the engine's alternatives is in use. */
-    private String counterOf(RecipeNode node) {
+    private static String counterOf(RecipeNode node) {
         int total = node.options().size();
         int index = Math.min(node.selectedRecipeIndex(), total - 1);
-        return (index + 1) + "/" + total + " " + node.item().name().getString();
+        return (index + 1) + "/" + total;
     }
 
 
@@ -536,7 +536,11 @@ public final class BatchPickerScreen extends Screen {
                     : "screen.craftplanner.tree.collapse.tooltip");
         }
         if (this.ambiguous.contains(row.node().item())) {
-            return Component.literal(counterOf(row.node()));
+            // Said with the words of the key that already exists for it: the counter
+            // and the item are facts about the row, but what the click is for belongs
+            // to the language files, where it used to sit unused.
+            return Component.translatable("screen.craftplanner.ambiguous.row.tooltip",
+                    counterOf(row.node()), row.node().displayName());
         }
         return null;
     }
