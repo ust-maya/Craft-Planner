@@ -130,7 +130,7 @@ public final class PlannerState {
         try {
             ensureChoicesLoaded();
             GRAPH.addRoot(ItemKey.of(stack), Math.max(1, amount));
-            PlanStore.write(GRAPH.roots());
+            writePlanStore();
             rebuild();
         } finally {
             LOCK.unlock();
@@ -142,7 +142,7 @@ public final class PlannerState {
         try {
             ensureChoicesLoaded();
             GRAPH.setRootAmount(key, Math.max(1, amount));
-            PlanStore.write(GRAPH.roots());
+            writePlanStore();
             rebuild();
         } finally {
             LOCK.unlock();
@@ -156,9 +156,9 @@ public final class PlannerState {
             GRAPH.removeRoot(key);
             PREFERENCES.remove(key);
             CUTS.remove(key);
-            RecipeChoices.write(PREFERENCES);
-            RecipeCuts.write(CUTS);
-            PlanStore.write(GRAPH.roots());
+            writeChoices();
+            writeCuts();
+            writePlanStore();
             rebuild();
         } finally {
             LOCK.unlock();
@@ -172,9 +172,9 @@ public final class PlannerState {
             GRAPH.clear();
             PREFERENCES.clear();
             CUTS.clear();
-            RecipeChoices.write(PREFERENCES);
-            RecipeCuts.write(CUTS);
-            PlanStore.write(GRAPH.roots());
+            writeChoices();
+            writeCuts();
+            writePlanStore();
             rebuild();
         } finally {
             LOCK.unlock();
@@ -204,7 +204,7 @@ public final class PlannerState {
             PREFERENCES.put(key, recipe.id());
             // The choice is the one piece of the plan the player expects to still
             // be there after a restart, so it is written down as it is made.
-            RecipeChoices.write(PREFERENCES);
+            writeChoices();
             pendingRebuildAt = System.currentTimeMillis() + REBUILD_DEBOUNCE_MS;
         } finally {
             LOCK.unlock();
@@ -223,7 +223,7 @@ public final class PlannerState {
             if (!CUTS.remove(key)) {
                 CUTS.add(key);
             }
-            RecipeCuts.write(CUTS);
+            writeCuts();
             pendingRebuildAt = System.currentTimeMillis() + REBUILD_DEBOUNCE_MS;
         } finally {
             LOCK.unlock();
@@ -329,9 +329,15 @@ public final class PlannerState {
     /**
      * Loads the saved roots, recipe choices and tree cuts once, before a tree
      * is ever expanded against them.
+     *
+     * <p>Waits for a world: a config event can reach {@link #rebuild()} while the
+     * game still sits on the title screen, and at that point the item registries
+     * of the other mods are not there yet. Every saved choice would then read as
+     * "item no longer exists", be dropped, and the next write would save the
+     * emptied plan over the player's file.</p>
      */
     private static void ensureChoicesLoaded() {
-        if (choicesLoaded) {
+        if (choicesLoaded || Minecraft.getInstance().level == null) {
             return;
         }
         choicesLoaded = true;
@@ -340,6 +346,32 @@ public final class PlannerState {
         }
         PREFERENCES.putAll(RecipeChoices.read());
         CUTS.addAll(RecipeCuts.read());
+    }
+
+    /**
+     * Saves the recipe choices.
+     *
+     * <p>Gated on {@link #ensureChoicesLoaded()} having actually loaded: writing
+     * the live state before the file has been merged into it would replace the
+     * saved plan with whatever the player changed since. The same holds for
+     * {@link #writeCuts()} and {@link #writePlanStore()}.</p>
+     */
+    private static void writeChoices() {
+        if (choicesLoaded) {
+            RecipeChoices.write(PREFERENCES);
+        }
+    }
+
+    private static void writeCuts() {
+        if (choicesLoaded) {
+            RecipeCuts.write(CUTS);
+        }
+    }
+
+    private static void writePlanStore() {
+        if (choicesLoaded) {
+            PlanStore.write(GRAPH.roots());
+        }
     }
 
     /**
