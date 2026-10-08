@@ -2,17 +2,17 @@ package com.craftplanner.graph;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import net.minecraft.core.Holder;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.tags.TagKey;
+
+
+
+
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 
 /**
- * Helpers around vanilla {@link Ingredient}: expansion to concrete stacks,
- * tag detection and representative-item selection.
+ * Helpers around vanilla {@link Ingredient}: expansion to concrete stacks and
+ * representative-item selection.
  *
  * <p>Ingredients can describe several items at once (tag or explicit list), and
  * two different items are picked from that list on purpose: the engine expands an
@@ -67,41 +67,5 @@ public final class IngredientUtil {
     public static ItemKey representativeKey(Ingredient ingredient) {
         ItemStack stack = representative(ingredient);
         return stack == null ? null : ItemKey.of(stack);
-    }
-
-    /** Tag this ingredient is built from, if any. */
-    public static Optional<TagKey<Item>> tagOf(Ingredient ingredient) {
-        if (isEmpty(ingredient)) {
-            return Optional.empty();
-        }
-        for (Ingredient.Value value : ingredient.getValues()) {
-            if (value instanceof Ingredient.TagValue tagValue) {
-                return Optional.of(tagValue.tag());
-            }
-        }
-        return Optional.empty();
-    }
-
-    public static boolean isTag(Ingredient ingredient) {
-        return tagOf(ingredient).isPresent();
-    }
-
-    /** All items currently bound to the given item tag. */
-    public static List<ItemKey> expandTag(TagKey<Item> tag) {
-        List<ItemKey> keys = new ArrayList<>();
-        for (Holder<Item> holder : BuiltInRegistries.ITEM.getTagOrEmpty(tag)) {
-            keys.add(ItemKey.of(holder.value()));
-        }
-        return keys;
-    }
-
-    /** Short human-readable description, used in tooltips and logs. */
-    public static String describe(Ingredient ingredient) {
-        Optional<TagKey<Item>> tag = tagOf(ingredient);
-        if (tag.isPresent()) {
-            return "#" + tag.get().location();
-        }
-        ItemKey key = representativeKey(ingredient);
-        return key == null ? "<empty>" : key.id().toString();
     }
 }

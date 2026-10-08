@@ -79,8 +79,6 @@ public final class CraftTreeScreen extends Screen {
     private static final int MAX_NAME_W = 320;
     /** Edge of the square recipe button: a 16 px icon with a pixel of air around it. */
     private static final int RECIPE_BTN = 18;
-    /** Rows one wheel notch moves: at one row per notch a long plan barely stirred. */
-    private static final int WHEEL_ROWS = 3;
     /** Air between two footer buttons — the same gap {@link #buildWidgets()} lays out with. */
     private static final int FOOTER_GAP = 4;
 
@@ -840,7 +838,7 @@ public final class CraftTreeScreen extends Screen {
         if (this.plan.maxScroll() <= 0) {
             return false;
         }
-        scrollTo(this.scroll + (scrollY > 0 ? -WHEEL_ROWS : WHEEL_ROWS));
+        scrollTo(this.scroll + (scrollY > 0 ? -TreePanel.WHEEL_ROWS : TreePanel.WHEEL_ROWS));
         return true;
     }
 

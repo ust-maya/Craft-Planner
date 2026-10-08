@@ -559,22 +559,6 @@ public final class RecipeIndex {
         return list == null ? Collections.emptyList() : Collections.unmodifiableList(list);
     }
 
-    public boolean hasRecipe(ItemKey key) {
-        return byOutput.containsKey(key);
-    }
-
-    public int recipeCount() {
-        int total = 0;
-        for (List<RecipeHolder<?>> list : byOutput.values()) {
-            total += list.size();
-        }
-        return total;
-    }
-
-    public int outputCount() {
-        return byOutput.size();
-    }
-
     /** Registry access the index was built with — needed to resolve outputs. */
     public HolderLookup.Provider registries() {
         return registries;

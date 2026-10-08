@@ -515,27 +515,6 @@ public final class BatchPickerScreen extends Screen {
         }
     }
 
-    /**
-     * The fold control, drawn the way the tree window draws it: a plate that fills
-     * the row and a mark made of two rules, so it reads without being hovered and
-     * does not shrink with the font.
-     */
-    private void drawFoldButton(GuiGraphics graphics, int x, int y, boolean folded, boolean aimed) {
-        int height = ROW_H - 4;
-        int top = y + (ROW_H - height) / 2;
-        int width = TreeMetrics.TOGGLE_W;
-        UiShapes.chip(graphics, x, top, width, height,
-                folded ? UiPalette.MARKER_FOLDED_BG
-                        : aimed ? UiPalette.FOLD_BTN_HOVER_BG : UiPalette.FOLD_BTN_BG,
-                aimed ? UiPalette.FOLD_BTN_HOVER_BORDER : UiPalette.FOLD_BTN_BORDER);
-        int ink = folded ? UiPalette.MARKER_FOLDED_TEXT : UiPalette.FOLD_BTN_TEXT;
-        int centreY = top + height / 2;
-        graphics.hLine(x + 2, x + width - 3, centreY, ink);
-        if (folded) {
-            graphics.vLine(x + width / 2, top + 3, top + height - 4, ink);
-        }
-    }
-
     /** The heading's counter: which of the engine's alternatives is in use. */
     private String counterOf(RecipeNode node) {
         int total = node.options().size();
@@ -543,7 +522,6 @@ public final class BatchPickerScreen extends Screen {
         return (index + 1) + "/" + total + " " + node.item().name().getString();
     }
 
-    /** The same availability colouring the plan's own tree uses. */
 
     /** What a click would do, said before it is done. */
     private Component tooltipAt(int index, int mx, int my) {

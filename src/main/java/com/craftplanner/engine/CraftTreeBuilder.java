@@ -84,18 +84,6 @@ public final class CraftTreeBuilder {
     private final ResourceFilter filter;
     private int nodeCount;
 
-    public CraftTreeBuilder(RecipeIndex index) {
-        this(index, Map.of(), ResourceFilter.NONE, Set.of());
-    }
-
-    public CraftTreeBuilder(RecipeIndex index, Map<ItemKey, ResourceLocation> preferences) {
-        this(index, preferences, ResourceFilter.NONE, Set.of());
-    }
-
-    public CraftTreeBuilder(RecipeIndex index, Map<ItemKey, ResourceLocation> preferences, ResourceFilter filter) {
-        this(index, preferences, filter, Set.of());
-    }
-
     public CraftTreeBuilder(RecipeIndex index, Map<ItemKey, ResourceLocation> preferences, ResourceFilter filter,
             Set<ItemKey> cuts) {
         this.index = index;
@@ -104,25 +92,6 @@ public final class CraftTreeBuilder {
         if (preferences != null) {
             this.preferences.putAll(preferences);
         }
-    }
-
-    /** Convenience entry point: builds an index for the level and expands. */
-    public static void rebuild(CraftGraph graph, Level level) {
-        rebuild(graph, level, Map.of(), false);
-    }
-
-    /** Same as above, honouring the recipe choices the player made. */
-    public static void rebuild(CraftGraph graph, Level level, Map<ItemKey, ResourceLocation> preferences) {
-        rebuild(graph, level, preferences, false);
-    }
-
-    /**
-     * Same as above, with the "hide ore-like resources" switch
-     * ({@code filters.hideOres}, see {@link ResourceFilter}).
-     */
-    public static void rebuild(CraftGraph graph, Level level, Map<ItemKey, ResourceLocation> preferences,
-            boolean hideOreLike) {
-        rebuild(graph, level, preferences, hideOreLike, Set.of());
     }
 
     /**

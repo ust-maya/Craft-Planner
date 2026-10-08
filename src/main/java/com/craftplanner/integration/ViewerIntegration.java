@@ -15,14 +15,6 @@ public final class ViewerIntegration {
     private ViewerIntegration() {
     }
 
-    public static boolean emiPresent() {
-        return EmiIntegration.isPresent();
-    }
-
-    public static boolean jeiPresent() {
-        return JeiIntegration.isPresent();
-    }
-
     /**
      * Whether a viewer owns the keyboard right now because its search box has
      * focus.
