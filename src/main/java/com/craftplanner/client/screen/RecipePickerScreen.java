@@ -18,6 +18,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -84,8 +86,8 @@ public final class RecipePickerScreen extends Screen {
     private static final int TEXT_GAP = 6;
     /** A machine name narrower than this says less than the icon next to it. */
     private static final int MIN_TAIL = 20;
-    /** Rows that are always there under the options: the cut switch and close. */
-    private static final int CONTROL_ROWS = 2;
+    /** The button row under the options: cut switch and close. */
+    private static final int CONTROL_ROWS = 1;
     /** The fold plate, borrowed from the plan's own tree so both open the same way. */
     private static final int TOGGLE_W = TreeMetrics.TOGGLE_W;
     /** Air between the fold plate and the mark it sits next to. */
@@ -120,6 +122,10 @@ public final class RecipePickerScreen extends Screen {
     private boolean usedOptionRevealed;
     private int panelWidth;
     private long seenGraphVersion;
+    private Button cutButton;
+    private Button closeButton;
+    /** Cut state the cut button was last labelled for; the label follows the plan, not a click. */
+    private boolean cutShown;
 
     /**
      * One line of the band.
@@ -201,6 +207,18 @@ public final class RecipePickerScreen extends Screen {
             this.centered = true;
             this.scroll = Math.max(0, Math.min(lineOf(this.selected), maxScroll()));
         }
+        // init() also runs from tick() and render() whenever the plan changes, so the
+        // buttons of the previous layout are dropped first.
+        clearWidgets();
+        this.cutShown = PlannerState.isCut(this.item);
+        this.cutButton = addRenderableWidget(FitButton.create(0, 0, cutButtonW(), RecipeListLayout.BUTTON_H,
+                Component.literal(cutLabel(this.cutShown)), button -> {
+                    PlannerState.toggleCut(this.item);
+                    this.seenGraphVersion = PlannerState.graphVersion();
+                }, cutTooltip(this.cutShown)));
+        this.closeButton = addRenderableWidget(FitButton.create(0, 0, closeButtonW(),
+                RecipeListLayout.BUTTON_H, Component.literal(tr("screen.craftplanner.list.close")),
+                button -> onClose(), null));
     }
 
     private static Set<ResourceLocation> idsOf(List<RecipeHolder<?>> options) {
@@ -324,8 +342,7 @@ public final class RecipePickerScreen extends Screen {
                             AmountLabel.of(row.node()))));
             }
         }
-        widest = Math.max(widest, optionGutterW() + this.font.width(cutLabel()));
-        widest = Math.max(widest, optionGutterW() + this.font.width(tr("screen.craftplanner.list.close")));
+        widest = Math.max(widest, cutButtonW() + GAP + closeButtonW());
         return Math.min(this.width - 2 * MARGIN, Math.max(200, widest + 2 + 2 * PAD));
     }
 
@@ -345,8 +362,22 @@ public final class RecipePickerScreen extends Screen {
         return Math.max(0, row.depth() - 1);
     }
 
-    private static String cutLabel() {
-        return "✂ " + tr("gui.craftplanner.picker.cut");
+    private static String cutLabel(boolean cut) {
+        return "✂ " + tr(cut ? "gui.craftplanner.picker.uncut" : "gui.craftplanner.picker.cut");
+    }
+
+    /** Wide enough for either label, so the button does not jump when it is pressed. */
+    private int cutButtonW() {
+        return Math.max(this.font.width(cutLabel(false)), this.font.width(cutLabel(true))) + 2 * PAD;
+    }
+
+    private int closeButtonW() {
+        return Math.max(48, this.font.width(tr("screen.craftplanner.list.close")) + 2 * PAD);
+    }
+
+    private static Component cutTooltip(boolean cut) {
+        return Component.translatable(cut ? "gui.craftplanner.picker.cut.on.tooltip"
+                : "gui.craftplanner.picker.cut.tooltip");
     }
 
     private static String tr(String key) {
@@ -361,8 +392,8 @@ public final class RecipePickerScreen extends Screen {
 
     /**
      * Lines the screen can show at once. Everything else the panel carries is
-     * subtracted first — the title band, the two rows under the list and the padding
-     * below them — so a window taller than the screen never happens above a certain
+     * subtracted first — the title band, the button row under the list and the
+     * padding below it — so a window taller than the screen never happens above a certain
      * height, and the last line never falls off the bottom.
      */
     private int visibleLines() {
@@ -397,10 +428,9 @@ public final class RecipePickerScreen extends Screen {
     }
 
     /**
-     * Line under a point: the band first, then the cut switch and the close button,
-     * or {@code -1} outside the panel's rows. Screen pixels on both sides — the
-     * drawing is what moves, the clicks are not. The right edge is exclusive because
-     * that is where the row's highlight stops painting.
+     * Line under a point, or {@code -1} outside the band of lines. Screen pixels on
+     * both sides — the drawing is what moves, the clicks are not. The right edge is
+     * exclusive because that is where the row's highlight stops painting.
      */
     private int hitLine(int mx, int my) {
         int left = panelLeft();
@@ -415,19 +445,6 @@ public final class RecipePickerScreen extends Screen {
         return this.scroll + offset / ROW_H;
     }
 
-    /** The control row under a point, or {@code -1}: {@code 0} is the cut switch. */
-    private int hitControl(int mx, int my) {
-        int left = panelLeft();
-        if (mx < left + PAD || mx >= left + this.panelWidth - PAD) {
-            return -1;
-        }
-        int offset = my - (bandTop() + visibleLines() * ROW_H);
-        if (offset < 0 || offset >= CONTROL_ROWS * ROW_H) {
-            return -1;
-        }
-        return offset / ROW_H;
-    }
-
     /** Whether a point is on an option's fold plate, which opens its tree. */
     private boolean overToggle(int mx, int my) {
         int index = hitLine(mx, my);
@@ -437,7 +454,7 @@ public final class RecipePickerScreen extends Screen {
         return mx < panelLeft() + PAD + TOGGLE_W + TOGGLE_GAP / 2;
     }
 
-    /** The tooltip of a line, or {@code null} for the close row, which says all it does. */
+    /** The tooltip of a line, or {@code null} for a row that has none. */
     private Component tooltipAt(int index) {
         if (index < 0 || index >= this.lines.size()) {
             return null;
@@ -461,6 +478,11 @@ public final class RecipePickerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // Widgets first: the cut switch and the close button sit in the row this
+        // method used to hit-test by hand.
+        if (super.mouseClicked(mouseX, mouseY, button)) {
+            return true;
+        }
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             return false;
         }
@@ -482,17 +504,7 @@ public final class RecipePickerScreen extends Screen {
             choose(this.options.get(row.option()));
             return true;
         }
-        int control = hitControl(mx, my);
-        if (control < 0) {
-            return false;
-        }
-        if (control == 0) {
-            PlannerState.toggleCut(this.item);
-            this.seenGraphVersion = PlannerState.graphVersion();
-        } else {
-            this.onClose();
-        }
-        return true;
+        return false;
     }
 
     /** Opens or closes an option's dependency tree and re-measures the panel around it. */
@@ -547,12 +559,7 @@ public final class RecipePickerScreen extends Screen {
         drawTitle(graphics, left, top);
 
         int hover = hitLine(mouseX, mouseY);
-        int hoverControl = hover >= 0 ? -1 : hitControl(mouseX, mouseY);
-        Component tooltip = hover >= 0 ? tooltipAt(hover)
-                : hoverControl == 0 ? Component.translatable(PlannerState.isCut(this.item)
-                        ? "gui.craftplanner.picker.cut.on.tooltip"
-                        : "gui.craftplanner.picker.cut.tooltip")
-                : null;
+        Component tooltip = hover >= 0 ? tooltipAt(hover) : null;
         if (tooltip != null) {
             // Queued here and painted by vanilla once the pass is over
             // ({@code Screen.renderWithTooltip}), which puts it above every row this
@@ -565,7 +572,7 @@ public final class RecipePickerScreen extends Screen {
         // A tree's guides are drawn from its own rows, so one whose parent sits above
         // the band runs past its top edge and one scrolled off the bottom runs past
         // that. Clipped to the band, they stop where the rows stop; without it they
-        // draw over the cut switch and the close row underneath.
+        // draw over the button row underneath.
         graphics.enableScissor(left + 1, bandTop(), left + this.panelWidth - 1,
                 bandTop() + shown * ROW_H);
         drawGuides(graphics, left);
@@ -585,15 +592,19 @@ public final class RecipePickerScreen extends Screen {
         }
         graphics.disableScissor();
 
-        int y = bandTop() + shown * ROW_H;
+        // One row of buttons under the options: the cut switch is an action on the
+        // item, not another recipe, so it no longer looks like one.
+        int buttonY = bandTop() + shown * ROW_H + (ROW_H - RecipeListLayout.BUTTON_H) / 2;
         boolean cut = PlannerState.isCut(this.item);
-        // The cut switch wears the "in use" plate while it is ON: the amber
-        // state must read as a decision, not as a hovered row.
-        drawRow(graphics, ItemStack.EMPTY, cutLabel(), "", cut ? "✔" : "", false,
-                cut, hoverControl == 0, left, y);
-        y += ROW_H;
-        drawRow(graphics, ItemStack.EMPTY, tr("screen.craftplanner.list.close"), "", "", false,
-                false, hoverControl == 1, left, y);
+        if (cut != this.cutShown) {
+            this.cutShown = cut;
+            this.cutButton.setMessage(Component.literal(cutLabel(cut)));
+            this.cutButton.setTooltip(Tooltip.create(cutTooltip(cut)));
+        }
+        this.cutButton.setX(left + PAD);
+        this.cutButton.setY(buttonY);
+        this.closeButton.setX(left + this.panelWidth - PAD - this.closeButton.getWidth());
+        this.closeButton.setY(buttonY);
 
         // A dozen machine alternatives scroll, and a wheel that finds nothing to show
         // for it reads as a broken list — so the band of lines carries the same
