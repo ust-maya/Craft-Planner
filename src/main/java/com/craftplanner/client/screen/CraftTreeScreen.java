@@ -494,7 +494,7 @@ public final class CraftTreeScreen extends Screen {
                 TreeMetrics.iconRect(row.depth(), r, this.scroll), 1.0, left, contentTop());
         graphics.renderItem(row.node().displayStack(), icon.x(), icon.y());
 
-        int ink = ink(row);
+        int ink = NodeColors.forRow(row);
         int nameX = left + TreeMetrics.labelX(row.depth());
         String name = RecipeListLayout.trimToWidth(this.font::width, row.name(),
                 nameRightEdge() - nameX);
@@ -511,26 +511,6 @@ public final class CraftTreeScreen extends Screen {
                 recipeRect(r).contains(mouseX, mouseY));
     }
 
-    /** The row's label colour: how far the inventory covers what the plan asks. */
-    private static int ink(TreeRow<RecipeNode> row) {
-        // A loop is not a shortage: the row marks where the branch was stopped
-        // because the item is already being made above it, so it keeps the loop
-        // colour whatever the inventory holds. Same rule as the overlay's rows.
-        if (row.kind() == TreeRow.Kind.CYCLE) {
-            return NodeColors.CYCLE;
-        }
-        return switch (row.status()) {
-            case COVERED -> NodeColors.HAVE;
-            case PARTIAL -> NodeColors.PARTIAL;
-            case MISSING -> NodeColors.MISSING;
-            case UNKNOWN -> switch (row.kind()) {
-                case ROOT -> NodeColors.ROOT;
-                case ASSEMBLY -> NodeColors.INTERMEDIATE;
-                case CYCLE -> NodeColors.CYCLE;
-                case MATERIAL -> NodeColors.RAW;
-            };
-        };
-    }
 
     /**
  * What the recipe button on a row means, said where the row can be looked up.

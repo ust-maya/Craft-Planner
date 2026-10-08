@@ -503,7 +503,7 @@ public final class BatchPickerScreen extends Screen {
         graphics.drawString(this.font,
                 RecipeListLayout.trimToWidth(this.font::width, row.name(),
                         Math.max(0, nameRoom)),
-                nameX, textY, line.head() ? TEXT : lineInk(row), false);
+                nameX, textY, line.head() ? TEXT : NodeColors.forRow(row), false);
         graphics.drawString(this.font, amount,
                 contentRight - counterW - (counterW > 0 ? TEXT_GAP : 0) - this.font.width(amount),
                 textY, UiPalette.MUTED, false);
@@ -544,22 +544,6 @@ public final class BatchPickerScreen extends Screen {
     }
 
     /** The same availability colouring the plan's own tree uses. */
-    private static int lineInk(TreeRow<RecipeNode> row) {
-        if (row.kind() == TreeRow.Kind.CYCLE) {
-            return NodeColors.CYCLE;
-        }
-        return switch (row.status()) {
-            case COVERED -> NodeColors.HAVE;
-            case PARTIAL -> NodeColors.PARTIAL;
-            case MISSING -> NodeColors.MISSING;
-            case UNKNOWN -> switch (row.kind()) {
-                case ROOT -> NodeColors.ROOT;
-                case ASSEMBLY -> NodeColors.INTERMEDIATE;
-                case MATERIAL -> NodeColors.RAW;
-                case CYCLE -> NodeColors.CYCLE;
-            };
-        };
-    }
 
     /** What a click would do, said before it is done. */
     private Component tooltipAt(int index, int mx, int my) {

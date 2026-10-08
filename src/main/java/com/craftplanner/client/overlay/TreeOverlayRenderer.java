@@ -588,7 +588,7 @@ public final class TreeOverlayRenderer {
             String label = metrics.trim(rowLabel(row),
                     TreeMetrics.labelRoom(labelW, depth));
             graphics.drawString(font, label, TreeMetrics.labelX(depth),
-                    TreeMetrics.textY(r, first, font.lineHeight), ink(row, availability), false);
+                    TreeMetrics.textY(r, first, font.lineHeight), NodeColors.forRow(row), false);
             drawBadge(graphics, font, row, r, first, labelW, badgeW, panel);
         }
     }
@@ -619,23 +619,6 @@ public final class TreeOverlayRenderer {
                 null, row.node(), 0, 0, new TreeMetrics.Rect(x, y, BADGE, BADGE)));
     }
 
-    /** The row's label colour, from the same availability the shopping list uses. */
-    private static int ink(TreeRow<RecipeNode> row, Map<ItemKey, Availability> availability) {
-        if (row.kind() == TreeRow.Kind.CYCLE) {
-            return NodeColors.CYCLE;
-        }
-        return switch (row.status()) {
-            case COVERED -> NodeColors.HAVE;
-            case PARTIAL -> NodeColors.PARTIAL;
-            case MISSING -> NodeColors.MISSING;
-            case UNKNOWN -> switch (row.kind()) {
-                case ROOT -> NodeColors.ROOT;
-                case ASSEMBLY -> NodeColors.INTERMEDIATE;
-                case MATERIAL -> NodeColors.RAW;
-                case CYCLE -> NodeColors.CYCLE;
-            };
-        };
-    }
 
     /** Quiet 3 px track, brighter thumb under the cursor or while the editor drags it. */
     private static void drawScrollbar(GuiGraphics graphics, Minecraft mc, TreePanel.Plan panel,

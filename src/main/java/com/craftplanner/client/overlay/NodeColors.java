@@ -5,6 +5,7 @@ import com.craftplanner.client.resource.Availability;
 import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.NodeKind;
 import com.craftplanner.graph.RecipeNode;
+import com.craftplanner.client.tree.TreeRow;
 import java.util.Map;
 
 /**
@@ -83,6 +84,37 @@ public final class NodeColors {
             return RAW;
         }
         return forAvailability(state);
+    }
+
+    /**
+     * The ink of a drawn tree row: what the inventory covers, or what the row is.
+     *
+     * <p>One rule for the four surfaces that show rows — the HUD, the tree window
+     * (G), the recipe picker and the batch picker. Each had written the same switch
+     * out for itself, so a colour decision made in one of them left the others
+     * reading the same row differently; the batch picker is the one that had no
+     * {@code UNKNOWN} branch at all and drew a cycle row in whatever colour its
+     * status happened to imply.</p>
+     *
+     * <p>A cycle keeps its own colour whatever the inventory holds: the row marks
+     * where the branch was stopped because the item is already being made above it,
+     * which is not a shortage.</p>
+     */
+    public static int forRow(TreeRow<?> row) {
+        if (row.kind() == TreeRow.Kind.CYCLE) {
+            return CYCLE;
+        }
+        return switch (row.status()) {
+            case COVERED -> HAVE;
+            case PARTIAL -> PARTIAL;
+            case MISSING -> MISSING;
+            case UNKNOWN -> switch (row.kind()) {
+                case ROOT -> ROOT;
+                case ASSEMBLY -> INTERMEDIATE;
+                case MATERIAL -> RAW;
+                case CYCLE -> CYCLE;
+            };
+        };
     }
 
     /**

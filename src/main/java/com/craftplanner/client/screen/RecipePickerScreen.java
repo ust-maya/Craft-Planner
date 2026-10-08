@@ -11,7 +11,6 @@ import com.craftplanner.client.tree.TreeMetrics;
 import com.craftplanner.client.tree.TreeRow;
 import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.RecipeNode;
-import com.craftplanner.client.resource.Availability;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -697,28 +696,11 @@ public final class RecipePickerScreen extends Screen {
                 Math.max(0, room - this.font.width(amount) - TEXT_GAP));
         int nameX = originX + TreeMetrics.labelX(depth);
         graphics.drawString(this.font, name, nameX, textY,
-                lineInk(row, PlannerState.availability()), false);
+                NodeColors.forRow(row), false);
         graphics.drawString(this.font, amount,
                 nameX + room - this.font.width(amount), textY, MUTED, false);
     }
 
-    /** The same availability colouring the plan's own tree uses. */
-    private static int lineInk(TreeRow<RecipeNode> row, Map<ItemKey, Availability> availability) {
-        if (row.kind() == TreeRow.Kind.CYCLE) {
-            return NodeColors.CYCLE;
-        }
-        return switch (row.status()) {
-            case COVERED -> NodeColors.HAVE;
-            case PARTIAL -> NodeColors.PARTIAL;
-            case MISSING -> NodeColors.MISSING;
-            case UNKNOWN -> switch (row.kind()) {
-                case ROOT -> NodeColors.ROOT;
-                case ASSEMBLY -> NodeColors.INTERMEDIATE;
-                case MATERIAL -> NodeColors.RAW;
-                case CYCLE -> NodeColors.CYCLE;
-            };
-        };
-    }
 
     /**
      * One row: its highlight, then mark, icon and text. The mark column and the
