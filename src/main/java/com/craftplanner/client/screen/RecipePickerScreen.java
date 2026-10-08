@@ -631,7 +631,7 @@ public final class RecipePickerScreen extends Screen {
     private void drawGuideFor(GuiGraphics graphics, TreeLine line, int originX, int anchor,
             int first, int last) {
         List<TreeRow<RecipeNode>> preview = previewOf(line.option());
-        if (preview == null) {
+        if (preview == null || line.row() >= preview.size()) {
             return;
         }
         TreeRow<RecipeNode> row = preview.get(line.row());
@@ -687,6 +687,9 @@ public final class RecipePickerScreen extends Screen {
     /** One row of an opened tree: guide, icon, name and how much of it is needed. */
     private void drawTreeLine(GuiGraphics graphics, TreeLine line, int y) {
         List<TreeRow<RecipeNode>> preview = previewOf(line.option());
+        if (preview == null || line.row() >= preview.size()) {
+            return;
+        }
         TreeRow<RecipeNode> row = preview.get(line.row());
         int originX = panelLeft() + PAD + optionGutterW();
         int depth = depthOf(row);
