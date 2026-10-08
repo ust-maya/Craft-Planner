@@ -444,14 +444,20 @@ public final class CraftTreeScreen extends Screen {
 
     private void drawGuides(GuiGraphics graphics, int first, int last) {
         int left = contentLeft();
-        for (int r = first; r <= last; r++) {
+        // Same rule as the overlay: a parent above the view still draws the run its
+        // visible children hang off, and no run reaches below the last drawn row.
+        int runBottom = rowTop(last + 1);
+        for (int r = 0; r <= last; r++) {
             TreeRow<RecipeNode> parent = this.rows.get(r);
-            if (!parent.expands(r)) {
+            if (!parent.expands(r) || parent.lastChildIndex() < first) {
                 continue;
             }
             int x = left + TreeMetrics.spineX(parent.depth());
-            graphics.vLine(x, contentTop() + TreeMetrics.iconBottom(r, this.scroll),
-                    rowCenter(parent.lastChildIndex()), UiPalette.TREE_GUIDE);
+            int fromY = Math.max(contentTop(), contentTop() + TreeMetrics.iconBottom(r, this.scroll));
+            int toY = Math.min(runBottom, rowCenter(parent.lastChildIndex()));
+            if (toY > fromY) {
+                graphics.vLine(x, fromY, toY, UiPalette.TREE_GUIDE);
+            }
         }
         for (int r = first; r <= last; r++) {
             TreeRow<RecipeNode> row = this.rows.get(r);
