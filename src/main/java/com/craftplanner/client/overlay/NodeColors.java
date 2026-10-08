@@ -92,26 +92,10 @@ public final class NodeColors {
      * same way in both places.
      */
     public static int forAvailability(Availability state) {
-        if (state.satisfied()) {
-            return HAVE;
-        }
-        return partlyCovered(state) ? PARTIAL : MISSING;
-    }
-
-    /**
-     * Stage 10: {@code resources.partialThresholdPercent} decides how much of
-     * a material has to be in the inventory before it counts as "partly there"
-     * (yellow) instead of "missing" (red). With the default of 0 the old rule
-     * applies: anything above zero is yellow.
-     */
-    private static boolean partlyCovered(Availability state) {
-        if (state.available() <= 0) {
-            return false;
-        }
-        int percent = Config.partialThresholdPercent();
-        if (percent <= 0) {
-            return true;
-        }
-        return state.available() * 100L >= state.required() * percent;
+        return switch (state.status(Config.partialThresholdPercent())) {
+            case OK -> HAVE;
+            case PARTIAL -> PARTIAL;
+            case MISSING -> MISSING;
+        };
     }
 }
