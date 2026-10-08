@@ -253,18 +253,6 @@ public final class CraftTreeBuilder {
             }
 
             ItemKey childKey = ItemKey.of(representative);
-            if (path.contains(childKey)) {
-                // Back edge: this ingredient is already being produced higher up
-                // this very branch. Adding it would render A -> B -> A, which
-                // reads as "ingredients and results swapped" (the classic
-                // hay_block -> wheat -> hay_block storage loop). The branch
-                // simply ends here — the item is already counted above.
-                if (Config.traceChoices()) {
-                    LOGGER.debug("   drop ingredient {} of {} — back edge, already produced above",
-                            childKey, node.item());
-                }
-                continue;
-            }
             if (filter.hides(childKey)) {
                 // Ore-like resources are mined rather than crafted. Leaving the
                 // node out makes the branch end here, so the item that needed
@@ -317,10 +305,10 @@ public final class CraftTreeBuilder {
         path.remove(node.item());
 
         if (children == 0) {
-            // Every ingredient was dropped before a node was created: either a
-            // back edge (a storage pack/unpack pair such as hay_block <-> wheat)
-            // or a resource the filter hides. There is nothing left to expand,
-            // so the item is effectively a raw material.
+            // Every ingredient was dropped before a node was created: a resource
+            // the ore filter hides, or a tag that resolves to nothing in a broken
+            // datapack. There is nothing left to expand, so the item is
+            // effectively a raw material.
             markTerminal(node, NodeKind.RAW);
         }
     }

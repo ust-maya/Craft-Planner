@@ -393,6 +393,12 @@ public final class CraftTreeScreen extends Screen {
 
     /** The row's label colour: how far the inventory covers what the plan asks. */
     private static int ink(TreeRow<RecipeNode> row) {
+        // A loop is not a shortage: the row marks where the branch was stopped
+        // because the item is already being made above it, so it keeps the loop
+        // colour whatever the inventory holds. Same rule as the overlay's rows.
+        if (row.kind() == TreeRow.Kind.CYCLE) {
+            return NodeColors.CYCLE;
+        }
         return switch (row.status()) {
             case COVERED -> NodeColors.HAVE;
             case PARTIAL -> NodeColors.PARTIAL;
