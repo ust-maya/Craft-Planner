@@ -95,6 +95,13 @@ public final class CraftTreeScreen extends Screen {
     private int maxDepth;
 
     private int scroll;
+    /**
+     * The row the keyboard is on, by its tree path rather than by index: a rebuild
+     * after a fold moves rows up and down the list, and an index would then light
+     * up whatever row happened to sit there. The path is the row the player chose.
+     */
+    private String focusPath;
+    /** {@link #focusPath} resolved against the current rows; -1 when it is not among them. */
     private int focus = -1;
     /** The explicit "choose this row's recipe" button, kept so its state can follow the focus. */
     private Button recipeButton;
@@ -141,9 +148,7 @@ public final class CraftTreeScreen extends Screen {
         this.panelLeft = (this.width - this.plan.panelW()) / 2;
         this.panelTop = (this.height - this.plan.panelH()) / 2;
         this.scroll = this.plan.scroll();
-        if (this.focus >= this.rows.size()) {
-            this.focus = this.rows.size() - 1;
-        }
+        this.focus = resolveFocus();
         buildWidgets();
     }
 
@@ -262,6 +267,29 @@ public final class CraftTreeScreen extends Screen {
                 tr(KEY_CLOSE), button -> onClose(), null));
     }
 
+    /** Remembers {@code r} as the focused row, by the path that identifies it. */
+    private void setFocusRow(int r) {
+        this.focus = r;
+        this.focusPath = r >= 0 && r < this.rows.size() ? this.rows.get(r).path() : null;
+    }
+
+    /**
+     * The row {@link #focusPath} names in the current rows, or -1 when the plan no
+     * longer shows it — folded away, which is when the path is kept and the row
+     * comes back with the branch.
+     */
+    private int resolveFocus() {
+        if (this.focusPath == null) {
+            return -1;
+        }
+        for (int r = 0; r < this.rows.size(); r++) {
+            if (this.focusPath.equals(this.rows.get(r).path())) {
+                return r;
+            }
+        }
+        return -1;
+    }
+
     /** The row the keyboard is on, or {@code null} when the plan is empty or nothing is picked. */
     private TreeRow<RecipeNode> focusedRow() {
         return this.focus >= 0 && this.focus < this.rows.size() ? this.rows.get(this.focus) : null;
@@ -279,7 +307,6 @@ public final class CraftTreeScreen extends Screen {
         } else {
             TreeCollapse.unfoldAll();
         }
-        this.focus = Math.max(-1, Math.min(this.focus, this.rows.size() - 1));
         rebuild();
     }
 
@@ -716,7 +743,7 @@ public final class CraftTreeScreen extends Screen {
         if (r < 0) {
             return super.mouseClicked(mouseX, mouseY, button);
         }
-        this.focus = r;
+        setFocusRow(r);
         TreeRow<RecipeNode> row = this.rows.get(r);
         TreeMetrics.Rect toggle = TreeMetrics.toggleHit(row.depth(), r, this.scroll, 1.0,
                 contentLeft(), contentTop());
@@ -859,7 +886,14 @@ public final class CraftTreeScreen extends Screen {
                 return true;
             case GLFW.GLFW_KEY_ENTER:
             case GLFW.GLFW_KEY_KP_ENTER:
-                openPicker(this.rows.get(Math.max(0, this.focus)));
+                // A button that has the focus is what Enter belongs to: the player
+                // tabbed onto it, and the key must press that button rather than
+                // open the row underneath. Only with nothing focused does Enter
+                // mean "choose the recipe of the row the arrows stopped on".
+                if (getFocused() instanceof Button) {
+                    return super.keyPressed(keyCode, scanCode, modifiers);
+                }
+                openPicker(focusedRow());
                 return true;
             case GLFW.GLFW_KEY_PAGE_DOWN:
                 page(1);
@@ -888,7 +922,7 @@ public final class CraftTreeScreen extends Screen {
     private void moveFocus(int delta) {
         int target = this.focus < 0 ? 0
                 : Math.max(0, Math.min(this.rows.size() - 1, this.focus + delta));
-        this.focus = target;
+        setFocusRow(target);
         if (target < this.scroll) {
             this.scroll = target;
         } else if (target >= this.scroll + this.plan.visibleRows()) {
@@ -901,8 +935,8 @@ public final class CraftTreeScreen extends Screen {
         this.scroll = TreePanel.clampScroll(this.scroll + direction * this.plan.visibleRows(),
                 this.rows.size(), this.plan.visibleRows());
         if (this.focus >= 0) {
-            this.focus = Math.max(this.scroll,
-                    Math.min(this.scroll + this.plan.visibleRows() - 1, this.focus));
+            setFocusRow(Math.max(this.scroll,
+                    Math.min(this.scroll + this.plan.visibleRows() - 1, this.focus)));
         }
         rebuild();
     }
