@@ -79,6 +79,8 @@ public final class CraftTreeScreen extends Screen {
     private static final int RECIPE_BTN = 18;
     /** Rows one wheel notch moves: at one row per notch a long plan barely stirred. */
     private static final int WHEEL_ROWS = 3;
+    /** Air between two footer buttons — the same gap {@link #buildWidgets()} lays out with. */
+    private static final int FOOTER_GAP = 4;
 
     private List<TreeRow<RecipeNode>> rows = List.of();
     /** Panel-relative geometry; the panel is centred after it is known. */
@@ -173,9 +175,47 @@ public final class CraftTreeScreen extends Screen {
     }
 
     private int naturalContentW() {
-        return TreeMetrics.labelX(this.maxDepth) + this.nameW
+        // The rows decide how wide the tree wants to be; the footer decides how
+        // wide the window must be. A panel sized only by its rows puts the button
+        // row outside itself — most visibly on an empty plan, where the buttons are
+        // the whole content and their labels are as long as the language makes them.
+        return Math.max(TreeMetrics.labelX(this.maxDepth) + this.nameW
                 + (this.amountW > 0 ? COL_GAP + this.amountW : 0)
-                + (this.recipeW > 0 ? COL_GAP + this.recipeW : 0);
+                + (this.recipeW > 0 ? COL_GAP + this.recipeW : 0),
+                Math.max(footerButtonsWidth(), emptyMessageWidth()));
+    }
+
+    /**
+     * The footer buttons as {@link #buildWidgets()} places them: five labels, each
+     * at least its minimum width, with the gaps between them.
+     */
+    private int footerButtonsWidth() {
+        return buttonWidth(text(KEY_COLLAPSE), 60) + buttonWidth(text(KEY_EXPAND), 60)
+                + buttonWidth(text(KEY_RECIPE), 60) + buttonWidth(text(KEY_LIST), 60)
+                + buttonWidth(text(KEY_CLOSE), 48) + 4 * FOOTER_GAP;
+    }
+
+    /** One footer button: its label plus the padding it is measured with, over its floor. */
+    private int buttonWidth(String label, int minWidth) {
+        return Math.max(minWidth, this.font.width(label) + PAD);
+    }
+
+    /** The "nothing planned yet" line: it is centred inside the panel, so the panel must hold it. */
+    private int emptyMessageWidth() {
+        return this.rows.isEmpty() ? this.font.width(emptyMessage()) + 2 * PAD : 0;
+    }
+
+    /** The empty-plan line, naming the binding the player actually has. */
+    private String emptyMessage() {
+        return text(KEY_EMPTY, Keybinds.ADD_RECIPE.getKey().getDisplayName());
+    }
+
+    /**
+     * A translation as plain text: the footer is measured in pixels, and a width
+     * can only be taken from a string.
+     */
+    private static String text(String key, Object... args) {
+        return Component.translatable(key, args).getString();
     }
 
     /** Legend, two hint lines and the button row. */
@@ -187,12 +227,12 @@ public final class CraftTreeScreen extends Screen {
         clearWidgets();
         int rowLeft = this.panelLeft + PAD;
         int buttonsY = contentBottom() + footerH() - BUTTON_H - 4;
-        int gap = 4;
-        int collapseW = Math.max(60, this.font.width(tr(KEY_COLLAPSE)) + PAD);
-        int expandW = Math.max(60, this.font.width(tr(KEY_EXPAND)) + PAD);
-        int recipeW = Math.max(60, this.font.width(tr(KEY_RECIPE)) + PAD);
-        int listW = Math.max(60, this.font.width(tr(KEY_LIST)) + PAD);
-        int closeW = Math.max(48, this.font.width(tr(KEY_CLOSE)) + PAD);
+        int gap = FOOTER_GAP;
+        int collapseW = buttonWidth(text(KEY_COLLAPSE), 60);
+        int expandW = buttonWidth(text(KEY_EXPAND), 60);
+        int recipeW = buttonWidth(text(KEY_RECIPE), 60);
+        int listW = buttonWidth(text(KEY_LIST), 60);
+        int closeW = buttonWidth(text(KEY_CLOSE), 48);
         int right = this.panelLeft + this.plan.panelW() - PAD;
 
         if (!this.rows.isEmpty()) {
@@ -296,9 +336,7 @@ public final class CraftTreeScreen extends Screen {
 
     private void drawRows(GuiGraphics graphics, int mouseX, int mouseY) {
         if (this.rows.isEmpty()) {
-            graphics.drawCenteredString(this.font,
-                    Component.translatable(KEY_EMPTY,
-                            Keybinds.ADD_RECIPE.getKey().getDisplayName()).getString(),
+            graphics.drawCenteredString(this.font, emptyMessage(),
                     this.panelLeft + this.plan.panelW() / 2, contentTop() + 6, UiPalette.MUTED);
             return;
         }
