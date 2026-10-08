@@ -2,6 +2,7 @@ package com.craftplanner.client;
 
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 /**
  * Shape recipes shared by every Craft Planner surface.
@@ -105,11 +106,31 @@ public final class UiShapes {
      * made in. The count of alternatives stays in the tooltip.</p>
      *
      * <p>The plate is the caller's: an amber ring means the row offers a real
-     * choice, and a plain ring means there is only the one recipe.</p>
+     * choice, the shears mark a cut branch, and a plain ring means there is only
+     * the one recipe.</p>
      */
     public static void recipeButton(GuiGraphics graphics, int left, int top, int size,
             int background, int border, ItemStack icon) {
         chip(graphics, left, top, size, size, background, border);
         graphics.renderItem(icon, left + (size - 16) / 2, top + (size - 16) / 2);
     }
+
+    /**
+     * Icon of a row whose branch the player cut: the shears say "stopped here"
+     * in a shape, where the old red ring said it in the colour that also means
+     * "missing" — the two were read as one.
+     *
+     * <p>Built on first use rather than in a static initialiser: this class is
+     * loaded from a client's render path, and an {@code ItemStack} made at class
+     * load would ask the item registry for an item before it has finished
+     * bootstrapping.</p>
+     */
+    public static ItemStack cutIcon() {
+        if (cutIcon == null) {
+            cutIcon = new ItemStack(Items.SHEARS);
+        }
+        return cutIcon;
+    }
+
+    private static ItemStack cutIcon;
 }

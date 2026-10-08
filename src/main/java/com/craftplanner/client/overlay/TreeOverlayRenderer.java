@@ -473,9 +473,10 @@ public final class TreeOverlayRenderer {
         boolean switchable = row.badge() == TreeRow.Badge.MULTIPLE;
         UiShapes.recipeButton(graphics, x, y, BADGE,
                 switchable ? UiPalette.FOLD_BTN_BG : UiPalette.CHIP_BG,
-                row.badge() == TreeRow.Badge.CUT ? UiPalette.MARK_CUT
+                row.badge() == TreeRow.Badge.CUT ? UiPalette.MARK_NEUTRAL
                         : switchable ? UiPalette.FOLD_BTN_BORDER : UiPalette.CHIP_BORDER,
-                MachineNames.iconOf(row.node().recipe()));
+                row.badge() == TreeRow.Badge.CUT ? UiShapes.cutIcon()
+                        : MachineNames.iconOf(row.node().recipe()));
         HudHitMap.add(new HudHitMap.Hotspot(panel.contentLeft(), panel.contentTop(), panel.scale(),
                 null, row.node(), 0, 0, new TreeMetrics.Rect(x, y, BADGE, BADGE)));
     }

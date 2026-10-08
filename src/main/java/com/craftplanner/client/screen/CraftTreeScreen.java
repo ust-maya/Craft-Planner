@@ -553,7 +553,7 @@ public final class CraftTreeScreen extends Screen {
 
     /**
      * The recipe choice of a row: the recipe's machine on a button, amber-ringed
-     * when the row really can be switched and the cut mark's red when it is stopped.
+     * when the row really can be switched and marked with shears when it is cut.
      */
     private void drawRecipeButton(GuiGraphics graphics, TreeRow<RecipeNode> row, int r,
             boolean aimed) {
@@ -564,10 +564,11 @@ public final class CraftTreeScreen extends Screen {
         boolean switchable = row.badge() == TreeRow.Badge.MULTIPLE;
         UiShapes.recipeButton(graphics, box.x(), box.y(), RECIPE_BTN,
                 switchable ? UiPalette.FOLD_BTN_BG : UiPalette.CHIP_BG,
-                row.badge() == TreeRow.Badge.CUT ? UiPalette.MARK_CUT
+                row.badge() == TreeRow.Badge.CUT ? UiPalette.MARK_NEUTRAL
                         : switchable ? UiPalette.FOLD_BTN_BORDER
                                 : aimed ? UiPalette.FOLD_BTN_HOVER_BORDER : UiPalette.CHIP_BORDER,
-                MachineNames.iconOf(row.node().recipe()));
+                row.badge() == TreeRow.Badge.CUT ? UiShapes.cutIcon()
+                        : MachineNames.iconOf(row.node().recipe()));
     }
 
     private TreeMetrics.Rect recipeRect(int r) {
