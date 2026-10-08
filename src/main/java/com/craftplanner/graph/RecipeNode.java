@@ -77,11 +77,6 @@ public final class RecipeNode {
                 : item.name();
     }
 
-    /** Row quantity, with fluid amounts kept distinct from item counts. */
-    public String amountLabel() {
-        return isFluidRequirement() ? required + " mB" : "×" + required;
-    }
-
     public int depth() {
         return depth;
     }

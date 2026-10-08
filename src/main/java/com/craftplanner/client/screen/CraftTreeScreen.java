@@ -1,5 +1,6 @@
 package com.craftplanner.client.screen;
 
+import com.craftplanner.client.AmountLabel;
 import com.craftplanner.client.Keybinds;
 import com.craftplanner.client.PlanRows;
 import com.craftplanner.client.PlannerState;
@@ -172,8 +173,8 @@ public final class CraftTreeScreen extends Screen {
             anyChoice |= row.badge() != TreeRow.Badge.NONE;
         }
         this.nameW = Math.min(MAX_NAME_W, Math.max(MIN_NAME_W, widestName + 2));
-        this.amountW = Math.max(metrics.width(Long.toString(maxAmount) + " mB") + 8,
-            metrics.width("×9999"));
+        this.amountW = Math.max(metrics.width(AmountLabel.millibuckets(maxAmount)) + 8,
+                metrics.width(AmountLabel.times(9999)));
         // The recipe column is a square button, so it is measured rather than
         // fitted to text — and it is reserved whenever any row has a recipe at all,
         // not only when some row offers a choice, so the column a player learns to
@@ -500,7 +501,7 @@ public final class CraftTreeScreen extends Screen {
         graphics.drawString(this.font, name, nameX, textY(r), ink, false);
 
         if (this.amountW > 0) {
-                String amount = row.node().amountLabel()
+                String amount = AmountLabel.of(row.node())
                     + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
             String shown = RecipeListLayout.trimToWidth(this.font::width, amount, this.amountW);
             graphics.drawString(this.font, shown, nameRightEdge() - this.font.width(shown),
@@ -971,7 +972,7 @@ public final class CraftTreeScreen extends Screen {
         Availability state = row.node().isFluidRequirement()
             ? null : PlannerState.availability().get(row.node().item());
         lines.add(Component.translatable("overlay.craftplanner.material.required",
-            row.node().amountLabel()));
+            AmountLabel.of(row.node())));
         if (state != null) {
             lines.add(Component.translatable("overlay.craftplanner.material.have",
                     Long.toString(state.available())));

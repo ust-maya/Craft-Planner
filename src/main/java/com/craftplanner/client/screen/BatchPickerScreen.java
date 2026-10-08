@@ -1,5 +1,6 @@
 package com.craftplanner.client.screen;
 
+import com.craftplanner.client.AmountLabel;
 import com.craftplanner.client.PlanRows;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.UiPalette;
@@ -494,7 +495,7 @@ public final class BatchPickerScreen extends Screen {
         // A heading reserves room for the recipe button that ends it; the count that used
         // to be printed there lives in the tooltip now.
         int counterW = line.head() ? RECIPE_BTN : 0;
-        String amount = node.amountLabel() + (row.hiddenRows() > 0
+        String amount = AmountLabel.of(node) + (row.hiddenRows() > 0
                 ? " (+" + row.hiddenRows() + ")" : "");
         int nameX = contentLeft + TreeMetrics.labelX(depth);
         int nameRoom = contentRight - nameX - TEXT_GAP

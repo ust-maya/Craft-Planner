@@ -5,6 +5,7 @@ import com.craftplanner.Constants;
 import com.craftplanner.client.Keybinds;
 import com.craftplanner.client.UiLegend;
 import com.craftplanner.client.OverlayState;
+import com.craftplanner.client.AmountLabel;
 import com.craftplanner.client.PlanRows;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.TextMetrics;
@@ -390,7 +391,7 @@ public final class TreeOverlayRenderer {
 
     /** The label of a row: what it is, how much of it, and what a fold is hiding. */
     private static String rowLabel(TreeRow<RecipeNode> row) {
-        return row.name() + " " + row.node().amountLabel()
+        return row.name() + " " + AmountLabel.of(row.node())
                 + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
     }
 
@@ -768,7 +769,7 @@ public final class TreeOverlayRenderer {
         }
 
         String amountLabel() {
-            return isFluid() ? required + " mB" : Long.toString(required);
+            return isFluid() ? AmountLabel.millibuckets(required) : AmountLabel.bare(required);
         }
 
         int color() {
@@ -979,7 +980,7 @@ public final class TreeOverlayRenderer {
         List<Component> lines = new ArrayList<>();
         for (FooterMaterial entry : footer.hiddenEntries) {
                 lines.add(entry.name().copy().append(Component.literal(" "
-                    + (entry.isFluid() ? entry.amountLabel() : "×" + entry.amountLabel()))));
+                    + (entry.isFluid() ? entry.amountLabel() : AmountLabel.times(entry.required())))));
         }
         showTooltip(graphics, font, mc, lines);
         return true;
@@ -1328,7 +1329,7 @@ public final class TreeOverlayRenderer {
             graphics.fill(x - 1, y - 1, x + TreeLayout.ICON_SIZE + 1, y + TreeLayout.ICON_SIZE + 1,
                     0x40000000 | (color & 0x00FFFFFF));
             graphics.renderItem(node.displayStack(), x, y);
-                graphics.drawString(font, node.amountLabel(),
+                graphics.drawString(font, AmountLabel.of(node),
                     x, y + TreeLayout.ICON_SIZE + 1, color, false);
         }
     }

@@ -14,6 +14,8 @@
   "screen.craftplanner.list.clear": "Clear all",
   "screen.craftplanner.list.close": "Close",
   "screen.craftplanner.list.empty": "No recipes added yet",
+  "unit.craftplanner.millibuckets": "%s mB",
+  "unit.craftplanner.times": "×%s",
   "overlay.craftplanner.title": "Craft Planner",
   "overlay.craftplanner.keys": "%1$s — add · %2$s — show/hide · %3$s — recipe list · %4$s — tree · %5$s — size",
   "overlay.craftplanner.keys.short": "%1$s — add · %2$s — hide · %3$s — list · %4$s — tree",

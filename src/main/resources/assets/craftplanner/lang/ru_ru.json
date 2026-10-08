@@ -14,6 +14,8 @@
   "screen.craftplanner.list.clear": "Очистить всё",
   "screen.craftplanner.list.close": "Закрыть",
   "screen.craftplanner.list.empty": "Пока ничего не добавлено",
+  "unit.craftplanner.millibuckets": "%s мВ",
+  "unit.craftplanner.times": "×%s",
   "overlay.craftplanner.title": "Craft Planner",
   "overlay.craftplanner.keys": "%1$s — добавить · %2$s — показать/скрыть · %3$s — список · %4$s — дерево · %5$s — размер",
   "overlay.craftplanner.keys.short": "%1$s — добавить · %2$s — скрыть · %3$s — список · %4$s — дерево",
