@@ -1,5 +1,6 @@
 package com.craftplanner.client.screen;
 
+import com.craftplanner.client.Keybinds;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.TextMetrics;
 import com.craftplanner.client.UiPalette;
@@ -135,7 +136,7 @@ public class RecipeListScreen extends Screen {
         this.layout = new RecipeListLayout(this.metrics, this.width, names, maxAmount, maxOptions,
                 tr(KEY_HEADER_RECIPE), tr(KEY_HEADER_AMOUNT), tr(KEY_HEADER_REMOVE),
                 tr(KEY_CLEAR), tr(KEY_CLOSE), oresLabel().getString(), ambiguousLabel,
-                PlannerState.listHintSeen() ? "" : tr(KEY_HINT), anyCut);
+                PlannerState.listHintSeen() ? "" : hint(), anyCut);
     }
 
     @Override
@@ -213,6 +214,19 @@ public class RecipeListScreen extends Screen {
                     button -> this.minecraft.setScreen(new BatchPickerScreen(this)),
                     Component.translatable("screen.craftplanner.list.ambiguous.tooltip")));
         }
+    }
+
+    /**
+     * The first-run hint, with the bindings the player actually has: the sentence
+     * used to print the letters N, G and O itself, so after any rebind in
+     * Options → Controls it taught the wrong keys — the one thing a hint cannot
+     * afford to be.
+     */
+    private String hint() {
+        return Component.translatable(KEY_HINT,
+                Keybinds.ADD_RECIPE.getTranslatedKeyMessage(),
+                Keybinds.OPEN_TREE.getTranslatedKeyMessage(),
+                Keybinds.EDIT_LAYOUT.getTranslatedKeyMessage()).getString();
     }
 
     /**
