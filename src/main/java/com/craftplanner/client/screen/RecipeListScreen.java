@@ -330,8 +330,10 @@ public class RecipeListScreen extends Screen {
         int total = options.size();
         int index = total == 0 ? 0 : Math.min(node.selectedRecipeIndex(), total - 1);
         boolean cut = PlannerState.isCut(node.item());
+        // The chevron promises a list to choose from; with one recipe there is none,
+        // and the button only opens the picker for its cut switch.
         button.setMessage(Component.literal((cut ? "✂ " : "") + (total > 0
-                ? (index + 1) + "/" + total + " ▾" : "-")));
+                ? (index + 1) + "/" + total + (total > 1 ? " ▾" : "") : "-")));
         button.setTooltip(total == 0 ? null
                 : cut ? Tooltip.create(Component.translatable(KEY_CUT))
                 : Tooltip.create(Component.translatable(total > 1 ? KEY_RECIPE_TOOLTIP : KEY_RECIPE_ONE,
