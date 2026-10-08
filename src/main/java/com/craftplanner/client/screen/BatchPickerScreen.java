@@ -238,13 +238,14 @@ public final class BatchPickerScreen extends Screen {
         int widest = this.font.width(this.title);
         int amountW = this.font.width(TreeMetrics.markedAmount(TreeRow.Status.MISSING, "×9999")
                 + " (+9999)");
-        int counterW = RECIPE_BTN + TEXT_GAP + this.font.width("9/9");
+        // Every row can carry a counter now; only a heading adds the recipe button.
+        int counterW = TEXT_GAP + this.font.width("99/99");
         for (Line line : this.lines) {
             TreeRow<RecipeNode> row = this.plan.get(line.planRow());
             widest = Math.max(widest, TreeMetrics.labelX(depthOf(line))
                     + this.font.width(row.name())
                     + TEXT_GAP + amountW
-                    + (line.head() ? TEXT_GAP + counterW : 0));
+                    + counterW + (line.head() ? TEXT_GAP + RECIPE_BTN : 0));
         }
         widest = Math.max(widest, TreeMetrics.TOGGLE_W
                 + this.font.width(Component.translatable("screen.craftplanner.list.close").getString()));
@@ -581,24 +582,29 @@ public final class BatchPickerScreen extends Screen {
         graphics.renderItem(node.displayStack(), contentLeft + TreeMetrics.iconX(depth),
                 y + (ROW_H - TreeMetrics.ICON) / 2);
 
-        // A heading reserves room for the recipe button that ends it; the count that used
-        // to be printed there lives in the tooltip now.
-        int counterW = line.head() ? RECIPE_BTN : 0;
-        // The sign the tree and the overlay put in front of the amount: colour
-        // alone is the one cue a red-green reader loses.
+        // A heading reserves room for the recipe button that ends it.
+        int buttonW = line.head() ? RECIPE_BTN : 0;
         String amount = TreeMetrics.markedAmount(row.status(), AmountLabel.of(node))
                 + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
+        // Every row naming a switchable item says so and which recipe is in use: a
+        // decision nested in another branch gets no heading of its own, and without
+        // the counter it looked like any other row.
+        String counter = this.ambiguous.contains(node.item()) ? counterOf(node) : "";
+        int amountRight = contentRight - buttonW - (buttonW > 0 ? TEXT_GAP : 0);
+        int amountX = amountRight - this.font.width(amount);
+        int counterX = counter.isEmpty() ? amountX
+                : amountX - TEXT_GAP - this.font.width(counter);
         int nameX = contentLeft + TreeMetrics.labelX(depth);
-        int nameRoom = contentRight - nameX - TEXT_GAP
-                - this.font.width(amount) - (counterW > 0 ? TEXT_GAP + counterW : 0);
+        int nameRoom = counterX - TEXT_GAP - nameX;
 
         graphics.drawString(this.font,
                 RecipeListLayout.trimToWidth(this.font::width, row.name(),
                         Math.max(0, nameRoom)),
                 nameX, textY, line.head() ? TEXT : NodeColors.forRow(row), false);
-        graphics.drawString(this.font, amount,
-                contentRight - counterW - (counterW > 0 ? TEXT_GAP : 0) - this.font.width(amount),
-                textY, NodeColors.forRow(row), false);
+        if (!counter.isEmpty()) {
+            graphics.drawString(this.font, counter, counterX, textY, UiPalette.MARK_FOLDED, false);
+        }
+        graphics.drawString(this.font, amount, amountX, textY, NodeColors.forRow(row), false);
         if (line.head()) {
             // The heading ends in the same button the tree rows end in, so "this is
             // the row you choose on" looks the same in both windows.
@@ -608,7 +614,7 @@ public final class BatchPickerScreen extends Screen {
         }
     }
 
-    /** The heading's counter: which of the engine's alternatives is in use. */
+    /** The counter of a switchable row: which of the engine's alternatives is in use. */
     private static String counterOf(RecipeNode node) {
         int total = node.options().size();
         int index = Math.min(node.selectedRecipeIndex(), total - 1);
