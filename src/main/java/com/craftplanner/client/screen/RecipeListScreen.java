@@ -207,7 +207,11 @@ public class RecipeListScreen extends Screen {
             Button plus = FitButton.create(right + l.plusX, y, l.plusW, RecipeListLayout.BUTTON_H,
                     Component.literal("+"), pressed -> change(rowRoot(row), 1),
                     Component.translatable("screen.craftplanner.list.increase"));
-            Button remove = FitButton.create(right + l.removeX, y, l.removeW, RecipeListLayout.BUTTON_H,
+            // A square like "−" and "+", centred under its header: the column is as wide
+            // as the word "Удалить", the button only as wide as the "x" it carries.
+            int removeButtonW = Math.min(l.removeW, l.plusW);
+            Button remove = FitButton.create(right + l.removeX + (l.removeW - removeButtonW) / 2, y,
+                    removeButtonW, RecipeListLayout.BUTTON_H,
                     Component.literal("x"), pressed -> remove(rowRoot(row)),
                     Component.translatable("screen.craftplanner.list.remove.tooltip"));
             addRenderableWidget(recipe);

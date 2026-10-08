@@ -98,37 +98,39 @@ public final class UiShapes {
     }
 
     /**
-     * The recipe choice of a tree row: a button with the crafting table on it.
+     * The recipe choice of a tree row: a button with the recipe's machine on it.
      *
-     * <p>It used to read {@code 1/2 ▾} or {@code 2/3 ▾}, which said which
-     * alternative was in use and nothing about what clicking would do — the one
-     * thing the player has to know before aiming at it. The icon says that, in a
-     * shape every player already reads as "crafting", and it does it at any
-     * density; the count moves to the tooltip, where it belongs, because "which
-     * one" is something you look up rather than something you scan for.</p>
+     * <p>It used to carry a crafting table on every row, which said "recipe" and
+     * nothing else — a column of identical tables drew the eye and told the player
+     * nothing. The machine says what clicking will change: which block this part is
+     * made in. The count of alternatives stays in the tooltip.</p>
      *
      * <p>The plate is the caller's: an amber ring means the row offers a real
-     * choice, the cut mark's red means the branch is stopped, and a plain ring
-     * means there is only the one recipe.</p>
+     * choice, the shears mark a cut branch, and a plain ring means there is only
+     * the one recipe.</p>
      */
     public static void recipeButton(GuiGraphics graphics, int left, int top, int size,
-            int background, int border) {
+            int background, int border, ItemStack icon) {
         chip(graphics, left, top, size, size, background, border);
-        graphics.renderItem(recipeIcon(), left + (size - 16) / 2, top + (size - 16) / 2);
+        graphics.renderItem(icon, left + (size - 16) / 2, top + (size - 16) / 2);
     }
 
     /**
-     * Built on first use rather than in a static initialiser: this class is
+     * Icon of a row whose branch the player cut: the shears say "stopped here"
+     * in a shape, where the old red ring said it in the colour that also means
+     * "missing" — the two were read as one.
+     *
+     * <p>Built on first use rather than in a static initialiser: this class is
      * loaded from a client's render path, and an {@code ItemStack} made at class
      * load would ask the item registry for an item before it has finished
-     * bootstrapping.
+     * bootstrapping.</p>
      */
-    private static ItemStack recipeIcon() {
-        if (recipeIcon == null) {
-            recipeIcon = new ItemStack(Items.CRAFTING_TABLE);
+    public static ItemStack cutIcon() {
+        if (cutIcon == null) {
+            cutIcon = new ItemStack(Items.SHEARS);
         }
-        return recipeIcon;
+        return cutIcon;
     }
 
-    private static ItemStack recipeIcon;
+    private static ItemStack cutIcon;
 }

@@ -12,6 +12,8 @@ import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.TextMetrics;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
+import com.craftplanner.client.MachineNames;
+import com.craftplanner.client.screen.PlannerScreens;
 import com.craftplanner.client.resource.Availability;
 import com.craftplanner.client.tree.TreeFlatten;
 import com.craftplanner.client.tree.TreeMetrics;
@@ -148,6 +150,9 @@ public final class TreeOverlayRenderer {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) {
             return;
+        }
+        if (PlannerScreens.isModal(mc.screen)) {
+            return; // the window on top shows the plan itself
         }
         CraftGraph graph = PlannerState.graph();
         if (graph.isEmpty()) {
@@ -472,8 +477,10 @@ public final class TreeOverlayRenderer {
         boolean switchable = row.badge() == TreeRow.Badge.MULTIPLE;
         UiShapes.recipeButton(graphics, x, y, BADGE,
                 switchable ? UiPalette.FOLD_BTN_BG : UiPalette.CHIP_BG,
-                row.badge() == TreeRow.Badge.CUT ? UiPalette.MARK_CUT
-                        : switchable ? UiPalette.FOLD_BTN_BORDER : UiPalette.CHIP_BORDER);
+                row.badge() == TreeRow.Badge.CUT ? UiPalette.MARK_NEUTRAL
+                        : switchable ? UiPalette.FOLD_BTN_BORDER : UiPalette.CHIP_BORDER,
+                row.badge() == TreeRow.Badge.CUT ? UiShapes.cutIcon()
+                        : MachineNames.iconOf(row.node().recipe()));
         HudHitMap.add(new HudHitMap.Hotspot(panel.contentLeft(), panel.contentTop(), panel.scale(),
                 null, row.node(), 0, 0, new TreeMetrics.Rect(x, y, BADGE, BADGE)));
     }

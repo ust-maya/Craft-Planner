@@ -6,6 +6,7 @@ import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.Scrollbar;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
+import com.craftplanner.client.MachineNames;
 import com.craftplanner.client.overlay.NodeColors;
 import com.craftplanner.client.overlay.TreeCollapse;
 import com.craftplanner.client.tree.TreeFlatten;
@@ -19,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
@@ -97,6 +99,8 @@ public final class BatchPickerScreen extends Screen {
     private long seenGraphVersion;
     private long seenFoldVersion = -1;
     private long seenAvailabilityVersion = -1;
+    /** The window's close button: the same chip every planner window closes with. */
+    private Button closeButton;
 
     /**
      * One drawn line of a branch.
@@ -143,6 +147,13 @@ public final class BatchPickerScreen extends Screen {
         relayout();
         this.panelWidth = measure();
         this.scroll = Math.min(this.scroll, maxScroll());
+        // init() is also called from tick() on every plan change, past vanilla's
+        // rebuildWidgets(), so the old button is dropped here before a new one is made.
+        clearWidgets();
+        Component close = Component.translatable("screen.craftplanner.list.close");
+        this.closeButton = addRenderableWidget(FitButton.create(0, 0,
+                Math.max(48, this.font.width(close) + 2 * PAD), RecipeListLayout.BUTTON_H,
+                close, button -> onClose(), null));
     }
 
     @Override
@@ -235,14 +246,16 @@ public final class BatchPickerScreen extends Screen {
      */
     private int measure() {
         int widest = this.font.width(this.title);
-        int amountW = this.font.width("×9999 (+9999)");
-        int counterW = RECIPE_BTN + TEXT_GAP + this.font.width("9/9");
+        int amountW = this.font.width(TreeMetrics.markedAmount(TreeRow.Status.MISSING, "×9999")
+                + " (+9999)");
+        // Every row can carry a counter now; only a heading adds the recipe button.
+        int counterW = TEXT_GAP + this.font.width("99/99");
         for (Line line : this.lines) {
             TreeRow<RecipeNode> row = this.plan.get(line.planRow());
             widest = Math.max(widest, TreeMetrics.labelX(depthOf(line))
                     + this.font.width(row.name())
                     + TEXT_GAP + amountW
-                    + (line.head() ? TEXT_GAP + counterW : 0));
+                    + counterW + (line.head() ? TEXT_GAP + RECIPE_BTN : 0));
         }
         widest = Math.max(widest, TreeMetrics.TOGGLE_W
                 + this.font.width(Component.translatable("screen.craftplanner.list.close").getString()));
@@ -291,19 +304,6 @@ public final class BatchPickerScreen extends Screen {
         return this.scroll + offset / ROW_H;
     }
 
-    /** The control row under a point, or {@code -1}. */
-    private int hitControl(int mx, int my) {
-        int left = panelLeft();
-        if (mx < left + PAD || mx >= left + this.panelWidth - PAD) {
-            return -1;
-        }
-        int offset = my - (bandTop() + visibleLines() * ROW_H);
-        if (offset < 0 || offset >= CONTROL_ROWS * ROW_H) {
-            return -1;
-        }
-        return offset / ROW_H;
-    }
-
     /**
      * Whether a point is on a line's fold button.
      *
@@ -320,6 +320,11 @@ public final class BatchPickerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // Widgets first: the close button sits in the control row this method used
+        // to hit-test by hand.
+        if (super.mouseClicked(mouseX, mouseY, button)) {
+            return true;
+        }
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             return false;
         }
@@ -353,10 +358,6 @@ public final class BatchPickerScreen extends Screen {
             if (this.ambiguous.contains(row.node().item())) {
                 this.minecraft.setScreen(new RecipePickerScreen(row.node().item(), this));
             }
-            return true;
-        }
-        if (hitControl(mx, my) == 0) {
-            this.onClose();
             return true;
         }
         return false;
@@ -458,7 +459,13 @@ public final class BatchPickerScreen extends Screen {
             }
         }
 
-        drawControl(graphics, left, bandTop() + shown * ROW_H, hitControl(mouseX, mouseY) == 0);
+        // The panel is re-measured on folds without a new init(), so the button is
+        // placed where the control row is on this frame, right-aligned like the tree's.
+        if (this.closeButton != null) {
+            int controlTop = bandTop() + shown * ROW_H;
+            this.closeButton.setX(left + this.panelWidth - PAD - this.closeButton.getWidth());
+            this.closeButton.setY(controlTop + (ROW_H - this.closeButton.getHeight()) / 2);
+        }
         drawScrollbar(graphics, left, shown, mouseX, mouseY);
 
         super.render(graphics, mouseX, mouseY, partialTick);
@@ -468,20 +475,10 @@ public final class BatchPickerScreen extends Screen {
         // The header names the count, but a long translation must not leave the
         // band — it is trimmed to the panel like every other string here.
         String header = RecipeListLayout.trimToWidth(this.font::width,
-                Component.translatable("screen.craftplanner.ambiguous.header", decisions())
+                Component.translatable("screen.craftplanner.ambiguous.header", this.ambiguous.size())
                         .getString(),
                 this.panelWidth - 2 * PAD);
         graphics.drawCenteredString(this.font, header, left + this.panelWidth / 2, top + 6, TEXT);
-    }
-
-    private int decisions() {
-        int heads = 0;
-        for (Line line : this.lines) {
-            if (line.head()) {
-                heads++;
-            }
-        }
-        return heads;
     }
 
     private void drawEmpty(GuiGraphics graphics, int left) {
@@ -579,31 +576,39 @@ public final class BatchPickerScreen extends Screen {
         graphics.renderItem(node.displayStack(), contentLeft + TreeMetrics.iconX(depth),
                 y + (ROW_H - TreeMetrics.ICON) / 2);
 
-        // A heading reserves room for the recipe button that ends it; the count that used
-        // to be printed there lives in the tooltip now.
-        int counterW = line.head() ? RECIPE_BTN : 0;
-        String amount = AmountLabel.of(node) + (row.hiddenRows() > 0
-                ? " (+" + row.hiddenRows() + ")" : "");
+        // A heading reserves room for the recipe button that ends it.
+        int buttonW = line.head() ? RECIPE_BTN : 0;
+        String amount = TreeMetrics.markedAmount(row.status(), AmountLabel.of(node))
+                + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
+        // Every row naming a switchable item says so and which recipe is in use: a
+        // decision nested in another branch gets no heading of its own, and without
+        // the counter it looked like any other row.
+        String counter = this.ambiguous.contains(node.item()) ? counterOf(node) : "";
+        int amountRight = contentRight - buttonW - (buttonW > 0 ? TEXT_GAP : 0);
+        int amountX = amountRight - this.font.width(amount);
+        int counterX = counter.isEmpty() ? amountX
+                : amountX - TEXT_GAP - this.font.width(counter);
         int nameX = contentLeft + TreeMetrics.labelX(depth);
-        int nameRoom = contentRight - nameX - TEXT_GAP
-                - this.font.width(amount) - (counterW > 0 ? TEXT_GAP + counterW : 0);
+        int nameRoom = counterX - TEXT_GAP - nameX;
 
         graphics.drawString(this.font,
                 RecipeListLayout.trimToWidth(this.font::width, row.name(),
                         Math.max(0, nameRoom)),
                 nameX, textY, line.head() ? TEXT : NodeColors.forRow(row), false);
-        graphics.drawString(this.font, amount,
-                contentRight - counterW - (counterW > 0 ? TEXT_GAP : 0) - this.font.width(amount),
-                textY, UiPalette.MUTED, false);
+        if (!counter.isEmpty()) {
+            graphics.drawString(this.font, counter, counterX, textY, UiPalette.MARK_FOLDED, false);
+        }
+        graphics.drawString(this.font, amount, amountX, textY, NodeColors.forRow(row), false);
         if (line.head()) {
             // The heading ends in the same button the tree rows end in, so "this is
             // the row you choose on" looks the same in both windows.
             UiShapes.recipeButton(graphics, contentRight - RECIPE_BTN, y + (ROW_H - RECIPE_BTN) / 2,
-                    RECIPE_BTN, UiPalette.FOLD_BTN_BG, UiPalette.FOLD_BTN_BORDER);
+                    RECIPE_BTN, UiPalette.FOLD_BTN_BG, UiPalette.FOLD_BTN_BORDER,
+                    MachineNames.iconOf(node.recipe()));
         }
     }
 
-    /** The heading's counter: which of the engine's alternatives is in use. */
+    /** The counter of a switchable row: which of the engine's alternatives is in use. */
     private static String counterOf(RecipeNode node) {
         int total = node.options().size();
         int index = Math.min(node.selectedRecipeIndex(), total - 1);
@@ -631,17 +636,6 @@ public final class BatchPickerScreen extends Screen {
                     counterOf(row.node()), row.node().displayName());
         }
         return null;
-    }
-
-    private void drawControl(GuiGraphics graphics, int left, int y, boolean hovered) {
-        int width = this.panelWidth - 2 * PAD;
-        if (hovered) {
-            graphics.fill(left + PAD, y, left + PAD + width, y + ROW_H, UiPalette.MODAL_ROW_HOVER);
-        }
-        graphics.drawString(this.font,
-                Component.translatable("screen.craftplanner.list.close").getString(),
-                left + PAD + TreeMetrics.TOGGLE_W,
-                y + (ROW_H - this.font.lineHeight) / 2, TEXT, false);
     }
 
     private void drawScrollbar(GuiGraphics graphics, int left, int shown, int mouseX, int mouseY) {
