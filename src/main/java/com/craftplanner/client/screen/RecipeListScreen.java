@@ -10,6 +10,7 @@ import java.util.List;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.crafting.RecipeHolder;
@@ -70,6 +71,12 @@ public class RecipeListScreen extends Screen {
 
     private final List<RecipeNode> roots = new ArrayList<>();
     private int scroll;
+    /**
+     * The four controls of each visible row, kept so a scroll can point them at
+     * whatever root moved into that slot. They live at a fixed y — the slot does
+     * not move, the list does — so only their labels and their target change.
+     */
+    private final List<RowControls> rowControls = new ArrayList<>();
     /** Measured geometry of the current list; rebuilt by {@link #computeLayout()}. */
     private RecipeListLayout layout;
     /** {@code font::width}, refreshed in {@link #init()} — the layout's only input. */
@@ -144,21 +151,33 @@ public class RecipeListScreen extends Screen {
         int top = panelTop();
         int right = left + l.panelWidth;
 
-        for (int i = 0; i < visibleRows(); i++) {
-            RecipeNode node = this.roots.get(this.scroll + i);
-            int y = top + RecipeListLayout.HEADER + i * RecipeListLayout.ROW_HEIGHT + 2;
-
-            addRenderableWidget(recipeButton(node, right + l.recipeX, y));
-            addRenderableWidget(FitButton.create(right + l.minusX, y, l.minusW, RecipeListLayout.BUTTON_H,
-                    Component.literal("-"), button -> change(node, -1),
-                    Component.translatable("screen.craftplanner.list.decrease")));
-            addRenderableWidget(FitButton.create(right + l.plusX, y, l.plusW, RecipeListLayout.BUTTON_H,
-                    Component.literal("+"), button -> change(node, 1),
-                    Component.translatable("screen.craftplanner.list.increase")));
-            addRenderableWidget(FitButton.create(right + l.removeX, y, l.removeW, RecipeListLayout.BUTTON_H,
-                    Component.literal("x"), button -> remove(node),
-                    Component.translatable("screen.craftplanner.list.remove.tooltip")));
+        this.rowControls.clear();
+        for (int slot = 0; slot < visibleRows(); slot++) {
+            final int row = slot;
+            int y = top + RecipeListLayout.HEADER + slot * RecipeListLayout.ROW_HEIGHT + 2;
+            // Every handler reads the root through the slot, at the moment it is
+            // clicked: the row under a button changes when the list scrolls, and a
+            // button that remembered the root it was built with would change the
+            // amount of an item the player never aimed at.
+            Button recipe = FitButton.create(right + l.recipeX, y, l.recipeW,
+                    RecipeListLayout.BUTTON_H, Component.literal("-"),
+                    pressed -> openPickerAt(row), null);
+            Button minus = FitButton.create(right + l.minusX, y, l.minusW, RecipeListLayout.BUTTON_H,
+                    Component.literal("-"), pressed -> change(rowRoot(row), -1),
+                    Component.translatable("screen.craftplanner.list.decrease"));
+            Button plus = FitButton.create(right + l.plusX, y, l.plusW, RecipeListLayout.BUTTON_H,
+                    Component.literal("+"), pressed -> change(rowRoot(row), 1),
+                    Component.translatable("screen.craftplanner.list.increase"));
+            Button remove = FitButton.create(right + l.removeX, y, l.removeW, RecipeListLayout.BUTTON_H,
+                    Component.literal("x"), pressed -> remove(rowRoot(row)),
+                    Component.translatable("screen.craftplanner.list.remove.tooltip"));
+            addRenderableWidget(recipe);
+            addRenderableWidget(minus);
+            addRenderableWidget(plus);
+            addRenderableWidget(remove);
+            this.rowControls.add(new RowControls(recipe, minus, plus, remove));
         }
+        syncRowControls();
 
         int footerY = footerTop() + l.buttonsY;
         if (!this.roots.isEmpty()) {
@@ -207,45 +226,72 @@ public class RecipeListScreen extends Screen {
                 .append(Component.translatable(hidden ? KEY_ORES_HIDDEN : KEY_ORES_SHOWN));
     }
 
+    /** The controls of one visible row; see {@link #rowControls}. */
+    private record RowControls(Button recipe, Button minus, Button plus, Button remove) {
+    }
+
+    /** The root currently drawn in row slot {@code slot}, or {@code null} past the end. */
+    private RecipeNode rowRoot(int slot) {
+        int index = this.scroll + slot;
+        return index >= 0 && index < this.roots.size() ? this.roots.get(index) : null;
+    }
+
+    /** Opens the picker for whatever root the clicked slot shows. */
+    private void openPickerAt(int slot) {
+        RecipeNode node = rowRoot(slot);
+        if (node != null) {
+            this.minecraft.setScreen(new RecipePickerScreen(node.item(), this));
+        }
+    }
+
     /**
-     * "2/3 ▾" button (Stage 6): the row's item is produced by {@code 3} recipes
-     * and {@code 2} of them is in use. Clicking opens {@link RecipePickerScreen},
-     * which names every option — cycling them blindly left the player choosing an
-     * index without ever seeing what the index was.
+     * Re-labels the row controls from the roots that are under them now. Called
+     * after a build and after every scroll, which is the whole cost of scrolling:
+     * one recipe counter per row, not a rebuilt window.
+     */
+    private void syncRowControls() {
+        for (int slot = 0; slot < this.rowControls.size(); slot++) {
+            RowControls row = this.rowControls.get(slot);
+            labelRecipeButton(row.recipe(), rowRoot(slot));
+        }
+    }
+
+    /**
+     * The "2/3 ▾" of a row: the row's item is produced by {@code 3} recipes and
+     * {@code 2} of them is in use. Clicking the button opens
+     * {@link RecipePickerScreen}, which names every option — cycling them blindly
+     * left the player choosing an index without ever seeing what the index was.
      *
      * <p>A row with a single way is clickable too: the picker that opens carries
      * the "cut the tree here" switch, which is asked for exactly one way as much
-     * as for several ("stop planning rabbit hide"). Only an item with no recipe
-     * at all — plain raw material — has nothing to open. A row whose branch is
-     * cut carries {@code ✂}.</p>
+     * as for several ("stop planning rabbit hide"). Only an item with no recipe at
+     * all — plain raw material — has nothing to open, and a row whose branch is cut
+     * carries {@code ✂}.</p>
      */
-    private Button recipeButton(RecipeNode node, int x, int y) {
+    private void labelRecipeButton(Button button, RecipeNode node) {
+        if (node == null) {
+            button.setMessage(Component.literal("-"));
+            button.setTooltip(null);
+            button.active = false;
+            return;
+        }
         List<RecipeHolder<?>> options = node.options();
         int total = options.size();
         int index = total == 0 ? 0 : Math.min(node.selectedRecipeIndex(), total - 1);
-        String counter = total > 0 ? (index + 1) + "/" + total : "-";
         boolean cut = PlannerState.isCut(node.item());
-
-        Component tooltip;
-        if (total == 0) {
-            tooltip = null;
-        } else if (cut) {
-            // The same words the tree badge uses for the same state.
-            tooltip = Component.translatable(KEY_CUT);
-        } else {
-            tooltip = Component.translatable(total > 1 ? KEY_RECIPE_TOOLTIP : KEY_RECIPE_ONE,
-                    index + 1, total);
-        }
-
-        Button button = FitButton.create(x, y, this.layout.recipeW, RecipeListLayout.BUTTON_H,
-                Component.literal((cut ? "✂ " : "") + (total > 0 ? counter + " ▾" : counter)),
-                pressed -> this.minecraft.setScreen(new RecipePickerScreen(node.item(), this)),
-                tooltip);
+        button.setMessage(Component.literal((cut ? "✂ " : "") + (total > 0
+                ? (index + 1) + "/" + total + " ▾" : "-")));
+        button.setTooltip(total == 0 ? null
+                : cut ? Tooltip.create(Component.translatable(KEY_CUT))
+                : Tooltip.create(Component.translatable(total > 1 ? KEY_RECIPE_TOOLTIP : KEY_RECIPE_ONE,
+                        index + 1, total)));
         button.active = total > 0;
-        return button;
     }
 
     private void change(RecipeNode node, int direction) {
+        if (node == null) {
+            return;
+        }
         long step = hasShiftDown() ? 10L : 1L;
         long amount = Math.max(1, node.required() + direction * step);
         PlannerState.setAmount(node.item(), amount);
@@ -253,6 +299,9 @@ public class RecipeListScreen extends Screen {
     }
 
     private void remove(RecipeNode node) {
+        if (node == null) {
+            return;
+        }
         PlannerState.remove(node.item());
         this.scroll = Math.min(this.scroll, maxScroll());
         refresh();
@@ -428,7 +477,7 @@ public class RecipeListScreen extends Screen {
         }
         this.scroll = Math.max(0, Math.min(maxScroll(),
                 (int) ((long) (my - trackTop) * maxScroll() / trackHeight)));
-        refresh();
+        syncRowControls();
         return true;
     }
 
@@ -450,6 +499,7 @@ public class RecipeListScreen extends Screen {
         // sit outside the list. refresh() rebuilt those widgets, so scrolling cost a
         // layout pass and dropped the button the cursor was resting on.
         this.scroll = Math.max(0, Math.min(max, next));
+        syncRowControls();
         return true;
     }
 
