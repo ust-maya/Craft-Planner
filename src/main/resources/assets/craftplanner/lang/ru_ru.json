@@ -66,7 +66,7 @@
   "gui.craftplanner.picker.yield": "→ ×%1$s",
   "gui.craftplanner.recipe.output": "На выходе: %1$s ×%2$s",
   "gui.craftplanner.recipe.needs": "Нужно: %1$s",
-  "gui.craftplanner.recipe.tool": "молот-инструмент −%1$s прочности",
+  "gui.craftplanner.recipe.tool": "молот (−%1$s прочности)",
   "gui.craftplanner.recipe.none": "Ничего не нужно",
   "overlay.craftplanner.legend.have": "есть",
   "overlay.craftplanner.legend.partial": "частично",
