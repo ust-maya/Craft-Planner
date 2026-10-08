@@ -32,7 +32,7 @@
   "overlay.craftplanner.material.missing": "Missing: %1$s",
   "screen.craftplanner.tree.title": "Craft tree",
   "screen.craftplanner.tree.empty": "Nothing planned yet — hover an item and press %1$s",
-  "screen.craftplanner.tree.summary": "%1$s goals · %2$s rows",
+  "screen.craftplanner.tree.summary": "Goals: %1$s · Rows: %2$s",
   "screen.craftplanner.tree.materials.ready": "All item materials gathered",
   "screen.craftplanner.tree.materials.ready.fluid_unknown": "Item materials gathered · fluid stock not tracked",
   "screen.craftplanner.tree.materials.unknown": "Inventory unavailable · materials not checked",
@@ -58,8 +58,8 @@
   "gui.craftplanner.picker.cut": "Cut the tree here",
   "gui.craftplanner.picker.cut.tooltip": "End the branch at this item: it stays in the plan as material to gather, and its own ingredients are no longer planned",
   "gui.craftplanner.picker.cut.on.tooltip": "The branch is cut, so this item counts as material to gather — click to let the planner expand its ingredients again",
-  "gui.craftplanner.picker.expand": "Open what this recipe needs — %1$s rows of dependencies",
-  "gui.craftplanner.picker.collapse": "Close the tree — %1$s rows of dependencies",
+  "gui.craftplanner.picker.expand": "Open what this recipe needs — dependency rows: %1$s",
+  "gui.craftplanner.picker.collapse": "Close the tree — dependency rows: %1$s",
   "gui.craftplanner.picker.tree.empty": "This recipe uses the item directly: nothing else to plan",
   "gui.craftplanner.picker.tree.readonly": "Part of what this recipe needs. Click the option itself to pick that recipe",
   "gui.craftplanner.recipe.output": "Makes: %1$s ×%2$s",
@@ -88,7 +88,7 @@
   "screen.craftplanner.list.ambiguous": "Alternatives (%1$s)",
   "screen.craftplanner.list.ambiguous.tooltip": "Items the tree can craft in more than one way — each shown as the branch it drags in",
   "screen.craftplanner.ambiguous.title": "Pick recipes for the tree",
-  "screen.craftplanner.ambiguous.header": "%1$s items with more than one recipe",
+  "screen.craftplanner.ambiguous.header": "Items with more than one recipe: %1$s",
   "screen.craftplanner.ambiguous.empty": "Nothing to choose — every item in the plan has one recipe",
   "screen.craftplanner.ambiguous.row.tooltip": "%1$s · %2$s — choose which recipe this item is planned with"
 }
