@@ -64,6 +64,12 @@ public final class PlannerState {
      */
     private static Boolean hideOresOverride;
     private static Map<ItemKey, Availability> availability = Collections.emptyMap();
+    /**
+     * The inventory the current tree was expanded against. The tree takes
+     * assemblies and goals from the bag, so when the bag changes the tree has to
+     * be expanded again, not only recoloured; see {@link #refreshAvailability()}.
+     */
+    private static InventorySnapshot stockOfLastRebuild;
     private static boolean inventoryScanned;
     /** Changes only when a refreshed inventory changes material availability. */
     private static long availabilityVersion;
@@ -328,7 +334,10 @@ public final class PlannerState {
             pendingRebuildAt = 0L;
             ensureChoicesLoaded();
             Minecraft mc = Minecraft.getInstance();
-            CraftTreeBuilder.rebuild(GRAPH, mc.level, PREFERENCES, hideOres(), CUTS);
+            InventorySnapshot snapshot = mc.player == null ? null : InventorySnapshot.of(mc.player);
+            stockOfLastRebuild = snapshot;
+            CraftTreeBuilder.rebuild(GRAPH, mc.level, PREFERENCES, hideOres(), CUTS,
+                    snapshot == null ? null : snapshot::available);
             graphVersion++;
             refreshAvailability();
         } finally {
