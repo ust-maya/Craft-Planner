@@ -17,13 +17,10 @@ out/
 *.launch
 .vscode/
 
-# ---- Dev-окружение (создаётся задачами runClient / runServer / runData) ----
+# ---- Dev-окружение (создаётся задачей runClient) ----
 run/
 logs/
 crash-reports/
-
-# ---- Сгенерированные ресурсы ----
-src/generated/resources/.cache
 
 # ---- Прочее ----
 *.log

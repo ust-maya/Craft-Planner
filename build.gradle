@@ -1,6 +1,5 @@
 plugins {
     id 'java-library'
-    id 'maven-publish'
     id 'net.neoforged.gradle.userdev' version '7.1.38'
 }
 
@@ -34,11 +33,8 @@ repositories {
     }
 }
 
-sourceSets.main.resources {
-    srcDir('src/generated/resources')
-    exclude("src/generated/**/.cache")
-}
-
+// The mod is client side only: there is no server run, and it generates no
+// data, so there is no data run either.
 runs {
     configureEach {
         systemProperty 'forge.logging.markers', 'REGISTRIES'
@@ -48,14 +44,6 @@ runs {
     }
 
     client {
-    }
-
-    server {
-        argument '--nogui'
-    }
-
-    data {
-        arguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
     }
 }
 
