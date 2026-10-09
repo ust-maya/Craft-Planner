@@ -94,7 +94,7 @@ public final class RecipePreview {
         // No inventory: the preview shows what the recipe costs, not what is left
         // to gather after the bag is used.
         CraftTreeBuilder.rebuild(preview, mc.level, preferences, PlannerState.hideOres(),
-                cuts, null);
+                cuts, null, PlannerState.sources());
 
         return preview.roots().isEmpty() ? null : preview.roots().get(0);
     }

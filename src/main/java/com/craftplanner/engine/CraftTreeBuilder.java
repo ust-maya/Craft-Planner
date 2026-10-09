@@ -7,6 +7,7 @@ import com.craftplanner.graph.IngredientUtil;
 import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.NodeKind;
 import com.craftplanner.graph.RecipeNode;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -15,6 +16,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import net.minecraft.core.NonNullList;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
@@ -63,6 +65,9 @@ import org.slf4j.LoggerFactory;
  *       before it is planned to be made ({@link Stock}): only what is left
  *       is expanded, and a fully covered item ends the branch while keeping
  *       its recipe.</li>
+ *   <li>recipes of mods and machines the player switched off
+ *       ({@link SourceFilter}) are never options; an item left without any
+ *       ends as {@link NodeKind#RAW}.</li>
  * </ul>
  */
 public final class CraftTreeBuilder {
@@ -89,14 +94,17 @@ public final class CraftTreeBuilder {
     private final ResourceFilter filter;
     /** What the player carries, spent as the tree is expanded; see {@link Stock}. */
     private final Stock<ItemKey> stock;
+    /** Mods and machines the player switched off; their recipes are never options. */
+    private final SourceFilter sources;
     private int nodeCount;
 
     public CraftTreeBuilder(RecipeIndex index, Map<ItemKey, ResourceLocation> preferences, ResourceFilter filter,
-            Set<ItemKey> cuts, Stock<ItemKey> stock) {
+            Set<ItemKey> cuts, Stock<ItemKey> stock, SourceFilter sources) {
         this.index = index;
         this.filter = filter == null ? ResourceFilter.NONE : filter;
         this.cuts = cuts == null ? Set.of() : cuts;
         this.stock = stock == null ? Stock.empty() : stock;
+        this.sources = sources == null ? SourceFilter.NONE : sources;
         if (preferences != null) {
             this.preferences.putAll(preferences);
         }
@@ -107,9 +115,11 @@ public final class CraftTreeBuilder {
      * row of the recipe picker) and what the player carries: {@code inventory}
      * answers how many of an item there are, {@code null} plans as if the bag
      * were empty — the recipe picker's previews ask for exactly that.
+     * {@code sources} keeps the recipes of switched-off mods and machines out
+     * of every choice.
      */
     public static void rebuild(CraftGraph graph, Level level, Map<ItemKey, ResourceLocation> preferences,
-            boolean hideOreLike, Set<ItemKey> cuts, Function<ItemKey, Long> inventory) {
+            boolean hideOreLike, Set<ItemKey> cuts, Function<ItemKey, Long> inventory, SourceFilter sources) {
         if (level == null) {
             return;
         }
@@ -118,7 +128,7 @@ public final class CraftTreeBuilder {
         // existing index instead of re-walking every recipe in the game.
         RecipeIndex index = RecipeIndex.cachedFor(level.getRecipeManager(), level.registryAccess());
         new CraftTreeBuilder(index, preferences, ResourceFilter.of(hideOreLike), cuts,
-                inventory == null ? Stock.empty() : new Stock<>(inventory)).rebuild(graph);
+                inventory == null ? Stock.empty() : new Stock<>(inventory), sources).rebuild(graph);
     }
 
     /** Expands every root of the graph in place. */
@@ -151,8 +161,14 @@ public final class CraftTreeBuilder {
             return;
         }
 
-        List<RecipeHolder<?>> options = index.forOutput(node.item());
+        List<RecipeHolder<?>> options = allowed(index.forOutput(node.item()));
         if (options.isEmpty()) {
+            // Nothing left to make it with: no recipe at all, or every one comes
+            // from a mod or machine the player switched off. A goal keeps its node
+            // across rebuilds, so the recipe of the last rebuild goes with the branch —
+            // otherwise the recipe window would still offer it.
+            node.clearRecipe();
+            node.clearAlternatives();
             markTerminal(node, NodeKind.RAW);
             return;
         }
@@ -311,6 +327,21 @@ public final class CraftTreeBuilder {
             // effectively a raw material.
             markTerminal(node, NodeKind.RAW);
         }
+    }
+
+    /** The recipes of an item that the player has not switched off; see {@link SourceFilter}. */
+    private List<RecipeHolder<?>> allowed(List<RecipeHolder<?>> all) {
+        if (sources.isEmpty()) {
+            return all;
+        }
+        List<RecipeHolder<?>> kept = new ArrayList<>(all.size());
+        for (RecipeHolder<?> option : all) {
+            ResourceLocation type = BuiltInRegistries.RECIPE_TYPE.getKey(option.value().getType());
+            if (!sources.hides(option.id().toString(), type == null ? "" : type.toString())) {
+                kept.add(option);
+            }
+        }
+        return kept;
     }
 
     /**

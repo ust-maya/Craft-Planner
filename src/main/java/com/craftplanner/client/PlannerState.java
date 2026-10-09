@@ -5,6 +5,7 @@ import com.craftplanner.client.resource.Availability;
 import com.craftplanner.client.resource.InventorySnapshot;
 import com.craftplanner.client.resource.ResourceCheck;
 import com.craftplanner.engine.CraftTreeBuilder;
+import com.craftplanner.engine.SourceFilter;
 import com.craftplanner.graph.CraftGraph;
 import com.craftplanner.graph.ItemKey;
 import java.util.Collections;
@@ -51,6 +52,11 @@ public final class PlannerState {
      * still there after a restart.
      */
     private static final Set<ItemKey> CUTS = new LinkedHashSet<>();
+    /**
+     * Mods and machines the player keeps out of the plan. Applied by the engine to
+     * every item, so the tree, the recipe window and its previews agree.
+     */
+    private static SourceFilter sources = SourceFilter.NONE;
     /**
      * Whether the saved plan, {@link RecipeChoices} and {@link RecipeCuts} have
      * been merged into live state.
@@ -253,6 +259,32 @@ public final class PlannerState {
         return CUTS.contains(key);
     }
 
+    /** The mods and machines currently kept out of the plan. */
+    public static SourceFilter sources() {
+        LOCK.lock();
+        try {
+            ensureChoicesLoaded();
+            return sources;
+        } finally {
+            LOCK.unlock();
+        }
+    }
+
+    /**
+     * Switches mods or machines on or off. Debounced like a recipe choice: a player
+     * ticking through a list of machines must not rebuild the plan per click.
+     */
+    public static void setSources(SourceFilter next) {
+        LOCK.lock();
+        try {
+            ensureChoicesLoaded();
+            sources = next == null ? SourceFilter.NONE : next;
+            pendingRebuildAt = System.currentTimeMillis() + REBUILD_DEBOUNCE_MS;
+        } finally {
+            LOCK.unlock();
+        }
+    }
+
     /**
      * The recipe choices, as a copy.
      *
@@ -339,7 +371,7 @@ public final class PlannerState {
             InventorySnapshot snapshot = mc.player == null ? null : InventorySnapshot.of(mc.player);
             stockOfLastRebuild = snapshot;
             CraftTreeBuilder.rebuild(GRAPH, mc.level, PREFERENCES, hideOres(), CUTS,
-                    snapshot == null ? null : snapshot::available);
+                    snapshot == null ? null : snapshot::available, sources);
             graphVersion++;
             refreshAvailability();
         } finally {
