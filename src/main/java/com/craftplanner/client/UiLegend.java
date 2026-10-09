@@ -25,6 +25,10 @@ import net.minecraft.network.chat.Component;
  * flows the key left to right through its footer. What all three take from here
  * is the same colours, in the same order, measured the same way — which is the
  * part that was allowed to drift.</p>
+ *
+ * <p>The tree window's key ends with the shears of a cut branch: the one sign of
+ * a row that is a shape, not a colour. The node-link view draws no shears and
+ * does not carry it.</p>
  */
 public final class UiLegend {
 
@@ -34,6 +38,11 @@ public final class UiLegend {
     public static final int TEXT_GAP = 2;
     /** Air between one entry and the next. */
     public static final int ENTRY_GAP = 6;
+
+    /** Key of the cut-branch entry; see {@link #drawCutEntry}. */
+    private static final String CUT_KEY = "overlay.craftplanner.legend.cut";
+    /** The shears are an item icon drawn at half size: eight pixels, a line of text tall. */
+    private static final int CUT_ICON = 8;
 
     /**
      * One entry per colour a row can be drawn in, in the order the key reads
@@ -149,6 +158,9 @@ public final class UiLegend {
      * The same with the distance between two lines asked for rather than guessed:
      * an overlay that draws inside a scaled pose has its own line pitch, and the
      * font's own height is not it.
+     *
+     * <p>After the colours comes the cut-branch entry, shears and a word, wrapped
+     * by the same rule.</p>
      */
     public static void draw(GuiGraphics graphics, Font font, int x, int y, int maxWidth,
             int lineStep) {
@@ -169,6 +181,31 @@ public final class UiLegend {
                     NodeColors.TEXT, false);
             used += entry.width();
         }
+        Component cut = Component.translatable(CUT_KEY);
+        int cutW = CUT_ICON + TEXT_GAP + font.width(cut) + ENTRY_GAP;
+        if (used + cutW > maxWidth && used > 0) {
+            line++;
+            used = 0;
+        }
+        if (line > 1) {
+            return;
+        }
+        drawCutEntry(graphics, font, cut, x + used, y + line * lineStep);
+    }
+
+    /**
+     * The one entry that is a shape rather than a colour: the shears a branch the
+     * player cut carries on its recipe button. Every other sign of a row is said
+     * in this key, and the shears were the one a player could only learn by
+     * resting the cursor on a button — on the HUD, not even that.
+     */
+    private static void drawCutEntry(GuiGraphics graphics, Font font, Component label, int x, int y) {
+        graphics.pose().pushPose();
+        graphics.pose().translate(x, y, 0);
+        graphics.pose().scale(0.5f, 0.5f, 1f);
+        graphics.renderItem(UiShapes.cutIcon(), 0, 0);
+        graphics.pose().popPose();
+        graphics.drawString(font, label, x + CUT_ICON + TEXT_GAP, y, NodeColors.TEXT, false);
     }
 
     /**
