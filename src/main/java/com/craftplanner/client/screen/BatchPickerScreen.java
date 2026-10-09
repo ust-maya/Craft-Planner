@@ -8,6 +8,7 @@ import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.MachineNames;
 import com.craftplanner.client.overlay.NodeColors;
+import com.craftplanner.client.tree.FoldSteps;
 import com.craftplanner.client.tree.TreeFlatten;
 import com.craftplanner.client.tree.TreeMetrics;
 import com.craftplanner.client.tree.TreeRow;
@@ -88,6 +89,10 @@ public final class BatchPickerScreen extends Screen {
     private final Set<String> opened = new HashSet<>();
     /** One flattened branch per decision: its heading at row 0, then what hangs off it. */
     private List<List<TreeRow<RecipeNode>>> branches = List.of();
+    /** Every branch fully open, for the fold buttons to reason about; rebuilt with {@link #branches}. */
+    private List<List<TreeRow<RecipeNode>>> wholeBranches = List.of();
+    /** The window's fold buttons, placed on the control row every frame like the close button. */
+    private List<Button> foldButtons = List.of();
     /**
      * The branches as plan-row indices: one heading per decision, followed by the
      * rows hanging off it. Indices, not nodes, because the plan rebuilds its rows
@@ -166,6 +171,29 @@ public final class BatchPickerScreen extends Screen {
         this.closeButton = addRenderableWidget(FitButton.create(0, 0,
                 Math.max(48, this.font.width(close) + 2 * PAD), RecipeListLayout.BUTTON_H,
                 close, button -> onClose(), null));
+        this.foldButtons = this.lines.isEmpty() ? List.of()
+                : FoldButtons.create(this.font, RecipeListLayout.BUTTON_H, new FoldButtons.Actions() {
+                    @Override
+                    public void collapseAll() {
+                        step(new FoldSteps.Change(Set.copyOf(BatchPickerScreen.this.opened), Set.of()));
+                    }
+
+                    @Override
+                    public void expandAll() {
+                        step(new FoldSteps.Change(Set.of(), FoldSteps.allPaths(wholeEntries())));
+                    }
+
+                    @Override
+                    public void collapseLevel() {
+                        step(FoldSteps.collapseLevel(wholeEntries(), path -> !BatchPickerScreen.this.opened.contains(path)));
+                    }
+
+                    @Override
+                    public void expandLevel() {
+                        step(FoldSteps.expandLevel(wholeEntries(), path -> !BatchPickerScreen.this.opened.contains(path)));
+                    }
+                });
+        this.foldButtons.forEach(this::addRenderableWidget);
     }
 
     @Override
@@ -200,6 +228,7 @@ public final class BatchPickerScreen extends Screen {
         List<TreeRow<RecipeNode>> whole = TreeFlatten.flatten(PlannerState.graph().roots(), source,
                 path -> false);
         List<List<TreeRow<RecipeNode>>> builtBranches = new ArrayList<>();
+        List<List<TreeRow<RecipeNode>>> builtWhole = new ArrayList<>();
         List<Line> built = new ArrayList<>();
         Set<Integer> shown = new HashSet<>();
         this.ambiguous = new HashSet<>();
@@ -215,6 +244,7 @@ public final class BatchPickerScreen extends Screen {
             }
             List<TreeRow<RecipeNode>> branch = TreeFlatten.flatten(List.of(whole.get(at).node()), source,
                     path -> !this.opened.contains(path));
+            builtWhole.add(TreeFlatten.flatten(List.of(whole.get(at).node()), source, path -> false));
             int index = builtBranches.size();
             builtBranches.add(branch);
             int headLine = built.size();
@@ -223,7 +253,24 @@ public final class BatchPickerScreen extends Screen {
             }
         }
         this.branches = builtBranches;
+        this.wholeBranches = builtWhole;
         this.lines = built;
+    }
+
+    /** All branches with nothing folded, as the fold steps see them. */
+    private List<FoldSteps.Entry> wholeEntries() {
+        List<FoldSteps.Entry> entries = new ArrayList<>();
+        for (List<TreeRow<RecipeNode>> branch : this.wholeBranches) {
+            entries.addAll(FoldSteps.entriesOf(branch));
+        }
+        return entries;
+    }
+
+    /** Applies a fold step to this window's own folds: folding a path is forgetting it was opened. */
+    private void step(FoldSteps.Change change) {
+        this.opened.removeAll(change.fold());
+        this.opened.addAll(change.unfold());
+        refreshKeeping();
     }
 
     /**
@@ -269,6 +316,10 @@ public final class BatchPickerScreen extends Screen {
         }
         widest = Math.max(widest, TreeMetrics.TOGGLE_W
                 + this.font.width(Component.translatable("screen.craftplanner.list.close").getString()));
+        // The control row holds the fold buttons on the left and close on the right.
+        Component close = Component.translatable("screen.craftplanner.list.close");
+        widest = Math.max(widest, FoldButtons.width(this.font) + TEXT_GAP
+                + Math.max(48, this.font.width(close) + 2 * PAD));
         return Math.min(this.width - 2 * MARGIN, Math.max(240, widest + 2 + 2 * PAD));
     }
 
@@ -467,12 +518,14 @@ public final class BatchPickerScreen extends Screen {
             }
         }
 
-        // The panel is re-measured on folds without a new init(), so the button is
+        // The panel is re-measured on folds without a new init(), so the buttons are
         // placed where the control row is on this frame, right-aligned like the tree's.
+        int controlTop = bandTop() + shown * ROW_H;
         if (this.closeButton != null) {
-            int controlTop = bandTop() + shown * ROW_H;
             this.closeButton.setX(left + this.panelWidth - PAD - this.closeButton.getWidth());
             this.closeButton.setY(controlTop + (ROW_H - this.closeButton.getHeight()) / 2);
+            FoldButtons.place(this.foldButtons, left + PAD,
+                    controlTop + (ROW_H - RecipeListLayout.BUTTON_H) / 2);
         }
         drawScrollbar(graphics, left, shown, mouseX, mouseY);
 
