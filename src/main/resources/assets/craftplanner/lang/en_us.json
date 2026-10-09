@@ -63,6 +63,8 @@
   "gui.craftplanner.picker.uncut": "Expand the branch again",
   "gui.craftplanner.picker.cut.tooltip": "End the branch at this item: it stays in the plan as material to gather, and its own ingredients are no longer planned",
   "gui.craftplanner.picker.cut.on.tooltip": "The branch is cut, so this item counts as material to gather — click to let the planner expand its ingredients again",
+  "gui.craftplanner.picker.sources": "Sources…",
+  "gui.craftplanner.picker.sources.tooltip": "Choose which mods and machines the plan and this window may use",
   "gui.craftplanner.picker.expand": "Open what this recipe needs — dependency rows: %1$s",
   "gui.craftplanner.picker.collapse": "Close the tree — dependency rows: %1$s",
   "gui.craftplanner.picker.tree.empty": "This recipe uses the item directly: nothing else to plan",
