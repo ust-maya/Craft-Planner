@@ -1,0 +1,51 @@
+name: Bug report / Ошибка
+description: Something does not work as it should. / Что-то работает не так, как должно.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened / Что произошло
+      description: What you did, what you expected and what you saw instead. / Что вы сделали, чего ждали и что получили.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / Как повторить
+      placeholder: |
+        1. Hover over an item in JEI and press N
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: mod-version
+    attributes:
+      label: Craft Planner version / Версия Craft Planner
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: neoforge-version
+    attributes:
+      label: NeoForge version / Версия NeoForge
+      placeholder: "21.1.248"
+    validations:
+      required: true
+  - type: input
+    id: viewers
+    attributes:
+      label: EMI / JEI versions, if installed / Версии EMI и JEI, если стоят
+  - type: textarea
+    id: mods
+    attributes:
+      label: Other mods / Другие моды
+      description: The modpack name, or the mods whose recipes are involved. / Название сборки или моды, чьи рецепты участвуют.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log or crash report / Лог или крэш-репорт
+      description: |
+        `logs/latest.log` or a file from `crash-reports/`. Paste it here or link to a paste service.
+        `logs/latest.log` или файл из `crash-reports/`. Вставьте сюда или дайте ссылку.
+      render: text
