@@ -1,5 +1,8 @@
 package com.craftplanner.client;
 
+import com.craftplanner.client.resource.Availability;
+import com.craftplanner.client.tree.TreeMetrics;
+import com.craftplanner.client.tree.TreeRow;
 import com.craftplanner.graph.RecipeNode;
 import net.minecraft.network.chat.Component;
 
@@ -28,6 +31,24 @@ public final class AmountLabel {
         return node.isFluidRequirement()
                 ? millibuckets(node.required())
                 : times(node.required());
+    }
+
+    /**
+     * A row's amount with its availability sign, as every tree surface prints it.
+     * A partly covered material reads "~ 2/4" — on hand of needed — rather than
+     * "~ ×4", which said that something was missing but not how much. The numbers
+     * are the plan's totals for the item, the same ones the row's status is judged
+     * by, so a row and its sign can never disagree.
+     */
+    public static String marked(TreeRow<RecipeNode> row) {
+        if (row.status() == TreeRow.Status.PARTIAL) {
+            Availability state = PlannerState.availability().get(row.node().item());
+            if (state != null) {
+                return TreeMetrics.markedAmount(row.status(),
+                        TreeMetrics.partialAmount(state.available(), state.required()));
+            }
+        }
+        return TreeMetrics.markedAmount(row.status(), of(row.node()));
     }
 
     /** A fluid volume: the number and the unit the player's language uses for it. */

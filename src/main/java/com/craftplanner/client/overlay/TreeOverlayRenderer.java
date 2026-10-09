@@ -246,7 +246,7 @@ public final class TreeOverlayRenderer {
 
     /** The label of a row: what it is, how much of it, and what a fold is hiding. */
     private static String rowLabel(TreeRow<RecipeNode> row) {
-        return row.name() + " " + TreeMetrics.markedAmount(row.status(), AmountLabel.of(row.node()))
+        return row.name() + " " + AmountLabel.marked(row)
                 + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
     }
 

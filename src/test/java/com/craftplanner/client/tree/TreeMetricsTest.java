@@ -221,4 +221,24 @@ class TreeMetricsTest {
         assertTrue(trimmed.startsWith(TreeRow.Status.COVERED.mark()) || trimmed.isEmpty(),
                 "the sign is the first thing a cut label loses: " + trimmed);
     }
+
+    @Test
+    void aPartialAmountReadsAsHaveOverNeed() {
+        assertEquals("2/4", TreeMetrics.partialAmount(2, 4));
+    }
+
+    @Test
+    void aPartialAmountNeverReadsBelowZero() {
+        assertEquals("0/4", TreeMetrics.partialAmount(-1, 4));
+    }
+
+    @Test
+    void aPartialAmountNeverReadsAboveTheDemand() {
+        assertEquals("4/4", TreeMetrics.partialAmount(9, 4));
+    }
+
+    @Test
+    void aPartialAmountOfNothingAskedForIsZeroOverZero() {
+        assertEquals("0/0", TreeMetrics.partialAmount(0, 0));
+    }
 }

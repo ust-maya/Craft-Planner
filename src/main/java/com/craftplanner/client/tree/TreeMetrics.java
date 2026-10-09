@@ -151,6 +151,14 @@ public final class TreeMetrics {
         return mark.isEmpty() ? amount : mark + " " + amount;
     }
 
+    /**
+     * "have/need" for a partly covered material: the part of the demand already in
+     * the inventory, never shown as more than the demand or less than nothing.
+     */
+    public static String partialAmount(long have, long need) {
+        return Math.max(0, Math.min(have, need)) + "/" + need;
+    }
+
     /** Pixel width a row of {@code depth} needs to show a label of {@code labelW}. */
     public static int rowWidth(int depth, int labelW) {
         return labelX(depth) + labelW;
