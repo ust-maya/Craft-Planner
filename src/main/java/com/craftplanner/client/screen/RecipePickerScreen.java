@@ -3,6 +3,7 @@ package com.craftplanner.client.screen;
 import com.craftplanner.Config;
 import com.craftplanner.client.MachineNames;
 import com.craftplanner.client.AmountLabel;
+import com.craftplanner.client.PlanRows;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
 import com.craftplanner.client.RecipePreview;
@@ -13,13 +14,17 @@ import com.craftplanner.client.overlay.NodeColors;
 import com.craftplanner.client.resource.Availability;
 import com.craftplanner.client.resource.InventorySnapshot;
 import com.craftplanner.client.resource.ResourceCheck;
+import com.craftplanner.client.tree.TreeFlatten;
 import com.craftplanner.client.tree.TreeMetrics;
 import com.craftplanner.client.tree.TreeRow;
 import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.RecipeNode;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -59,7 +64,9 @@ import org.lwjgl.glfw.GLFW;
  * plan's own geometry, so the alternatives are read as branches rather than as
  * numbers. Every option starts closed, like every tree outside the plan window:
  * the window opens on the comparison itself, and what an option drags in is one
- * click away and only worked out when it is asked for.</p>
+ * click away and only worked out when it is asked for. Inside an opened tree every
+ * branch folds on its own plate, and starts folded: the first look at an option is
+ * its direct ingredients.</p>
  *
  * <p>Rows are drawn by this screen rather than by widgets — no vanilla widget
  * offers the composition a row needs (fold plate, mark, machine icon, two-colour
@@ -132,8 +139,23 @@ public final class RecipePickerScreen extends Screen {
     private List<Option> rows = List.of();
     /** Everything the band shows, options and the trees opened under them. */
     private List<Line> lines = List.of();
+    /** The flattened tree of every opened option, rebuilt by {@link #relayout()}. */
+    private final Map<Integer, List<TreeRow<RecipeNode>>> trees = new HashMap<>();
+    /**
+     * Rows each option's whole tree holds — 0 when the recipe consumes only what
+     * the plan treats as material, so there is nothing to open. Counted for every
+     * option, closed ones too: the plate and its tooltip have to say what opening
+     * would show before it is opened.
+     */
+    private int[] treeSizes = new int[0];
     /** Which options are opened, by recipe id so a re-sort does not close them. */
     private final Set<ResourceLocation> expanded = new LinkedHashSet<>();
+    /**
+     * Branches opened inside the options' trees, keyed {@code "<recipe id>|<tree path>"}:
+     * two options that share an ingredient keep folds of their own. Everything not
+     * here is folded, as in every tree outside the plan window.
+     */
+    private final Set<String> openedPaths = new HashSet<>();
     private int selected = -1;
     private int scroll;
     /** Whether the first layout already put the row in use on screen. */
@@ -218,6 +240,10 @@ public final class RecipePickerScreen extends Screen {
                     join(RecipeLabel.describe(option, registries))));
         }
         this.rows = built;
+        this.treeSizes = new int[this.options.size()];
+        for (int i = 0; i < this.options.size(); i++) {
+            this.treeSizes[i] = TreeFlatten.flatten(treeRootsOf(i), PlanRows.planSource(), Set.of()).size();
+        }
         this.expanded.retainAll(idsOf(this.options));
         relayout();
         this.panelWidth = measure();
@@ -252,29 +278,52 @@ public final class RecipePickerScreen extends Screen {
         return ids;
     }
 
+    /** The key a branch of an option's tree is remembered by in {@link #openedPaths}. */
+    private static String keyOf(RecipeHolder<?> option, String path) {
+        return option.id() + "|" + path;
+    }
+
     /** Rebuilds the band: every option, and under each opened one its dependency tree. */
     private void relayout() {
+        this.trees.clear();
         List<Line> built = new ArrayList<>(this.rows.size());
         for (int i = 0; i < this.rows.size(); i++) {
             built.add(new OptionLine(i));
-            List<TreeRow<RecipeNode>> preview = previewOf(i);
-            if (preview != null) {
-                for (int r = 0; r < preview.size(); r++) {
-                    built.add(new TreeLine(i, r));
-                }
+            if (!hasTree(i) || !this.expanded.contains(this.options.get(i).id())) {
+                continue;
+            }
+            RecipeHolder<?> recipe = this.options.get(i);
+            List<TreeRow<RecipeNode>> tree = TreeFlatten.flatten(treeRootsOf(i), PlanRows.planSource(),
+                    path -> !this.openedPaths.contains(keyOf(recipe, path)));
+            this.trees.put(i, tree);
+            for (int r = 0; r < tree.size(); r++) {
+                built.add(new TreeLine(i, r));
             }
         }
         this.lines = built;
     }
 
-    /** The option's dependency tree, or {@code null} while it is closed. */
+    /**
+     * Where an option's tree starts: the ingredients of its preview root. The root
+     * itself is the item the option row already names, so its children hang off
+     * the option instead of off a name that is not on screen.
+     */
+    private List<RecipeNode> treeRootsOf(int option) {
+        RecipeNode root = RecipePreview.rootOf(this.item, this.options.get(option));
+        return root == null ? List.of() : PlanRows.planSource().childrenOf(root);
+    }
+
+    /** Whether the option has anything below it to open. */
+    private boolean hasTree(int option) {
+        return option >= 0 && option < this.treeSizes.length && this.treeSizes[option] > 0;
+    }
+
+    /**
+     * The option's dependency tree as laid out by the last {@link #relayout()},
+     * or {@code null} while it is closed.
+     */
     private List<TreeRow<RecipeNode>> previewOf(int option) {
-        if (option < 0 || option >= this.options.size()) {
-            return null;
-        }
-        return this.expanded.contains(this.options.get(option).id())
-                ? RecipePreview.of(this.item, this.options.get(option))
-                : null;
+        return this.trees.get(option);
     }
 
     /** Where an option's own line sits in {@link #lines}, so its tree can be found. */
@@ -400,9 +449,11 @@ public final class RecipePickerScreen extends Screen {
                 continue;
             }
             for (TreeRow<RecipeNode> row : preview) {
+                String amount = AmountLabel.marked(row)
+                        + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
                 widest = Math.max(widest, optionGutterW() + TreeMetrics.labelX(depthOf(row))
                     + this.font.width(row.name()) + TEXT_GAP
-                    + this.font.width(AmountLabel.marked(row)));
+                    + this.font.width(amount));
             }
         }
         widest = Math.max(widest, cutButtonW() + GAP + closeButtonW());
@@ -420,14 +471,11 @@ public final class RecipePickerScreen extends Screen {
     }
 
     /**
-     * How deep a preview row is drawn.
-     *
-     * <p>The root of a preview is the item the option row already shows, and it is
-     * dropped, so its children keep their meaning but start one step further in:
-     * they hang off the option, not off a name that is not on screen.</p>
+     * How deep a tree row is drawn: the tree starts from the recipe's ingredients,
+     * so a row's own depth is its column.
      */
     private static int depthOf(TreeRow<RecipeNode> row) {
-        return Math.max(0, row.depth() - 1);
+        return row.depth();
     }
 
     private static String cutLabel(boolean cut) {
@@ -522,8 +570,19 @@ public final class RecipePickerScreen extends Screen {
         return mx < panelLeft() + PAD + TOGGLE_W + TOGGLE_GAP / 2;
     }
 
+    /** Whether a point is on the fold plate of a tree line — where the tree draws it, by depth. */
+    private boolean overTreeToggle(int mx, TreeLine line) {
+        List<TreeRow<RecipeNode>> tree = previewOf(line.option());
+        if (tree == null || line.row() >= tree.size() || !tree.get(line.row()).foldable()) {
+            return false;
+        }
+        int x = panelLeft() + PAD + optionGutterW()
+                + TreeMetrics.toggleX(depthOf(tree.get(line.row())));
+        return mx >= x && mx < x + Math.max(TreeMetrics.TOGGLE_W, TreeMetrics.MIN_TOGGLE_HIT_W);
+    }
+
     /** The tooltip of a line, or {@code null} for a row that has none. */
-    private Component tooltipAt(int index) {
+    private Component tooltipAt(int index, int mx) {
         if (index < 0 || index >= this.lines.size()) {
             return null;
         }
@@ -532,16 +591,22 @@ public final class RecipePickerScreen extends Screen {
             Component base = this.rows.get(row.option()).tooltip();
             return base.copy().append("\n").append(toggleHint(row.option()));
         }
+        TreeLine tree = (TreeLine) line;
+        if (overTreeToggle(mx, tree)) {
+            TreeRow<RecipeNode> row = previewOf(tree.option()).get(tree.row());
+            return Component.translatable(row.folded()
+                    ? "overlay.craftplanner.fold.expand" : "overlay.craftplanner.fold.collapse");
+        }
         return Component.translatable("gui.craftplanner.picker.tree.readonly");
     }
 
     private Component toggleHint(int option) {
+        if (!hasTree(option)) {
+            return Component.translatable("gui.craftplanner.picker.tree.empty");
+        }
         boolean open = this.expanded.contains(this.options.get(option).id());
-        List<TreeRow<RecipeNode>> preview = previewOf(option);
-        return preview == null || preview.isEmpty()
-                ? Component.translatable("gui.craftplanner.picker.tree.empty")
-                : Component.translatable(open ? "gui.craftplanner.picker.collapse"
-                        : "gui.craftplanner.picker.expand", preview.size());
+        return Component.translatable(open ? "gui.craftplanner.picker.collapse"
+                : "gui.craftplanner.picker.expand", this.treeSizes[option]);
     }
 
     @Override
@@ -559,13 +624,16 @@ public final class RecipePickerScreen extends Screen {
         int index = hitLine(mx, my);
         if (index >= 0) {
             Line line = this.lines.get(index);
-            if (line instanceof TreeLine) {
-                // A dependency row is not a choice: opening the tree must not be a
-                // way to switch recipes by accident.
+            if (line instanceof TreeLine tree) {
+                // A dependency row is not a choice: opening the tree must not be a way to
+                // switch recipes by accident. Its plate folds its branch, as in every tree.
+                if (overTreeToggle(mx, tree)) {
+                    toggleBranch(tree.option(), previewOf(tree.option()).get(tree.row()).path());
+                }
                 return true;
             }
             OptionLine row = (OptionLine) line;
-            if (overToggle(mx, my)) {
+            if (overToggle(mx, my) && hasTree(row.option())) {
                 toggle(row.option());
                 return true;
             }
@@ -581,12 +649,23 @@ public final class RecipePickerScreen extends Screen {
         if (!this.expanded.remove(id)) {
             this.expanded.add(id);
         }
-        // The line under the cursor should stay under the cursor: opening a tree
-        // pushes everything below it down, so the option's own line is the anchor.
-        int anchor = lineOf(option);
+        // Opening or closing a tree only changes the lines below the option, so the
+        // scroll is left alone and the option stays under the cursor — as in every
+        // other tree. Scrolling to it moved the clicked line to the top of the band.
         relayout();
         this.panelWidth = measure();
-        this.scroll = Math.max(0, Math.min(anchor, maxScroll()));
+        this.scroll = Math.min(this.scroll, maxScroll());
+    }
+
+    /** Folds or unfolds one branch of an option's tree; the scroll stays, as in {@link #toggle}. */
+    private void toggleBranch(int option, String path) {
+        String key = keyOf(this.options.get(option), path);
+        if (!this.openedPaths.remove(key)) {
+            this.openedPaths.add(key);
+        }
+        relayout();
+        this.panelWidth = measure();
+        this.scroll = Math.min(this.scroll, maxScroll());
     }
 
     @Override
@@ -628,7 +707,7 @@ public final class RecipePickerScreen extends Screen {
         drawColumnHeadings(graphics, left, top);
 
         int hover = hitLine(mouseX, mouseY);
-        Component tooltip = hover >= 0 ? tooltipAt(hover) : null;
+        Component tooltip = hover >= 0 ? tooltipAt(hover, mouseX) : null;
         if (tooltip != null) {
             // Queued here and painted by vanilla once the pass is over
             // ({@code Screen.renderWithTooltip}), which puts it above every row this
@@ -656,7 +735,7 @@ public final class RecipePickerScreen extends Screen {
             if (line instanceof OptionLine option) {
                 drawOptionLine(graphics, option.option(), index == hover, left, y);
             } else if (line instanceof TreeLine tree) {
-                drawTreeLine(graphics, tree, y);
+                drawTreeLine(graphics, tree, y, index == hover && overTreeToggle(mouseX, tree));
             }
         }
         graphics.disableScissor();
@@ -802,25 +881,25 @@ public final class RecipePickerScreen extends Screen {
 
     /**
      * The fold plate of an option: the tree's own fold button, so a recipe and a
-     * branch open the same way.
+     * branch open the same way — "+" while closed, "−" while open, and no plate at
+     * all when the recipe has nothing below it, like a leaf of the tree.
      *
      * <p>It sits before the mark rather than replacing it: the mark says which
      * recipe is in use, the plate says there is more to read, and neither answers
      * the other.</p>
      */
     private void drawToggle(GuiGraphics graphics, int option, boolean hovered, int left, int y) {
-        List<TreeRow<RecipeNode>> preview = previewOf(option);
-        boolean empty = preview == null || preview.isEmpty();
-        boolean open = !empty && this.expanded.contains(this.options.get(option).id());
+        if (!hasTree(option)) {
+            return;
+        }
+        boolean open = this.expanded.contains(this.options.get(option).id());
         int height = ROW_H - 4;
-        // The plate takes "folded", as in every tree: a closed option with a tree
-        // behind it shows "+", an open one or one with nothing to open shows "−".
         UiShapes.foldButton(graphics, left + PAD, y + (ROW_H - height) / 2, TOGGLE_W, height,
-                !empty && !open, hovered);
+                !open, hovered);
     }
 
-    /** One row of an opened tree: guide, icon, name and how much of it is needed. */
-    private void drawTreeLine(GuiGraphics graphics, TreeLine line, int y) {
+    /** One row of an opened tree: its own fold plate, guide, icon, name and amount. */
+    private void drawTreeLine(GuiGraphics graphics, TreeLine line, int y, boolean aimed) {
         List<TreeRow<RecipeNode>> preview = previewOf(line.option());
         if (preview == null || line.row() >= preview.size()) {
             return;
@@ -829,11 +908,16 @@ public final class RecipePickerScreen extends Screen {
         int originX = panelLeft() + PAD + optionGutterW();
         int depth = depthOf(row);
         int iconX = originX + TreeMetrics.iconX(depth);
+        if (row.foldable()) {
+            int height = ROW_H - 4;
+            UiShapes.foldButton(graphics, originX + TreeMetrics.toggleX(depth), y + (ROW_H - height) / 2,
+                    TreeMetrics.TOGGLE_W, height, row.folded(), aimed);
+        }
         graphics.renderItem(row.node().displayStack(), iconX, y + (ROW_H - ICON_W) / 2);
 
         int textY = y + (ROW_H - this.font.lineHeight) / 2;
         int room = this.panelWidth - 2 * PAD - optionGutterW() - TreeMetrics.labelX(depth);
-        String amount = AmountLabel.marked(row);
+        String amount = AmountLabel.marked(row) + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
         String name = RecipeListLayout.trimToWidth(this.font::width, row.name(),
                 Math.max(0, room - this.font.width(amount) - TEXT_GAP));
         int nameX = originX + TreeMetrics.labelX(depth);
