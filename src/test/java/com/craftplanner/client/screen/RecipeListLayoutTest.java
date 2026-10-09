@@ -81,4 +81,45 @@ class RecipeListLayoutTest {
         assertEquals(List.of(), RecipeListLayout.wrapSegments(ONE_PER_CHAR, "aa · bb", 0, 2,
                 SEPARATOR));
     }
+
+    private static RecipeListLayout footerOf(int screenWidth, List<String> names, String ambiguous) {
+        return new RecipeListLayout(ONE_PER_CHAR, screenWidth, names, 64, 2, "Recipe", "Amount", "Del",
+                "Clear all", "Close", "Ores hidden", "Sources...", ambiguous, "", false);
+    }
+
+    /** Left edge, width of every footer button that is present, in the order they are drawn. */
+    private static int[][] footerButtons(RecipeListLayout l) {
+        List<int[]> buttons = new java.util.ArrayList<>();
+        buttons.add(new int[] {l.clearX, l.clearW});
+        if (l.ambiguousW > 0) {
+            buttons.add(new int[] {l.ambiguousX, l.ambiguousW});
+        }
+        buttons.add(new int[] {l.sourcesX, l.sourcesW});
+        buttons.add(new int[] {l.oresX, l.oresW});
+        buttons.add(new int[] {l.closeX, l.closeW});
+        return buttons.toArray(new int[0][]);
+    }
+
+    @Test
+    void theSourcesButtonIsThereEvenWithAnEmptyPlan() {
+        RecipeListLayout l = footerOf(800, List.of(), "");
+        assertTrue(l.sourcesW > 0, "the way back to the switched-off machines must not depend on the plan");
+    }
+
+    @Test
+    void footerButtonsNeverOverlapOrLeaveThePanel() {
+        for (int screenWidth : new int[] {800, 400, 330, 250}) {
+            for (String ambiguous : new String[] {"", "Choose recipes (3)"}) {
+                RecipeListLayout l = footerOf(screenWidth, List.of("Iron ingot"), ambiguous);
+                int[][] buttons = footerButtons(l);
+                int previousEnd = 0;
+                for (int[] b : buttons) {
+                    assertTrue(b[0] >= previousEnd, "buttons overlap at screen width " + screenWidth
+                            + " (ambiguous='" + ambiguous + "'): " + b[0] + " < " + previousEnd);
+                    previousEnd = b[0] + b[1];
+                }
+                assertTrue(previousEnd <= l.panelWidth, "footer leaves the panel at screen width " + screenWidth);
+            }
+        }
+    }
 }

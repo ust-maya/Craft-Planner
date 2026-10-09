@@ -168,8 +168,6 @@ public final class RecipePickerScreen extends Screen {
     private long seenAvailabilityVersion = -1;
     private Button cutButton;
     private Button closeButton;
-    /** Opens the window that says which mods and machines may be used at all. */
-    private Button sourcesButton;
     /** Cut state the cut button was last labelled for; the label follows the plan, not a click. */
     private boolean cutShown;
 
@@ -270,12 +268,6 @@ public final class RecipePickerScreen extends Screen {
         this.closeButton = addRenderableWidget(FitButton.create(0, 0, closeButtonW(),
                 RecipeListLayout.BUTTON_H, Component.literal(tr("screen.craftplanner.list.close")),
                 button -> onClose(), null));
-        // The sources sit in the same row rather than next to the cut switch: they
-        // change which options exist at all, not what happens to this item.
-        this.sourcesButton = addRenderableWidget(FitButton.create(0, 0, sourcesButtonW(),
-                RecipeListLayout.BUTTON_H, Component.literal(tr("gui.craftplanner.picker.sources")),
-                button -> this.minecraft.setScreen(new RecipeSourcesScreen(this)),
-                Component.translatable("gui.craftplanner.picker.sources.tooltip")));
     }
 
     private static Set<ResourceLocation> idsOf(List<RecipeHolder<?>> options) {
@@ -464,7 +456,7 @@ public final class RecipePickerScreen extends Screen {
                     + this.font.width(amount));
             }
         }
-        widest = Math.max(widest, cutButtonW() + GAP + sourcesButtonW() + GAP + closeButtonW());
+        widest = Math.max(widest, cutButtonW() + GAP + closeButtonW());
         int width = Math.min(this.width - 2 * MARGIN, Math.max(200, widest + 2 + 2 * PAD));
         // The columns are fitted to the panel actually granted, which on a small
         // window is narrower than the rows asked for.
@@ -497,10 +489,6 @@ public final class RecipePickerScreen extends Screen {
 
     private int closeButtonW() {
         return Math.max(48, this.font.width(tr("screen.craftplanner.list.close")) + 2 * PAD);
-    }
-
-    private int sourcesButtonW() {
-        return Math.max(48, this.font.width(tr("gui.craftplanner.picker.sources")) + 2 * PAD);
     }
 
     private static Component cutTooltip(boolean cut) {
@@ -765,8 +753,6 @@ public final class RecipePickerScreen extends Screen {
         this.cutButton.setY(buttonY);
         this.closeButton.setX(left + this.panelWidth - PAD - this.closeButton.getWidth());
         this.closeButton.setY(buttonY);
-        this.sourcesButton.setX(this.closeButton.getX() - GAP - this.sourcesButton.getWidth());
-        this.sourcesButton.setY(buttonY);
 
         // A dozen machine alternatives scroll, and a wheel that finds nothing to show
         // for it reads as a broken list — so the band of lines carries the same

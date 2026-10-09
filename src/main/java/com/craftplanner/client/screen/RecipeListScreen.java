@@ -51,6 +51,7 @@ public class RecipeListScreen extends Screen {
     /** The same button's label while it waits to be pressed a second time. */
     private static final String KEY_CLEAR_ASK = "screen.craftplanner.list.clear.ask";
     private static final String KEY_CLOSE = "screen.craftplanner.list.close";
+    private static final String KEY_SOURCES = "screen.craftplanner.list.sources";
     private static final String KEY_EMPTY = "screen.craftplanner.list.empty";
     private static final String KEY_HINT = "screen.craftplanner.list.hint";
     private static final String KEY_HEADER_ITEM = "screen.craftplanner.list.header.item";
@@ -173,7 +174,7 @@ public class RecipeListScreen extends Screen {
                 : Component.translatable(KEY_AMBIGUOUS, ambiguous).getString();
         this.layout = new RecipeListLayout(this.metrics, this.width, names, maxAmount, maxOptions,
                 tr(KEY_HEADER_RECIPE), tr(KEY_HEADER_AMOUNT), tr(KEY_HEADER_REMOVE),
-                tr(KEY_CLEAR), tr(KEY_CLOSE), oresLabel().getString(), ambiguousLabel,
+                tr(KEY_CLEAR), tr(KEY_CLOSE), oresLabel().getString(), tr(KEY_SOURCES), ambiguousLabel,
                 PlannerState.listHintSeen() ? "" : hint(), anyCut);
     }
 
@@ -244,6 +245,14 @@ public class RecipeListScreen extends Screen {
                     refresh();
                 },
                 Component.translatable("screen.craftplanner.list.ores.tooltip")));
+
+        // Recipe sources: which mods and machines the plan may use at all. They are
+        // opened from here, not from one item's window, because switching every
+        // machine off leaves no item with a recipe to open a window on.
+        addRenderableWidget(FitButton.create(left + l.sourcesX, footerY, l.sourcesW,
+                RecipeListLayout.BUTTON_H, Component.translatable(KEY_SOURCES),
+                button -> this.minecraft.setScreen(new RecipeSourcesScreen(this)),
+                Component.translatable("screen.craftplanner.list.sources.tooltip")));
 
         // Batch recipe choice: only offered while the tree actually holds items
         // with more than one recipe — the engine's own pick is otherwise final.

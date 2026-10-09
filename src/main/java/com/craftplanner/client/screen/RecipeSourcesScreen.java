@@ -26,7 +26,9 @@ import net.neoforged.fml.ModList;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Which mods and machines the plan may use, opened from the recipe window.
+ * Which mods and machines the plan may use, opened from the recipe list.
+ * The choice is global, not per item, and the list opens even when every
+ * machine is switched off, so the way back is always at hand.
  *
  * <p>One row per mod, and under it one row per machine the mod adds — its recipe
  * types, with the block that runs them and how many indexed recipes they hold.
@@ -329,7 +331,7 @@ public final class RecipeSourcesScreen extends Screen {
         graphics.drawString(this.font, count, countX, textY, UiPalette.MUTED, false);
     }
 
-    /** Back to the recipe window it was opened from. */
+    /** Back to the recipe list it was opened from. */
     @Override
     public void onClose() {
         this.minecraft.setScreen(this.returnTo);
