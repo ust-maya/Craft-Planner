@@ -100,7 +100,8 @@ final class GraphOverlayRenderer {
         Map<ItemKey, Availability> availability = PlannerState.availability();
         int footerLayoutW = Math.max(1, (int) ((panelWidth - 2 * G_PADDING) / density));
         TextMetrics metrics = font::width;
-        ShoppingListFooter.Footer footer = ShoppingListFooter.buildFooter(availability, PlannerState.fluidRequirements(), metrics, footerLayoutW,
+        ShoppingListFooter.Footer footer = ShoppingListFooter.buildFooter(availability,
+                PlannerState.fluidRequirements(), PlannerState.inventoryScanned(), metrics, footerLayoutW,
                 graphKeysHint(metrics, footerLayoutW));
         int footerSpace = Math.max(G_FOOTER_SPACE, (int) Math.round(footer.height() * density) + 2);
 

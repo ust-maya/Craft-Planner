@@ -25,8 +25,9 @@ import net.minecraft.world.level.material.Fluid;
  * The shopping-list footer of the craft-plan HUD, moved out of
  * {@link TreeOverlayRenderer} without touching its logic.
  *
- * <p>One footer block holds the wrapped material icons (worst shortage first),
- * the {@code +N} marker for what did not fit, and the hotkey line. Every
+ * <p>One footer block holds the wrapped shopping list — the missing materials
+ * under their heading, then the fluids under theirs — the {@code +N} marker for
+ * what did not fit, and the hotkey line. Every
  * coordinate it produces is in layout pixels: the caller owns the scaled pose,
  * and the tooltip entry points take the origin and scale of the pose the footer
  * was drawn in so a hover test can map the cursor back onto the icons.</p>
@@ -42,6 +43,8 @@ final class ShoppingListFooter {
     private static final int FOOTER_KEYS_GAP = 2;
     /** Gap between two shopping-list entries. */
     private static final int FOOTER_ENTRY_GAP = 6;
+    /** Gap between a group heading and the first entry under it. */
+    private static final int FOOTER_LABEL_GAP = 3;
     /**
      * Slack kept by the wrap. The content width is exact in layout pixels but
      * rounded in screen pixels, so two pixels are left free rather than risk the
@@ -99,17 +102,29 @@ final class ShoppingListFooter {
     /**
      * One shopping-list entry.
      *
-     * @param amount what the entry's number says: the shortfall of an item — the
-     *               footer answers "what do I still have to gather" — or the volume
-     *               of a fluid
+     * @param amount     what the entry's number says: the shortfall of an item — the
+     *                   footer answers "what do I still have to gather" — or the volume
+     *                   of a fluid
+     * @param label      the heading word of a group, null for a material
+     * @param labelColor colour of that heading
      */
-    record FooterMaterial(ItemKey item, Fluid fluid, long amount, Availability availability) {
+    record FooterMaterial(ItemKey item, Fluid fluid, long amount, Availability availability,
+            Component label, int labelColor) {
         static FooterMaterial item(ItemKey key, Availability value) {
-            return new FooterMaterial(key, null, value.missing(), value);
+            return new FooterMaterial(key, null, value.missing(), value, null, 0);
         }
 
         static FooterMaterial fluid(Fluid fluid, long amount) {
-            return new FooterMaterial(null, fluid, amount, null);
+            return new FooterMaterial(null, fluid, amount, null, null, 0);
+        }
+
+        /** The word that heads a group of entries; it has no icon and no number. */
+        static FooterMaterial label(Component text, int color) {
+            return new FooterMaterial(null, null, 0, null, text, color);
+        }
+
+        boolean isLabel() {
+            return label != null;
         }
 
         boolean isFluid() {
@@ -117,6 +132,9 @@ final class ShoppingListFooter {
         }
 
         ItemStack icon() {
+            if (isLabel()) {
+                return ItemStack.EMPTY;
+            }
             if (!isFluid()) {
                 return item.toStack();
             }
@@ -125,6 +143,9 @@ final class ShoppingListFooter {
         }
 
         Component name() {
+            if (isLabel()) {
+                return label;
+            }
             return isFluid() ? Component.translatable(fluid.getFluidType().getDescriptionId()) : item.name();
         }
 
@@ -133,6 +154,9 @@ final class ShoppingListFooter {
         }
 
         int color() {
+            if (isLabel()) {
+                return labelColor;
+            }
             return availability == null ? NodeColors.RAW : NodeColors.forAvailability(availability);
         }
     }
@@ -142,8 +166,8 @@ final class ShoppingListFooter {
 
     /**
      * Builds the footer for a content width given in layout pixels. The shopping
-     * list is sorted by shortage first, so what the player still has to gather is
-     * what they see.
+     * list holds the missing materials under their heading, then the fluids under
+     * theirs, so what the player still has to gather is what they see.
      *
      * <p>{@code keys} may be null — the hotkey line is dropped rather than cut
      * when the panel is narrower than even the short hint. The width check has to
@@ -151,10 +175,10 @@ final class ShoppingListFooter {
      * down with it.</p>
      */
     static Footer buildFooter(Map<ItemKey, Availability> availability, Map<Fluid, Long> fluids,
-            TextMetrics metrics, int contentW, Component keys) {
+            boolean scanned, TextMetrics metrics, int contentW, Component keys) {
         Footer footer = new Footer(
                 keys != null && metrics.width(keys.getString()) <= contentW ? keys : null);
-        List<FooterMaterial> entries = shoppingList(availability, fluids);
+        List<FooterMaterial> entries = shoppingList(availability, fluids, scanned);
         wrapShoppingList(footer, entries, metrics, contentW, 0);
         if (footer.hidden > 0) {
             // Something was dropped: redo the wrap with room for the "+N" tail. The
@@ -189,8 +213,8 @@ final class ShoppingListFooter {
                 && footerClipped == rough.clipped() && language.equals(footerLanguage)) {
             return footerCache;
         }
-        footerCache = buildFooter(availability, fluids, metrics, rough.contentW(),
-                TreeOverlayRenderer.hotkeyLine(metrics, rough.contentW(), rough));
+        footerCache = buildFooter(availability, fluids, PlannerState.inventoryScanned(), metrics,
+                rough.contentW(), TreeOverlayRenderer.hotkeyLine(metrics, rough.contentW(), rough));
         footerAvailability = availability;
         footerFluids = fluids;
         footerWidth = rough.contentW();
@@ -208,30 +232,45 @@ final class ShoppingListFooter {
     private static String footerLanguage = "";
     private static Footer footerCache;
 
-    /** Raw materials, worst shortage first, then largest demand. */
+    /**
+     * The footer's entries: what is still missing, worst shortage first, under its
+     * heading; then the fluids under theirs, starting a line of their own. A plan
+     * whose items are all in the inventory says so in one line instead of an empty
+     * footer. An unchecked inventory (no player yet) says nothing at all.
+     */
     private static List<FooterMaterial> shoppingList(Map<ItemKey, Availability> availability,
-            Map<Fluid, Long> fluids) {
+            Map<Fluid, Long> fluids, boolean scanned) {
         List<FooterMaterial> entries = new ArrayList<>();
-        // Only what is still missing: a covered material has nothing left to gather,
-        // and with it gone the footer's numbers add up to the tree window's total.
+        List<FooterMaterial> missing = new ArrayList<>();
         availability.forEach((key, value) -> {
             if (!value.satisfied()) {
-                entries.add(FooterMaterial.item(key, value));
+                missing.add(FooterMaterial.item(key, value));
             }
         });
-        fluids.forEach((fluid, amount) -> entries.add(FooterMaterial.fluid(fluid, amount)));
-        entries.sort((a, b) -> {
-            long missingA = a.availability() == null ? 0 : a.availability().missing();
-            long missingB = b.availability() == null ? 0 : b.availability().missing();
-            int byShortage = Long.compare(missingB, missingA);
-            return byShortage != 0
-                    ? byShortage
-                    : Long.compare(b.amount(), a.amount());
-        });
+        missing.sort((a, b) -> Long.compare(b.amount(), a.amount()));
+        if (!missing.isEmpty()) {
+            entries.add(FooterMaterial.label(
+                    Component.translatable("overlay.craftplanner.footer.missing"), MUTED));
+            entries.addAll(missing);
+        } else if (scanned && !availability.isEmpty()) {
+            entries.add(FooterMaterial.label(
+                    Component.translatable("overlay.craftplanner.footer.ready"), NodeColors.HAVE));
+        }
+        if (!fluids.isEmpty()) {
+            List<FooterMaterial> poured = new ArrayList<>();
+            fluids.forEach((fluid, amount) -> poured.add(FooterMaterial.fluid(fluid, amount)));
+            poured.sort((a, b) -> Long.compare(b.amount(), a.amount()));
+            entries.add(FooterMaterial.label(
+                    Component.translatable("overlay.craftplanner.footer.fluids"), MUTED));
+            entries.addAll(poured);
+        }
         return entries;
     }
 
     private static int entryWidth(TextMetrics metrics, FooterMaterial material) {
+        if (material.isLabel()) {
+            return metrics.width(material.label().getString()) + FOOTER_LABEL_GAP;
+        }
         return TreeMetrics.ICON + 1 + metrics.width(material.amountLabel()) + FOOTER_ENTRY_GAP;
     }
 
@@ -248,13 +287,25 @@ final class ShoppingListFooter {
         while (index < entries.size()) {
             FooterMaterial entry = entries.get(index);
             int width = entryWidth(metrics, entry);
+            // A heading starts its group on a fresh line, so "Fluids:" never trails the
+            // last missing item, and it is kept with the first entry it heads.
+            boolean breakHere = entry.isLabel() && !current.isEmpty();
+            int need = entry.isLabel() && index + 1 < entries.size()
+                    ? width + entryWidth(metrics, entries.get(index + 1)) : width;
             boolean lastLine = footer.lines.size() == MAX_FOOTER_LINES - 1;
             int capacity = (lastLine ? contentW - reserveLast : contentW) - FOOTER_SAFE;
-            if (!current.isEmpty() && used + width > capacity) {
+            if (breakHere || (!current.isEmpty() && used + need > capacity)) {
                 footer.lines.add(current);
                 if (footer.lines.size() == MAX_FOOTER_LINES) {
-                    footer.hidden = entries.size() - index;
-                    footer.hiddenEntries = List.copyOf(entries.subList(index, entries.size()));
+                    // Headings are not materials: the "+N" counts and lists only what it hides.
+                    List<FooterMaterial> rest = new ArrayList<>();
+                    for (FooterMaterial left : entries.subList(index, entries.size())) {
+                        if (!left.isLabel()) {
+                            rest.add(left);
+                        }
+                    }
+                    footer.hidden = rest.size();
+                    footer.hiddenEntries = List.copyOf(rest);
                     return;
                 }
                 current = new ArrayList<>();
@@ -304,6 +355,11 @@ final class ShoppingListFooter {
         int textY = y + (TreeMetrics.ICON - font.lineHeight) / 2 + 1;
         int x = 0;
         for (FooterMaterial entry : line) {
+            if (entry.isLabel()) {
+                graphics.drawString(font, entry.label(), x, textY, entry.color(), false);
+                x += entryWidth(font::width, entry);
+                continue;
+            }
             graphics.renderItem(entry.icon(), x, y);
             footer.icons.add(new MaterialIcon(entry, x, y));
             String amount = entry.amountLabel();
