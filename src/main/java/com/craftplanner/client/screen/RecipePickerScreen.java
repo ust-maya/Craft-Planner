@@ -14,6 +14,7 @@ import com.craftplanner.client.overlay.NodeColors;
 import com.craftplanner.client.resource.Availability;
 import com.craftplanner.client.resource.InventorySnapshot;
 import com.craftplanner.client.resource.ResourceCheck;
+import com.craftplanner.client.tree.FoldSteps;
 import com.craftplanner.client.tree.TreeFlatten;
 import com.craftplanner.client.tree.TreeMetrics;
 import com.craftplanner.client.tree.TreeRow;
@@ -107,8 +108,8 @@ public final class RecipePickerScreen extends Screen {
     private static final int MIN_INPUTS_W = 80;
     private static final int MIN_MACHINE_W = 40;
     private static final int MAX_MACHINE_W = 140;
-    /** The button row under the options: cut switch and close. */
-    private static final int CONTROL_ROWS = 1;
+    /** Two button rows under the options: the fold buttons, then the cut switch and close. */
+    private static final int CONTROL_ROWS = 2;
     /** The fold plate, borrowed from the plan's own tree so both open the same way. */
     private static final int TOGGLE_W = TreeMetrics.TOGGLE_W;
     /** Air between the fold plate and the mark it sits next to. */
@@ -168,6 +169,8 @@ public final class RecipePickerScreen extends Screen {
     private long seenAvailabilityVersion = -1;
     private Button cutButton;
     private Button closeButton;
+    /** The window's fold buttons, placed on the first control row every frame like the others. */
+    private List<Button> foldButtons = List.of();
     /** Cut state the cut button was last labelled for; the label follows the plan, not a click. */
     private boolean cutShown;
 
@@ -268,6 +271,30 @@ public final class RecipePickerScreen extends Screen {
         this.closeButton = addRenderableWidget(FitButton.create(0, 0, closeButtonW(),
                 RecipeListLayout.BUTTON_H, Component.literal(tr("screen.craftplanner.list.close")),
                 button -> onClose(), null));
+        this.foldButtons = FoldButtons.create(this.font, RecipeListLayout.BUTTON_H, new FoldButtons.Actions() {
+            @Override
+            public void collapseAll() {
+                RecipePickerScreen.this.expanded.clear();
+                RecipePickerScreen.this.openedPaths.clear();
+                applyBand(FoldSteps.Change.NONE);
+            }
+
+            @Override
+            public void expandAll() {
+                applyBand(new FoldSteps.Change(Set.of(), FoldSteps.allPaths(wholeBand())));
+            }
+
+            @Override
+            public void collapseLevel() {
+                applyBand(FoldSteps.collapseLevel(wholeBand(), RecipePickerScreen.this::bandFolded));
+            }
+
+            @Override
+            public void expandLevel() {
+                applyBand(FoldSteps.expandLevel(wholeBand(), RecipePickerScreen.this::bandFolded));
+            }
+        });
+        this.foldButtons.forEach(this::addRenderableWidget);
     }
 
     private static Set<ResourceLocation> idsOf(List<RecipeHolder<?>> options) {
@@ -301,6 +328,56 @@ public final class RecipePickerScreen extends Screen {
             }
         }
         this.lines = built;
+    }
+
+    /**
+     * The whole band as the fold steps see it: each option at depth 0 — keyed by its
+     * recipe id, with no "|" in it — and its full tree below it, keyed like
+     * {@link #openedPaths}. An option with nothing to open is a leaf.
+     */
+    private List<FoldSteps.Entry> wholeBand() {
+        List<FoldSteps.Entry> entries = new ArrayList<>();
+        for (int i = 0; i < this.options.size(); i++) {
+            RecipeHolder<?> recipe = this.options.get(i);
+            if (!hasTree(i)) {
+                entries.add(new FoldSteps.Entry(null, 0));
+                continue;
+            }
+            entries.add(new FoldSteps.Entry(recipe.id().toString(), 0));
+            for (TreeRow<RecipeNode> row : TreeFlatten.flatten(treeRootsOf(i), PlanRows.planSource(), Set.of())) {
+                entries.add(new FoldSteps.Entry(row.path() == null ? null : keyOf(recipe, row.path()),
+                        row.depth() + 1));
+            }
+        }
+        return entries;
+    }
+
+    /** Whether a band key is folded: an option while it is closed, a branch while it is not opened. */
+    private boolean bandFolded(String key) {
+        return key.indexOf('|') < 0
+                ? !this.expanded.contains(ResourceLocation.tryParse(key))
+                : !this.openedPaths.contains(key);
+    }
+
+    /** Applies a fold step to the options and their trees; the scroll stays, as on a single click. */
+    private void applyBand(FoldSteps.Change change) {
+        for (String key : change.fold()) {
+            if (key.indexOf('|') < 0) {
+                this.expanded.remove(ResourceLocation.tryParse(key));
+            } else {
+                this.openedPaths.remove(key);
+            }
+        }
+        for (String key : change.unfold()) {
+            if (key.indexOf('|') < 0) {
+                this.expanded.add(ResourceLocation.tryParse(key));
+            } else {
+                this.openedPaths.add(key);
+            }
+        }
+        relayout();
+        this.panelWidth = measure();
+        this.scroll = Math.min(this.scroll, maxScroll());
     }
 
     /**
@@ -457,6 +534,7 @@ public final class RecipePickerScreen extends Screen {
             }
         }
         widest = Math.max(widest, cutButtonW() + GAP + closeButtonW());
+        widest = Math.max(widest, FoldButtons.width(this.font));
         int width = Math.min(this.width - 2 * MARGIN, Math.max(200, widest + 2 + 2 * PAD));
         // The columns are fitted to the panel actually granted, which on a small
         // window is narrower than the rows asked for.
@@ -740,9 +818,11 @@ public final class RecipePickerScreen extends Screen {
         }
         graphics.disableScissor();
 
-        // One row of buttons under the options: the cut switch is an action on the
-        // item, not another recipe, so it no longer looks like one.
-        int buttonY = bandTop() + shown * ROW_H + (ROW_H - RecipeListLayout.BUTTON_H) / 2;
+        // Two rows of buttons under the options: the fold buttons act on the trees,
+        // the cut switch and close on the item and the window.
+        int foldY = bandTop() + shown * ROW_H + (ROW_H - RecipeListLayout.BUTTON_H) / 2;
+        int buttonY = foldY + ROW_H;
+        FoldButtons.place(this.foldButtons, left + PAD, foldY);
         boolean cut = PlannerState.isCut(this.item);
         if (cut != this.cutShown) {
             this.cutShown = cut;
