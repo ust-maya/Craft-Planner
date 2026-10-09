@@ -57,9 +57,9 @@ import org.lwjgl.glfw.GLFW;
  * tooltip instead of six times down the list. Every
  * option can also be opened into its own dependency tree, drawn with the
  * plan's own geometry, so the alternatives are read as branches rather than as
- * numbers. The option in use starts open, because that is the one the player came
- * to look at; the others are one click away, and what they drag in is only worked
- * out when they are actually asked for.</p>
+ * numbers. Every option starts closed, like every tree outside the plan window:
+ * the window opens on the comparison itself, and what an option drags in is one
+ * click away and only worked out when it is asked for.</p>
  *
  * <p>Rows are drawn by this screen rather than by widgets — no vanilla widget
  * offers the composition a row needs (fold plate, mark, machine icon, two-colour
@@ -138,8 +138,6 @@ public final class RecipePickerScreen extends Screen {
     private int scroll;
     /** Whether the first layout already put the row in use on screen. */
     private boolean centered;
-    /** Whether the recipe in use has had its branch opened; see {@link #init()}. */
-    private boolean usedOptionRevealed;
     private int panelWidth;
     /** How the last measure() split the panel between the three columns. */
     private PickerColumns columns = new PickerColumns(0, 0, 0);
@@ -220,15 +218,6 @@ public final class RecipePickerScreen extends Screen {
                     join(RecipeLabel.describe(option, registries))));
         }
         this.rows = built;
-        // The recipe in use opens on its own: its tree is what the player is here to
-        // check, and the cost row above it is only a summary of it. Only the first
-        // time: init() runs again on a window resize and whenever the plan changes
-        // under the open window, and re-expanding there would push back open the
-        // branch the player just closed by hand.
-        if (!this.usedOptionRevealed) {
-            this.usedOptionRevealed = true;
-            this.expanded.add(this.options.get(this.selected).id());
-        }
         this.expanded.retainAll(idsOf(this.options));
         relayout();
         this.panelWidth = measure();
