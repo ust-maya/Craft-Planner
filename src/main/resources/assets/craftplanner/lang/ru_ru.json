@@ -80,6 +80,7 @@
   "overlay.craftplanner.legend.intermediate": "сборка",
   "overlay.craftplanner.legend.raw": "материал",
   "overlay.craftplanner.legend.root": "цель",
+  "overlay.craftplanner.legend.cut": "обрезано",
   "screen.craftplanner.quantity.hint": "Колесо мыши: ±1 (Shift — ±10) · Enter — добавить",
   "screen.craftplanner.list.header.item": "Предмет",
   "screen.craftplanner.list.header.recipe": "Рецепт",

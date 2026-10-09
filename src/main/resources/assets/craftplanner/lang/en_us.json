@@ -80,6 +80,7 @@
   "overlay.craftplanner.legend.intermediate": "craft",
   "overlay.craftplanner.legend.raw": "material",
   "overlay.craftplanner.legend.root": "goal",
+  "overlay.craftplanner.legend.cut": "cut",
   "screen.craftplanner.quantity.hint": "Mouse wheel: ±1 (Shift — ±10) · Enter to add",
   "screen.craftplanner.list.header.item": "Item",
   "screen.craftplanner.list.header.recipe": "Recipe",
