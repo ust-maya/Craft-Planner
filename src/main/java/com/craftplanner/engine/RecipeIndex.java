@@ -5,6 +5,7 @@ import com.craftplanner.graph.IngredientUtil;
 import com.craftplanner.graph.ItemKey;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -557,6 +558,14 @@ public final class RecipeIndex {
     public List<RecipeHolder<?>> forOutput(ItemKey key) {
         List<RecipeHolder<?>> list = byOutput.get(key);
         return list == null ? Collections.emptyList() : Collections.unmodifiableList(list);
+    }
+
+    /**
+     * Every recipe the index holds, each once — what the recipe sources window
+     * counts per mod and machine. Read-only.
+     */
+    public Collection<RecipeHolder<?>> recipes() {
+        return Collections.unmodifiableSet(inputs.keySet());
     }
 
     /** Registry access the index was built with — needed to resolve outputs. */

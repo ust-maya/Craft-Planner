@@ -67,6 +67,8 @@
   "gui.craftplanner.picker.uncut": "Expand the branch again",
   "gui.craftplanner.picker.cut.tooltip": "End the branch at this item: it stays in the plan as material to gather, and its own ingredients are no longer planned. In the tree such a row carries shears",
   "gui.craftplanner.picker.cut.on.tooltip": "The branch is cut, so this item counts as material to gather — click to let the planner expand its ingredients again",
+  "screen.craftplanner.list.sources": "Sources…",
+  "screen.craftplanner.list.sources.tooltip": "Choose which mods and machines the planner may use for every item",
   "gui.craftplanner.picker.expand": "Open what this recipe needs — dependency rows: %1$s",
   "gui.craftplanner.picker.collapse": "Close the tree — dependency rows: %1$s",
   "gui.craftplanner.picker.tree.empty": "This recipe uses the item directly: nothing else to plan",
@@ -105,5 +107,13 @@
   "screen.craftplanner.ambiguous.title": "Pick recipes for the tree",
   "screen.craftplanner.ambiguous.header": "Items with a recipe choice: %1$s",
   "screen.craftplanner.ambiguous.empty": "Nothing to choose — every item in the plan has one recipe",
-  "screen.craftplanner.ambiguous.row.tooltip": "%1$s · %2$s — choose which recipe this item is planned with"
+  "screen.craftplanner.ambiguous.row.tooltip": "%1$s · %2$s — choose which recipe this item is planned with",
+  "screen.craftplanner.sources.title": "Recipe sources",
+  "screen.craftplanner.sources.header": "Untick a mod or a machine to keep it out of the plan",
+  "screen.craftplanner.sources.count": "recipes: %1$s",
+  "screen.craftplanner.sources.empty": "No recipes — the world is not loaded yet",
+  "screen.craftplanner.sources.mod.tooltip": "Mod %1$s: its machines and every recipe it adds. Click to switch it on or off",
+  "screen.craftplanner.sources.type.tooltip": "Machine %1$s. Click to switch it on or off",
+  "screen.craftplanner.sources.reset": "Use all",
+  "screen.craftplanner.sources.reset.tooltip": "Use every mod and machine again"
 }
