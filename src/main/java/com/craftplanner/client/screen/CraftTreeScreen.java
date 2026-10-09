@@ -65,7 +65,6 @@ public final class CraftTreeScreen extends Screen {
 
     private static final String KEY_TITLE = "screen.craftplanner.tree.title";
     private static final String KEY_EMPTY = "screen.craftplanner.tree.empty";
-    private static final String KEY_SUMMARY = "screen.craftplanner.tree.summary";
     private static final String KEY_COLLAPSE = "screen.craftplanner.tree.collapse.all";
     private static final String KEY_EXPAND = "screen.craftplanner.tree.expand.all";
     private static final String KEY_LIST = "screen.craftplanner.tree.list";
@@ -240,7 +239,7 @@ public final class CraftTreeScreen extends Screen {
 
     /** Legend, two hint lines and the button row. */
     private int footerH() {
-        return 3 + 2 * LINE_H + 2 + LINE_H + 2 * LINE_H + 4 + BUTTON_H + 4;
+        return 3 + 2 * LINE_H + 2 + 2 * LINE_H + 4 + BUTTON_H + 4;
     }
 
     private void buildWidgets() {
@@ -381,13 +380,11 @@ public final class CraftTreeScreen extends Screen {
         if (this.rows.isEmpty()) {
             return;
         }
-        Component summary = Component.translatable(KEY_SUMMARY,
-                PlannerState.graph().roots().size(), this.rows.size());
-        int room = this.plan.panelW() - 2 * PAD - this.font.width(this.title) - COL_GAP;
-        graphics.drawString(this.font,
-                RecipeListLayout.trimToWidth(this.font::width, summary.getString(), room),
-                this.panelLeft + PAD + this.font.width(this.title) + COL_GAP, this.panelTop + 4,
-                UiPalette.MUTED, false);
+        // The window leads with its verdict: what is still missing. The row count it
+        // used to show here said nothing a player could act on.
+        int summaryX = this.panelLeft + PAD + this.font.width(this.title) + COL_GAP;
+        drawMaterialSummary(graphics, summaryX, this.panelTop + 4,
+                this.plan.panelW() - 2 * PAD - this.font.width(this.title) - COL_GAP);
     }
 
     private void drawRows(GuiGraphics graphics, int mouseX, int mouseY) {
@@ -615,8 +612,7 @@ public final class CraftTreeScreen extends Screen {
         UiShapes.divider(graphics, left + 2, left + this.plan.panelW() - 2, y - 2,
                 UiPalette.SECTION_DIVIDER);
         drawLegend(graphics, left + PAD, y + 3);
-        drawMaterialSummary(graphics, left + PAD, y + 3 + 2 * LINE_H + 2);
-        int hintY = y + 3 + 3 * LINE_H + 4;
+        int hintY = y + 3 + 2 * LINE_H + 2;
         // Broken between entries: a word wrap tore "V —" from "overlay" and left a
         // lone "·" at the end of the first line.
         List<String> hint = RecipeListLayout.wrapSegments(this.font::width, hint(),
@@ -643,7 +639,7 @@ public final class CraftTreeScreen extends Screen {
         UiLegend.draw(graphics, this.font, x, y, this.plan.panelW() - 2 * PAD, LINE_H);
     }
 
-    private void drawMaterialSummary(GuiGraphics graphics, int x, int y) {
+    private void drawMaterialSummary(GuiGraphics graphics, int x, int y, int room) {
         Map<ItemKey, Availability> availability = PlannerState.availability();
         long missingTypes = ResourceCheck.deficitTypes(availability);
         boolean fluidNeedsUntracked = !PlannerState.fluidRequirements().isEmpty();
@@ -668,8 +664,7 @@ public final class CraftTreeScreen extends Screen {
         Component summary = !PlannerState.inventoryScanned() || missingTypes == 0
                 ? Component.translatable(key)
                 : Component.translatable(key, missingTypes, ResourceCheck.totalMissing(availability));
-        String text = RecipeListLayout.trimToWidth(this.font::width, summary.getString(),
-                this.plan.panelW() - 2 * PAD);
+        String text = RecipeListLayout.trimToWidth(this.font::width, summary.getString(), room);
         graphics.drawString(this.font, text, x, y, color, false);
     }
 

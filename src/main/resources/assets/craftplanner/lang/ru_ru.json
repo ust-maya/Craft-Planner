@@ -36,7 +36,6 @@
   "overlay.craftplanner.footer.ready": "Все материалы собраны",
   "screen.craftplanner.tree.title": "Дерево крафта",
   "screen.craftplanner.tree.empty": "Плана нет — наведите предмет и нажмите %1$s",
-  "screen.craftplanner.tree.summary": "Целей: %1$s · строк: %2$s",
   "screen.craftplanner.tree.materials.ready": "Все предметы для крафта собраны",
   "screen.craftplanner.tree.materials.ready.fluid_unknown": "Предметы собраны · жидкости не проверяются",
   "screen.craftplanner.tree.materials.unknown": "Инвентарь недоступен · материалы не проверены",

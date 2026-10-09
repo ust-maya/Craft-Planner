@@ -36,7 +36,6 @@
   "overlay.craftplanner.footer.ready": "All materials gathered",
   "screen.craftplanner.tree.title": "Craft tree",
   "screen.craftplanner.tree.empty": "Nothing planned yet — hover an item and press %1$s",
-  "screen.craftplanner.tree.summary": "Goals: %1$s · Rows: %2$s",
   "screen.craftplanner.tree.materials.ready": "All item materials gathered",
   "screen.craftplanner.tree.materials.ready.fluid_unknown": "Item materials gathered · fluid stock not tracked",
   "screen.craftplanner.tree.materials.unknown": "Inventory unavailable · materials not checked",
