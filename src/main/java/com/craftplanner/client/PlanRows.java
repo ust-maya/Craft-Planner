@@ -128,14 +128,17 @@ public final class PlanRows {
         /**
          * Only a gathered material has a stock to compare: a sub-assembly is
          * produced by the plan itself, so painting its line yellow would say
-         * something the plan does not ask.
+         * something the plan does not ask. A sub-assembly the inventory partly
+         * covers is partial.
          */
         private TreeRow.Status statusOf(RecipeNode node, ItemKey item) {
             if (node.isFluidRequirement()) {
                 return TreeRow.Status.UNKNOWN;
             }
             if (node.kind() != NodeKind.RAW && !node.isLeaf()) {
-                return TreeRow.Status.UNKNOWN;
+                // An assembly is made by the plan, so it has no shortage of its own — but
+                // one the bag partly covers says so: only the rest is crafted below it.
+                return node.fromInventory() > 0 ? TreeRow.Status.PARTIAL : TreeRow.Status.UNKNOWN;
             }
             Availability state = availability.get(item);
             if (state == null) {

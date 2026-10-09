@@ -72,6 +72,7 @@ public final class CraftTreeScreen extends Screen {
     private static final String KEY_CLOSE = "screen.craftplanner.tree.close";
     private static final String KEY_HINT = "screen.craftplanner.tree.hint";
     private static final String KEY_HIDDEN = "screen.craftplanner.tree.hidden.rows";
+    private static final String KEY_FROM_INVENTORY = "screen.craftplanner.tree.from.inventory";
 
     private static final int PAD = 6;
     private static final int HEADER_H = 20;
@@ -982,6 +983,11 @@ public final class CraftTreeScreen extends Screen {
                         AmountLabel.of(row.node())), state));
         if (row.hiddenRows() > 0) {
             lines.add(Component.translatable(KEY_HIDDEN, row.hiddenRows()));
+        }
+        RecipeNode covered = row.node();
+        if (!covered.isLeaf() && covered.fromInventory() > 0) {
+            lines.add(Component.translatable(KEY_FROM_INVENTORY,
+                    Long.toString(covered.fromInventory()), Long.toString(covered.toMake())));
         }
         RecipeNode node = row.node();
         if (node.recipe() == null || this.minecraft.level == null) {
