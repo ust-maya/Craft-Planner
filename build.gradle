@@ -7,8 +7,9 @@ plugins {
 version = mod_version
 group = mod_group_id
 
+// The jar carries the Minecraft version it targets: craftplanner-1.21.1-1.0.0.jar.
 base {
-    archivesName = mod_id
+    archivesName = "${mod_id}-${minecraft_version}"
 }
 
 // Mojang ships Java 21 to end users in 1.21.1, so mods should target Java 21.
