@@ -1,5 +1,6 @@
 package com.craftplanner.client.screen;
 
+import com.craftplanner.Config;
 import com.craftplanner.client.MachineNames;
 import com.craftplanner.client.AmountLabel;
 import com.craftplanner.client.PlannerState;
@@ -9,6 +10,9 @@ import com.craftplanner.client.Scrollbar;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.overlay.NodeColors;
+import com.craftplanner.client.resource.Availability;
+import com.craftplanner.client.resource.InventorySnapshot;
+import com.craftplanner.client.resource.ResourceCheck;
 import com.craftplanner.client.tree.TreeMetrics;
 import com.craftplanner.client.tree.TreeRow;
 import com.craftplanner.graph.ItemKey;
@@ -111,8 +115,12 @@ public final class RecipePickerScreen extends Screen {
     /** The amber of the tree's own markers, so "in use" reads the same everywhere. */
     private static final int ROW_SELECTED = UiPalette.MODAL_ROW_SELECTED;
     private static final int ROW_HOVER = UiPalette.MODAL_ROW_HOVER;
-    /** The mark of the option in use, in the column before the machine's icon. */
-    private static final String IN_USE_MARK = "✔";
+    /**
+     * The mark of the option in use, in the column before the machine's icon. A
+     * guillemet rather than the tree's ✔: that sign now says the inputs are covered,
+     * and the row in use is already standing in an amber band.
+     */
+    private static final String IN_USE_MARK = "»";
 
     /** The item whose recipes are offered; also the key of the choice. */
     private final ItemKey item;
@@ -136,6 +144,8 @@ public final class RecipePickerScreen extends Screen {
     /** How the last measure() split the panel between the three columns. */
     private PickerColumns columns = new PickerColumns(0, 0, 0);
     private long seenGraphVersion;
+    /** Availability version the rows were last coloured for; the colours follow the inventory. */
+    private long seenAvailabilityVersion = -1;
     private Button cutButton;
     private Button closeButton;
     /** Cut state the cut button was last labelled for; the label follows the plan, not a click. */
@@ -159,12 +169,14 @@ public final class RecipePickerScreen extends Screen {
     }
 
     /**
-     * One option as its columns: what it consumes, how many one run makes, the
-     * machine that runs it and that machine's icon ({@link ItemStack#EMPTY} when no
-     * block claims the recipe type), plus the full description for the tooltip —
-     * the mod's name lives there, not in every row.
+     * One option as its columns: what it consumes — coloured by what the inventory
+     * holds — how many one run makes, the machine that runs it and that machine's
+     * icon ({@link ItemStack#EMPTY} when no block claims the recipe type), plus the
+     * full description for the tooltip — the mod's name lives there, not in every
+     * row.
      */
-    private record Option(String inputs, String yield, String machine, ItemStack icon, Component tooltip) {
+    private record Option(String inputs, int inputsColor, String yield, String machine,
+            ItemStack icon, Component tooltip) {
     }
 
     public RecipePickerScreen(ItemKey item, Screen returnTo) {
@@ -194,9 +206,16 @@ public final class RecipePickerScreen extends Screen {
         }
         this.selected = Math.min(node.selectedRecipeIndex(), this.options.size() - 1);
         List<Option> built = new ArrayList<>(this.options.size());
+        // One look at the inventory per layout; tick() lays the window out again when
+        // the plan's availability moves, which is when the inventory changed.
+        InventorySnapshot snapshot = this.minecraft.player == null ? null
+                : InventorySnapshot.of(this.minecraft.player);
+        this.seenAvailabilityVersion = PlannerState.availabilityVersion();
         for (RecipeHolder<?> option : this.options) {
             String needs = RecipeLabel.needsText(option);
-            built.add(new Option(needs.isEmpty() ? tr("gui.craftplanner.recipe.none") : needs,
+            Availability.Status status = statusOf(option, snapshot);
+            String inputs = needs.isEmpty() ? tr("gui.craftplanner.recipe.none") : needs;
+            built.add(new Option(status == null ? inputs : markOf(status) + " " + inputs, colorOf(status),
                     yieldOf(option, registries), RecipeLabel.machine(option), machineIcon(option),
                     join(RecipeLabel.describe(option, registries))));
         }
@@ -283,7 +302,8 @@ public final class RecipePickerScreen extends Screen {
 
     @Override
     public void tick() {
-        if (PlannerState.graphVersion() != this.seenGraphVersion) {
+        if (PlannerState.graphVersion() != this.seenGraphVersion
+                || PlannerState.availabilityVersion() != this.seenAvailabilityVersion) {
             init();
         }
     }
@@ -302,6 +322,41 @@ public final class RecipePickerScreen extends Screen {
             return "";
         }
         return AmountLabel.times(result.getCount());
+    }
+
+    /**
+     * Whether the player could run this recipe from what they carry: each input
+     * against the inventory, folded into one verdict. Null without an inventory to
+     * look at — the row then says nothing rather than guess.
+     */
+    private static Availability.Status statusOf(RecipeHolder<?> option, InventorySnapshot snapshot) {
+        if (snapshot == null) {
+            return null;
+        }
+        List<Availability.Status> each = new ArrayList<>();
+        RecipeLabel.inputs(option).forEach((key, count) -> each.add(
+                new Availability(count, snapshot.available(key)).status(Config.partialThresholdPercent())));
+        return ResourceCheck.combined(each);
+    }
+
+    /** The sign the tree puts in front of a material, for the same three verdicts. */
+    private static String markOf(Availability.Status status) {
+        return switch (status) {
+            case OK -> TreeRow.Status.COVERED.mark();
+            case PARTIAL -> TreeRow.Status.PARTIAL.mark();
+            case MISSING -> TreeRow.Status.MISSING.mark();
+        };
+    }
+
+    private static int colorOf(Availability.Status status) {
+        if (status == null) {
+            return TEXT;
+        }
+        return switch (status) {
+            case OK -> NodeColors.HAVE;
+            case PARTIAL -> NodeColors.PARTIAL;
+            case MISSING -> NodeColors.MISSING;
+        };
     }
 
     /** The block that runs the recipe, so rows differ by more than their text. */
@@ -744,7 +799,7 @@ public final class RecipePickerScreen extends Screen {
         }
         int x = left + PAD + optionGutterW();
         graphics.drawString(this.font, RecipeListLayout.trimToWidth(this.font::width, row.inputs(),
-                this.columns.inputsW()), x, textY, TEXT, false);
+                this.columns.inputsW()), x, textY, row.inputsColor(), false);
         x += this.columns.inputsW() + COL_GAP;
         graphics.drawString(this.font, row.yield(),
                 x + this.columns.yieldW() - this.font.width(row.yield()), textY, TEXT, false);
