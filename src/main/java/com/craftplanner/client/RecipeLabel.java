@@ -45,15 +45,64 @@ public final class RecipeLabel {
 
     /** {@code "Кузнечный молот · Modern Industrialization"} for a machine recipe. */
     public static Component of(RecipeHolder<?> holder) {
-        ResourceLocation typeKey = BuiltInRegistries.RECIPE_TYPE.getKey(holder.value().getType());
-        String what = MachineNames.of(typeKey);
-        if (what == null) {
-            // No block names this machine in the player's language: the registry
-            // path is still the one thing that tells two alternatives apart.
-            what = beautify(typeKey != null ? typeKey.getPath() : holder.id().getPath());
-        }
+        String what = machine(holder);
         String from = modName(holder.id().getNamespace());
         return Component.literal(from.isEmpty() ? what : what + " · " + from);
+    }
+
+    /** The machine's name alone — {@code «Кузнечный молот»} — for a column that has no room for the mod. */
+    public static String machine(RecipeHolder<?> holder) {
+        ResourceLocation typeKey = BuiltInRegistries.RECIPE_TYPE.getKey(holder.value().getType());
+        String what = MachineNames.of(typeKey);
+        // No block names this machine in the player's language: the registry path
+        // is still the one thing that tells two alternatives apart.
+        return what != null ? what : beautify(typeKey != null ? typeKey.getPath() : holder.id().getPath());
+    }
+
+    /**
+     * What one run of the recipe consumes, one entry per item, in the order the
+     * recipe asks for them. Slots are folded the way the tree folds them — see
+     * {@link #describe} for why — and the totals are longs because machine amounts
+     * are not int-sized.
+     */
+    public static Map<ItemKey, Long> inputs(RecipeHolder<?> holder) {
+        Map<ItemKey, Long> needed = new LinkedHashMap<>();
+        for (Ingredient ingredient : RecipeIngredients.of(holder.value())) {
+            ItemStack representative = IngredientUtil.representative(ingredient);
+            if (representative == null) {
+                continue; // a blank grid slot
+            }
+            needed.merge(ItemKey.of(representative),
+                    (long) Math.max(1, representative.getCount()), CraftMath::saturatingAdd);
+        }
+        return needed;
+    }
+
+    /**
+     * The inputs as one line — {@code "Медный слиток ×1, молот (−20 прочности)"} —
+     * without the "Needs:" prefix; empty when the recipe consumes nothing.
+     */
+    public static String needsText(RecipeHolder<?> holder) {
+        StringBuilder needs = new StringBuilder();
+        for (Map.Entry<ItemKey, Long> entry : inputs(holder).entrySet()) {
+            if (needs.length() > 0) {
+                needs.append(", ");
+            }
+            needs.append(entry.getKey().name().getString())
+                    .append(" ×")
+                    .append(entry.getValue().longValue());
+        }
+        // A hammer recipe that wears the tool down is a different deal from the one
+        // that does not, and it says so in the line the picker shows, not only in the
+        // tooltip: the inputs alone can read the same.
+        int damage = RecipeIngredients.hammerDamage(holder.value());
+        if (damage > 0) {
+            if (needs.length() > 0) {
+                needs.append(", ");
+            }
+            needs.append(Component.translatable("gui.craftplanner.recipe.tool", damage).getString());
+        }
+        return needs.toString();
     }
 
     /**
@@ -79,39 +128,10 @@ public final class RecipeLabel {
             lines.add(Component.translatable("gui.craftplanner.recipe.output",
                     result.getHoverName(), Integer.toString(result.getCount())));
         }
-        // Insertion order is kept, so the list reads in the order the recipe asks
-        // for things; the total is a long because machine amounts are not int-sized.
-        Map<ItemKey, Long> needed = new LinkedHashMap<>();
-        for (Ingredient ingredient : RecipeIngredients.of(holder.value())) {
-            ItemStack representative = IngredientUtil.representative(ingredient);
-            if (representative == null) {
-                continue; // a blank grid slot
-            }
-            needed.merge(ItemKey.of(representative),
-                    (long) Math.max(1, representative.getCount()), CraftMath::saturatingAdd);
-        }
-        StringBuilder needs = new StringBuilder();
-        for (Map.Entry<ItemKey, Long> entry : needed.entrySet()) {
-            if (needs.length() > 0) {
-                needs.append(", ");
-            }
-            needs.append(entry.getKey().name().getString())
-                    .append(" ×")
-                    .append(entry.getValue().longValue());
-        }
-        // A hammer recipe that wears the tool down is a different deal from the one
-        // that does not, and it says so in the line the picker shows, not only in the
-        // tooltip: the inputs alone can read the same.
-        int damage = RecipeIngredients.hammerDamage(holder.value());
-        if (damage > 0) {
-            if (needs.length() > 0) {
-                needs.append(", ");
-            }
-            needs.append(Component.translatable("gui.craftplanner.recipe.tool", damage).getString());
-        }
-        lines.add(needs.length() == 0
+        String needs = needsText(holder);
+        lines.add(needs.isEmpty()
                 ? Component.translatable("gui.craftplanner.recipe.none")
-                : Component.translatable("gui.craftplanner.recipe.needs", needs.toString()));
+                : Component.translatable("gui.craftplanner.recipe.needs", needs));
         return lines;
     }
 
