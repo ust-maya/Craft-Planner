@@ -1,5 +1,6 @@
 package com.craftplanner.client.screen;
 
+import com.craftplanner.Config;
 import com.craftplanner.client.MachineNames;
 import com.craftplanner.client.AmountLabel;
 import com.craftplanner.client.PlannerState;
@@ -9,6 +10,9 @@ import com.craftplanner.client.Scrollbar;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.overlay.NodeColors;
+import com.craftplanner.client.resource.Availability;
+import com.craftplanner.client.resource.InventorySnapshot;
+import com.craftplanner.client.resource.ResourceCheck;
 import com.craftplanner.client.tree.TreeMetrics;
 import com.craftplanner.client.tree.TreeRow;
 import com.craftplanner.graph.ItemKey;
@@ -43,12 +47,16 @@ import org.lwjgl.glfw.GLFW;
  * of each alternative are on screen. A picked recipe stays picked: it is un-pinned
  * only by taking the item out of the plan.</p>
  *
- * <p>The one-line cost is also where comparing alternatives stops working. Two
- * recipes for the same item can cost the same raw materials and pull in entirely
- * different things further down — a furnace route that needs a furnace, against one
- * that needs a blast furnace and eight slabs — and the totals say nothing about
- * that. So every option can be opened into its own dependency tree, drawn with the
- * plan's own geometry, and the alternatives are read as branches rather than as
+ * <p>The options are compared <em>by column</em>: what each one consumes, how much
+ * one run gives back, and the machine that runs it, under headings that name the
+ * three. Two recipes for the same item can cost the same raw materials and pull in
+ * entirely different things further down — a furnace route that needs a furnace, against one
+ * that needs a blast furnace and eight slabs — and a totals line says nothing about
+ * that; the columns keep the difference where the eye can line it up. Which mod
+ * owns a recipe is nothing the rows are compared by, so it lives in the option's
+ * tooltip instead of six times down the list. Every
+ * option can also be opened into its own dependency tree, drawn with the
+ * plan's own geometry, so the alternatives are read as branches rather than as
  * numbers. The option in use starts open, because that is the one the player came
  * to look at; the others are one click away, and what they drag in is only worked
  * out when they are actually asked for.</p>
@@ -71,6 +79,8 @@ public final class RecipePickerScreen extends Screen {
     private static final int ROW_H = 17;
     /** Band above the rows that holds the title. */
     private static final int HEADER_H = 14;
+    /** Line under the title band that names the three columns. */
+    private static final int COLUMNS_H = 11;
     private static final int PAD = 5;
     /** Air the panel keeps from the screen edges, so nothing sits under the cursor bar. */
     private static final int MARGIN = 8;
@@ -84,8 +94,12 @@ public final class RecipePickerScreen extends Screen {
     private static final int GAP = 3;
     /** Air kept between the cost and the machine that runs it. */
     private static final int TEXT_GAP = 6;
-    /** A machine name narrower than this says less than the icon next to it. */
-    private static final int MIN_TAIL = 20;
+    /** Air between two columns of an option row. */
+    private static final int COL_GAP = 6;
+    /** Floors and cap of the columns that may give way; see {@link PickerColumns}. */
+    private static final int MIN_INPUTS_W = 80;
+    private static final int MIN_MACHINE_W = 40;
+    private static final int MAX_MACHINE_W = 140;
     /** The button row under the options: cut switch and close. */
     private static final int CONTROL_ROWS = 1;
     /** The fold plate, borrowed from the plan's own tree so both open the same way. */
@@ -101,6 +115,12 @@ public final class RecipePickerScreen extends Screen {
     /** The amber of the tree's own markers, so "in use" reads the same everywhere. */
     private static final int ROW_SELECTED = UiPalette.MODAL_ROW_SELECTED;
     private static final int ROW_HOVER = UiPalette.MODAL_ROW_HOVER;
+    /**
+     * The mark of the option in use, in the column before the machine's icon. A
+     * guillemet rather than the tree's ✔: that sign now says the inputs are covered,
+     * and the row in use is already standing in an amber band.
+     */
+    private static final String IN_USE_MARK = "»";
 
     /** The item whose recipes are offered; also the key of the choice. */
     private final ItemKey item;
@@ -121,7 +141,11 @@ public final class RecipePickerScreen extends Screen {
     /** Whether the recipe in use has had its branch opened; see {@link #init()}. */
     private boolean usedOptionRevealed;
     private int panelWidth;
+    /** How the last measure() split the panel between the three columns. */
+    private PickerColumns columns = new PickerColumns(0, 0, 0);
     private long seenGraphVersion;
+    /** Availability version the rows were last coloured for; the colours follow the inventory. */
+    private long seenAvailabilityVersion = -1;
     private Button cutButton;
     private Button closeButton;
     /** Cut state the cut button was last labelled for; the label follows the plan, not a click. */
@@ -145,12 +169,14 @@ public final class RecipePickerScreen extends Screen {
     }
 
     /**
-     * One option: what it costs, the machine that runs it, that machine's icon
-     * ({@link ItemStack#EMPTY} when no block claims the recipe type), and the full
-     * description kept for the tooltip — the yield is the second thing a player
-     * compares, after the cost, so it does not crowd the row.
+     * One option as its columns: what it consumes — coloured by what the inventory
+     * holds — how many one run makes, the machine that runs it and that machine's
+     * icon ({@link ItemStack#EMPTY} when no block claims the recipe type), plus the
+     * full description for the tooltip — the mod's name lives there, not in every
+     * row.
      */
-    private record Option(String cost, String machine, ItemStack icon, Component tooltip) {
+    private record Option(String inputs, int inputsColor, String yield, String machine,
+            ItemStack icon, Component tooltip) {
     }
 
     public RecipePickerScreen(ItemKey item, Screen returnTo) {
@@ -180,10 +206,18 @@ public final class RecipePickerScreen extends Screen {
         }
         this.selected = Math.min(node.selectedRecipeIndex(), this.options.size() - 1);
         List<Option> built = new ArrayList<>(this.options.size());
+        // One look at the inventory per layout; tick() lays the window out again when
+        // the plan's availability moves, which is when the inventory changed.
+        InventorySnapshot snapshot = this.minecraft.player == null ? null
+                : InventorySnapshot.of(this.minecraft.player);
+        this.seenAvailabilityVersion = PlannerState.availabilityVersion();
         for (RecipeHolder<?> option : this.options) {
-            List<Component> lines = RecipeLabel.describe(option, registries);
-            built.add(new Option(costOf(lines) + yieldOf(option, registries),
-                    RecipeLabel.of(option).getString(), machineIcon(option), join(lines)));
+            String needs = RecipeLabel.needsText(option);
+            Availability.Status status = statusOf(option, snapshot);
+            String inputs = needs.isEmpty() ? tr("gui.craftplanner.recipe.none") : needs;
+            built.add(new Option(status == null ? inputs : markOf(status) + " " + inputs, colorOf(status),
+                    yieldOf(option, registries), RecipeLabel.machine(option), machineIcon(option),
+                    join(RecipeLabel.describe(option, registries))));
         }
         this.rows = built;
         // The recipe in use opens on its own: its tree is what the player is here to
@@ -268,32 +302,61 @@ public final class RecipePickerScreen extends Screen {
 
     @Override
     public void tick() {
-        if (PlannerState.graphVersion() != this.seenGraphVersion) {
+        if (PlannerState.graphVersion() != this.seenGraphVersion
+                || PlannerState.availabilityVersion() != this.seenAvailabilityVersion) {
             init();
         }
     }
 
     /**
-     * The row text leads with the cost: what a recipe consumes is what decides
-     * between a dozen machine options, while the machine itself is recognizable by
-     * its icon and so follows, in a secondary colour.
-     */
-    private static String costOf(List<Component> lines) {
-        return lines.isEmpty() ? "" : lines.get(lines.size() - 1).getString();
-    }
-
-    /**
-     * {@code " → ×2"} when one run of the recipe makes more than one of the item
-     * this window is about, empty otherwise. Two recipes can ask for the same
+     * {@code "×2"} for how many one run makes of the item this window is about,
+     * empty otherwise. Two recipes can ask for the same
      * thing and differ only in how much they give back, and the row is where the
      * options are compared.
      */
     private String yieldOf(RecipeHolder<?> option, HolderLookup.Provider registries) {
         ItemStack result = option.value().getResultItem(registries);
-        if (result.isEmpty() || result.getCount() <= 1 || !ItemKey.of(result).equals(this.item)) {
+        // The yield is shown even when it is one: a row without it read as a row
+        // with something missing next to rows that had it.
+        if (result.isEmpty() || !ItemKey.of(result).equals(this.item)) {
             return "";
         }
-        return " " + Component.translatable("gui.craftplanner.picker.yield", result.getCount()).getString();
+        return AmountLabel.times(result.getCount());
+    }
+
+    /**
+     * Whether the player could run this recipe from what they carry: each input
+     * against the inventory, folded into one verdict. Null without an inventory to
+     * look at — the row then says nothing rather than guess.
+     */
+    private static Availability.Status statusOf(RecipeHolder<?> option, InventorySnapshot snapshot) {
+        if (snapshot == null) {
+            return null;
+        }
+        List<Availability.Status> each = new ArrayList<>();
+        RecipeLabel.inputs(option).forEach((key, count) -> each.add(
+                new Availability(count, snapshot.available(key)).status(Config.partialThresholdPercent())));
+        return ResourceCheck.combined(each);
+    }
+
+    /** The sign the tree puts in front of a material, for the same three verdicts. */
+    private static String markOf(Availability.Status status) {
+        return switch (status) {
+            case OK -> TreeRow.Status.COVERED.mark();
+            case PARTIAL -> TreeRow.Status.PARTIAL.mark();
+            case MISSING -> TreeRow.Status.MISSING.mark();
+        };
+    }
+
+    private static int colorOf(Availability.Status status) {
+        if (status == null) {
+            return TEXT;
+        }
+        return switch (status) {
+            case OK -> NodeColors.HAVE;
+            case PARTIAL -> NodeColors.PARTIAL;
+            case MISSING -> NodeColors.MISSING;
+        };
     }
 
     /** The block that runs the recipe, so rows differ by more than their text. */
@@ -323,13 +386,25 @@ public final class RecipePickerScreen extends Screen {
      * the cut switch can never be the row the panel is too narrow for, and an
      * opened tree counts as much as its deepest, longest name — otherwise opening
      * a branch would push text past the edge instead of shortening it.
+     *
+     * <p>The same pass fits the three option columns to the panel actually granted
+     * and leaves the result in {@link #columns}, so no draw call asks {@link PickerColumns}
+     * again.</p>
      */
     private int measure() {
-        int widest = this.font.width(this.title);
+        // Each column wants its widest entry or its heading, whichever is wider; the
+        // machine's name is capped because its icon already stands next to it.
+        int inputsWant = this.font.width(tr("gui.craftplanner.picker.col.inputs"));
+        int yieldW = this.font.width(tr("gui.craftplanner.picker.col.yield"));
+        int machineWant = this.font.width(tr("gui.craftplanner.picker.col.machine"));
         for (Option row : this.rows) {
-            widest = Math.max(widest, optionGutterW() + this.font.width(row.cost())
-                    + TEXT_GAP + this.font.width("· " + row.machine()));
+            inputsWant = Math.max(inputsWant, this.font.width(row.inputs()));
+            yieldW = Math.max(yieldW, this.font.width(row.yield()));
+            machineWant = Math.max(machineWant, this.font.width(row.machine()));
         }
+        machineWant = Math.min(machineWant, MAX_MACHINE_W);
+        int widest = Math.max(this.font.width(this.title),
+                optionGutterW() + inputsWant + COL_GAP + yieldW + COL_GAP + machineWant);
         for (int i = 0; i < this.rows.size(); i++) {
             List<TreeRow<RecipeNode>> preview = previewOf(i);
             if (preview == null) {
@@ -342,7 +417,12 @@ public final class RecipePickerScreen extends Screen {
             }
         }
         widest = Math.max(widest, cutButtonW() + GAP + closeButtonW());
-        return Math.min(this.width - 2 * MARGIN, Math.max(200, widest + 2 + 2 * PAD));
+        int width = Math.min(this.width - 2 * MARGIN, Math.max(200, widest + 2 + 2 * PAD));
+        // The columns are fitted to the panel actually granted, which on a small
+        // window is narrower than the rows asked for.
+        this.columns = PickerColumns.fit(width - 2 * PAD - optionGutterW(), inputsWant, yieldW,
+                machineWant, COL_GAP, MIN_MACHINE_W, MIN_INPUTS_W);
+        return width;
     }
 
     /** The columns every option row spends before its text starts. */
@@ -396,7 +476,7 @@ public final class RecipePickerScreen extends Screen {
      * height, and the last line never falls off the bottom.
      */
     private int visibleLines() {
-        int available = this.height - 2 * MARGIN - HEADER_H - CONTROL_ROWS * ROW_H - PAD;
+        int available = this.height - 2 * MARGIN - HEADER_H - COLUMNS_H - CONTROL_ROWS * ROW_H - PAD;
         return Math.max(1, Math.min(this.lines.size(), available / ROW_H));
     }
 
@@ -405,7 +485,7 @@ public final class RecipePickerScreen extends Screen {
     }
 
     private int panelHeight() {
-        return HEADER_H + visibleLines() * ROW_H + CONTROL_ROWS * ROW_H + PAD;
+        return HEADER_H + COLUMNS_H + visibleLines() * ROW_H + CONTROL_ROWS * ROW_H + PAD;
     }
 
     private int panelLeft() {
@@ -418,7 +498,7 @@ public final class RecipePickerScreen extends Screen {
 
     /** Top of the scrollable band. */
     private int bandTop() {
-        return top() + HEADER_H;
+        return top() + HEADER_H + COLUMNS_H;
     }
 
     /** Screen y of a line of the band. */
@@ -556,6 +636,7 @@ public final class RecipePickerScreen extends Screen {
         UiShapes.headerBand(graphics, left, top, this.panelWidth, HEADER_H - 3,
                 UiPalette.MODAL_HEADER_BG, UiPalette.ACCENT_LINE, PAD);
         drawTitle(graphics, left, top);
+        drawColumnHeadings(graphics, left, top);
 
         int hover = hitLine(mouseX, mouseY);
         Component tooltip = hover >= 0 ? tooltipAt(hover) : null;
@@ -678,17 +759,55 @@ public final class RecipePickerScreen extends Screen {
                 lineTop(childLast) + ROW_H / 2, UiPalette.TREE_GUIDE);
     }
 
+    /** The column headings under the title band, aligned with the option rows. */
+    private void drawColumnHeadings(GuiGraphics graphics, int left, int top) {
+        int y = top + HEADER_H + 1;
+        int x = left + PAD + optionGutterW();
+        graphics.drawString(this.font, RecipeListLayout.trimToWidth(this.font::width,
+                tr("gui.craftplanner.picker.col.inputs"), this.columns.inputsW()), x, y, MUTED, false);
+        x += this.columns.inputsW() + COL_GAP;
+        String yield = tr("gui.craftplanner.picker.col.yield");
+        graphics.drawString(this.font, yield, x + this.columns.yieldW() - this.font.width(yield), y,
+                MUTED, false);
+        x += this.columns.yieldW() + COL_GAP;
+        if (this.columns.machineW() > 0) {
+            graphics.drawString(this.font, RecipeListLayout.trimToWidth(this.font::width,
+                    tr("gui.craftplanner.picker.col.machine"), this.columns.machineW()), x, y, MUTED, false);
+        }
+    }
+
     private void drawTitle(GuiGraphics graphics, int left, int top) {
         graphics.drawString(this.font, this.title,
                 left + (this.panelWidth - this.font.width(this.title)) / 2, top + 2, TEXT, false);
     }
 
-    /** An option: its row as before, plus the plate that opens what the option pulls in. */
+    /** An option: its highlight, the in-use mark, the machine icon, then the three columns. */
     private void drawOptionLine(GuiGraphics graphics, int option, boolean hovered, int left, int y) {
         Option row = this.rows.get(option);
         boolean used = option == this.selected;
-        drawRow(graphics, row.icon(), row.cost(), "· " + row.machine(),
-                used ? "✔" : "", true, used, hovered, left, y);
+        if (hovered || used) {
+            graphics.fill(left + PAD, y, left + this.panelWidth - PAD, y + ROW_H,
+                    used ? ROW_SELECTED : ROW_HOVER);
+        }
+        int bx = left + PAD + TOGGLE_W + TOGGLE_GAP;
+        int textY = y + (ROW_H - this.font.lineHeight) / 2;
+        if (used) {
+            graphics.drawString(this.font, IN_USE_MARK, bx, textY, TEXT, false);
+        }
+        if (!row.icon().isEmpty()) {
+            graphics.renderItem(row.icon(), bx + MARK_W, y + (ROW_H - ICON_W) / 2);
+        }
+        int x = left + PAD + optionGutterW();
+        graphics.drawString(this.font, RecipeListLayout.trimToWidth(this.font::width, row.inputs(),
+                this.columns.inputsW()), x, textY, row.inputsColor(), false);
+        x += this.columns.inputsW() + COL_GAP;
+        graphics.drawString(this.font, row.yield(),
+                x + this.columns.yieldW() - this.font.width(row.yield()), textY, TEXT, false);
+        x += this.columns.yieldW() + COL_GAP;
+        if (this.columns.machineW() > 0) {
+            graphics.drawString(this.font, RecipeListLayout.trimToWidth(this.font::width, row.machine(),
+                    this.columns.machineW()), x, textY, MUTED, false);
+        }
         drawToggle(graphics, option, hovered, left, y);
     }
 
@@ -735,62 +854,6 @@ public final class RecipePickerScreen extends Screen {
                 nameX + room - this.font.width(amount), textY, NodeColors.forRow(row), false);
     }
 
-
-    /**
-     * One row: its highlight, then mark, icon and text. The mark column and the
-     * icon gutter keep their room even when empty, so the text of every row
-     * starts at the same x — a machine the block lookup does not know leaves the
-     * gutter blank rather than shifting its line left out of alignment with the
-     * rows above it.
-     */
-    private void drawRow(GuiGraphics graphics, ItemStack icon, String primary, String secondary,
-            String mark, boolean gutter, boolean used, boolean hovered, int left, int y) {
-        int inner = this.panelWidth - 2 * PAD;
-        if (hovered || used) {
-            graphics.fill(left + PAD, y, left + PAD + inner, y + ROW_H,
-                    used ? ROW_SELECTED : ROW_HOVER);
-        }
-
-        int bx = left + PAD + TOGGLE_W + TOGGLE_GAP;
-        int gutterW = MARK_W + (gutter ? ICON_W + GAP : 0);
-        int textX = bx + gutterW;
-        int textY = y + (ROW_H - this.font.lineHeight) / 2;
-        if (!mark.isEmpty()) {
-            graphics.drawString(this.font, mark, bx, textY, TEXT, false);
-        }
-        if (gutter && !icon.isEmpty()) {
-            graphics.renderItem(icon, bx + MARK_W, y + (ROW_H - ICON_W) / 2);
-        }
-
-        // The cost has the first claim on the row: two options are compared by what
-        // they consume. The machine's name is what gives way, because its icon is
-        // already standing there — unless the lookup found no block, when the name
-        // is the only thing saying which machine this is, so it is kept and drawn as
-        // primary text. A tail too narrow to read is dropped whole rather than shown
-        // as "· …", which carries no more information than the icon.
-        int room = inner - gutterW - TOGGLE_W - TOGGLE_GAP;
-        String head = primary;
-        String tail = secondary;
-        int tailRoom = room - Math.min(this.font.width(head), room) - TEXT_GAP;
-        if (!tail.isEmpty() && this.font.width(tail) > tailRoom) {
-            if (icon.isEmpty() || tailRoom >= MIN_TAIL) {
-                tail = RecipeListLayout.trimToWidth(this.font::width, tail,
-                        Math.max(0, tailRoom));
-            } else {
-                tail = "";
-            }
-        }
-        int headRoom = tail.isEmpty() ? room
-                : room - this.font.width(tail) - TEXT_GAP;
-        if (this.font.width(head) > headRoom) {
-            head = RecipeListLayout.trimToWidth(this.font::width, head, Math.max(0, headRoom));
-        }
-        graphics.drawString(this.font, head, textX, textY, TEXT, false);
-        if (!tail.isEmpty()) {
-            graphics.drawString(this.font, tail, textX + this.font.width(head) + TEXT_GAP,
-                    textY, icon.isEmpty() ? TEXT : MUTED, false);
-        }
-    }
 
     /** Closes to the screen the picker was opened from — never to the world. */
     @Override
