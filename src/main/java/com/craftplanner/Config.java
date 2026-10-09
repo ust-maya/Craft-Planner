@@ -17,7 +17,7 @@ import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
- * Client configuration of the planner (Stage 10).
+ * Client configuration of the planner.
  *
  * <p>Everything here is client side: the tree, the overlay and the inventory
  * comparison live on the client only, so the spec is registered as

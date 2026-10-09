@@ -9,7 +9,7 @@ import com.craftplanner.client.tree.TreeRow;
 import java.util.Map;
 
 /**
- * Colour coding of tree nodes (Stage 8, availability added in Stage 9).
+ * Colour coding of tree nodes.
  *
  * <p>Two encodings, deliberately kept apart: the <em>label</em> of a row says
  * what the inventory covers (green / amber / red) or what the node is (goal,
@@ -72,7 +72,7 @@ public final class NodeColors {
     }
 
     /**
-     * Stage 9: raw materials are coloured by availability — green when the
+     * Raw materials are coloured by availability — green when the
      * player already has enough, yellow when partly, red when nothing.
      * Craftable nodes keep their neutral colour: they are produced by the tree.
      */

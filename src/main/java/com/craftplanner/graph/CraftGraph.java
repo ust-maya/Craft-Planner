@@ -13,7 +13,7 @@ import net.minecraft.world.level.material.Fluid;
  * derives the aggregated shopping list from the current tree state.
  *
  * <p>The graph holds no recipe-manager dependency: the traversal engine
- * (Stage 3) builds the nodes, this class only stores and aggregates them.</p>
+ * builds the nodes, this class only stores and aggregates them.</p>
  */
 public final class CraftGraph {
     private final List<RecipeNode> roots = new ArrayList<>();

@@ -27,18 +27,18 @@ import net.minecraft.world.level.material.Fluid;
  *
  * <p>Every mutation rebuilds the trees through
  * {@link CraftTreeBuilder}, so the graph is always in a consistent state for
- * the overlay (Stage 8) and the list screen (Stage 7). The same rebuild
+ * the overlay and the list screen. The same rebuild
  * re-scans the inventory — and the inventory is spent on assemblies and goals
  * before their ingredients are planned — and stores the per-material
  * {@link Availability} used for the green/red colouring and the "still needed"
- * totals (Stage 9).</p>
+ * totals.</p>
  */
 public final class PlannerState {
 
     private static final CraftGraph GRAPH = new CraftGraph();
     /**
-     * Recipe choice per item (Stage 3 alternative selection, wired to the UI
-     * in Stage 6). One entry per item, holding the recipe id rather than the
+     * Recipe choice per item, as picked among the alternatives in the UI.
+     * One entry per item, holding the recipe id rather than the
      * {@link RecipeHolder}: the holder belongs to the level that produced it
      * and goes stale on reload. The player's pick is pinned for as long as the
      * item is in the plan: nothing short of {@link #remove(ItemKey)} or
@@ -215,7 +215,7 @@ public final class PlannerState {
     }
 
     /**
-     * Picks another recipe for an item (Stage 6) and keeps that pick: the item
+     * Picks another recipe for an item and keeps that pick: the item
      * is planned with this recipe until it leaves the plan, whereupon
      * {@link #remove(ItemKey)} or {@link #clear()} drops the choice with it.
      * The re-expansion is debounced by {@link #REBUILD_DEBOUNCE_MS} — see
@@ -436,7 +436,7 @@ public final class PlannerState {
     }
 
     /**
-     * Re-scans the inventory (Stage 9). Called after every rebuild and once
+     * Re-scans the inventory. Called after every rebuild and once
      * per second from the client tick handler, so the colours stay fresh
      * while the player moves items around.
      *

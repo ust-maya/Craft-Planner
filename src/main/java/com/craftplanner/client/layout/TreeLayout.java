@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Layered ("tidy tree") layout for the craft tree (Stage 8).
+ * Layered ("tidy tree") layout for the craft tree.
  *
  * <p>Depth defines the row, and the horizontal position is assigned in
  * post-order: every leaf takes the next free slot, every inner node is

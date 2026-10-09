@@ -24,11 +24,11 @@ import org.lwjgl.glfw.GLFW;
 /**
  * Handles the mod keys on the game event bus, client side only.
  *
- * <p>Stage 6: {@code ADD_RECIPE} captures the stack under the cursor through
+ * <p>{@code ADD_RECIPE} captures the stack under the cursor through
  * {@link ItemCapture} and opens the quantity popup, which adds the root to
  * the planner graph; {@code OPEN_RECIPES} opens the list screen where the
- * added targets are edited (Stage 7); {@code TOGGLE_OVERLAY} switches the
- * tree overlay drawn by {@code TreeOverlayRenderer} (Stage 8).</p>
+ * added targets are edited; {@code TOGGLE_OVERLAY} switches the
+ * tree overlay drawn by {@code TreeOverlayRenderer}.</p>
  *
  * <p>Two complementary hooks are needed because vanilla only drives
  * {@link KeyMapping#consumeClick()} while no screen is open —
@@ -50,7 +50,7 @@ public class ClientEvents {
             return;
         }
 
-        // Stage 9: keep the availability colours fresh (once per second). Own
+        // Keep the availability colours fresh (once per second). Own
         // counter rather than the level's game time: while the game is paused the
         // world clock stops, and `getGameTime() % 20 == 0` then reads true on
         // every tick, turning a once-a-second inventory scan into a per-tick one.

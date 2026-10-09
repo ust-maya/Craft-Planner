@@ -6,7 +6,7 @@ import java.util.Optional;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * Soft EMI integration (Stage 5) — reflection based, so the mod loads and
+ * Soft EMI integration — reflection based, so the mod loads and
  * works fine when EMI is absent and no compile-time dependency is needed.
  *
  * <p>Call chain used at runtime:</p>

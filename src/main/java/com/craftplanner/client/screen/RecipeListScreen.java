@@ -19,20 +19,20 @@ import net.minecraft.world.item.crafting.RecipeHolder;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Window with all targets the player added (Stage 7, hotkey {@code K}).
+ * Window with all targets the player added (hotkey {@code K}).
  *
  * <p>Each row shows the item, its requested amount and four controls: the
- * recipe switcher of Stage 6, {@code -}, {@code +} (hold Shift for steps of
+ * recipe switcher, {@code -}, {@code +} (hold Shift for steps of
  * 10) and {@code x} to drop the target. Every change is applied immediately
  * and re-expands the trees, so the overlay and the shopping list stay in
  * sync.</p>
  *
  * <p>The footer deliberately shows no raw-material summary and no deficit line:
  * whatever the list holds, the bottom of the window carries only the hint and
- * the buttons. The inventory comparison of Stage 9 itself is untouched — it
+ * the buttons. The inventory comparison itself is untouched — it
  * still feeds the overlay's shopping list and node colours.</p>
  *
- * <p>Stage 11: the footer also carries the ore switch — a button that flips
+ * <p>The footer also carries the ore switch — a button that flips
  * {@code filters.hideOres} at runtime, so ore blocks and raw ore materials can
  * be kept out of the tree without editing the config file and restarting.</p>
  *

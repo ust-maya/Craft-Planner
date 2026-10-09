@@ -35,7 +35,7 @@ import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 
 /**
- * Draws the craft plan over the game screen (Stage 8).
+ * Draws the craft plan over the game screen.
  *
  * <p>Two layouts are available, picked by {@code overlay.mode} in the client
  * config: {@code "tree"} (default) — the nested list this class is built around,

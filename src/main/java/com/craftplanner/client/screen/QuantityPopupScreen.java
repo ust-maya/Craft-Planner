@@ -18,7 +18,7 @@ import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Modal popup shown right after an item is captured (Stage 6): icon, name,
+ * Modal popup shown right after an item is captured: icon, name,
  * quantity field with {@code +/-} steppers and Add / Cancel.
  *
  * <p>{@code Esc} cancels, {@code Enter} confirms, mouse wheel over the panel

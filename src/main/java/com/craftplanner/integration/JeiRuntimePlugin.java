@@ -10,7 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * JEI plugin (Stage 5) — the only way to get hold of a JEI runtime.
+ * JEI plugin — the only way to get hold of a JEI runtime.
  *
  * <p>JEI never exposes its runtime statically; it is handed to plugins through
  * {@link IModPlugin#onRuntimeAvailable(IJeiRuntime)}. That is why this class

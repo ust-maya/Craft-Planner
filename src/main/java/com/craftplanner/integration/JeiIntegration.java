@@ -4,7 +4,7 @@ import java.util.Optional;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * Soft JEI integration (Stage 5).
+ * Soft JEI integration.
  *
  * <p>Unlike EMI, JEI hands out its runtime exclusively through a registered
  * plugin ({@code @JeiPlugin} + {@code IModPlugin#onRuntimeAvailable}), which
@@ -14,7 +14,7 @@ import net.minecraft.world.item.ItemStack;
  * <p>The plugin carries JEI types, so this class only touches it after
  * {@link #isPresent()} has confirmed JEI is loaded — without JEI the plugin
  * is never loaded and {@link #hovered()} stays empty, leaving the inventory
- * capture of Stage 4 in charge.</p>
+ * capture in charge.</p>
  */
 public final class JeiIntegration {
 

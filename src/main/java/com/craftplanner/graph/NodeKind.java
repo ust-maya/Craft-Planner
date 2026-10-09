@@ -2,7 +2,7 @@ package com.craftplanner.graph;
 
 /**
  * Role of a node inside the craft tree. Drives the colour coding in the
- * overlay (Stage 8): intermediate nodes are craftable, raw nodes are not.
+ * overlay: intermediate nodes are craftable, raw nodes are not.
  */
 public enum NodeKind {
     /** A target the player added explicitly. */

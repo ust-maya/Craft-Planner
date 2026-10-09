@@ -3,7 +3,7 @@ package com.craftplanner.client.resource;
 import com.craftplanner.graph.CraftMath;
 
 /**
- * Comparison of a required amount against what the player has (Stage 9).
+ * Comparison of a required amount against what the player has.
  */
 public record Availability(long required, long available) {
 
