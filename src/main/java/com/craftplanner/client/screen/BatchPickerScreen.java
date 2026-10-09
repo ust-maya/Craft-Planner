@@ -8,10 +8,10 @@ import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.MachineNames;
 import com.craftplanner.client.overlay.NodeColors;
-import com.craftplanner.client.overlay.TreeCollapse;
 import com.craftplanner.client.tree.TreeFlatten;
 import com.craftplanner.client.tree.TreeMetrics;
 import com.craftplanner.client.tree.TreeRow;
+import com.craftplanner.client.tree.TreeSource;
 import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.RecipeNode;
 import java.util.ArrayList;
@@ -46,9 +46,9 @@ import org.lwjgl.glfw.GLFW;
  * already exists rather than from a fresh expansion: the item's own row, then
  * everything the plan currently has hanging off it, drawn with the tree's own
  * geometry. Nothing is recomputed, which is why opening this window costs
- * nothing, and the branches it shows are the ones the overlay is drawing — a fold
- * made here folds there, and the {@code (+12)} on a closed branch is the plan's
- * own hidden count.</p>
+ * nothing. The folds are this window's own: every branch opens folded — the
+ * decision and the count of the rows it would drag in — and opening one here
+ * leaves the plan window exactly as it was.</p>
  *
  * <p>A decision nested inside another decision's branch is shown once, as part of
  * that branch; its own heading would be the same row twice. What is left is a
@@ -81,12 +81,19 @@ public final class BatchPickerScreen extends Screen {
 
     private final Screen returnTo;
     /**
+     * The branches the player opened in this window, by tree path. Everything
+     * else is folded: the window opens on the decisions themselves, each with the
+     * count of what it would drag in, and the plan window's own folds are left alone.
+     */
+    private final Set<String> opened = new HashSet<>();
+    /** One flattened branch per decision: its heading at row 0, then what hangs off it. */
+    private List<List<TreeRow<RecipeNode>>> branches = List.of();
+    /**
      * The branches as plan-row indices: one heading per decision, followed by the
      * rows hanging off it. Indices, not nodes, because the plan rebuilds its rows
      * on every change and anything held across one would point at a stale tree.
      */
     private List<Line> lines = List.of();
-    private List<TreeRow<RecipeNode>> plan = List.of();
     /** The items still open to a decision, so any row carrying one can be clicked. */
     private Set<ItemKey> ambiguous = Set.of();
     private int panelWidth;
@@ -97,7 +104,6 @@ public final class BatchPickerScreen extends Screen {
     private int grabY;
     private int grabScroll;
     private long seenGraphVersion;
-    private long seenFoldVersion = -1;
     private long seenAvailabilityVersion = -1;
     /** The window's close button: the same chip every planner window closes with. */
     private Button closeButton;
@@ -105,11 +111,19 @@ public final class BatchPickerScreen extends Screen {
     /**
      * One drawn line of a branch.
      *
-     * @param planRow  index into the plan
-     * @param head     whether this line is the decision itself rather than its branch
+     * @param branch   index into {@link #branches}
+     * @param row      index into that branch; 0 is the decision itself
      * @param headLine band line of the heading this row hangs off, itself for a heading
      */
-    private record Line(int planRow, boolean head, int headLine) {
+    private record Line(int branch, int row, int headLine) {
+
+        boolean head() {
+            return row == 0;
+        }
+    }
+
+    private TreeRow<RecipeNode> rowOf(Line line) {
+        return this.branches.get(line.branch()).get(line.row());
     }
 
     public BatchPickerScreen(Screen returnTo) {
@@ -134,7 +148,6 @@ public final class BatchPickerScreen extends Screen {
     @Override
     protected void init() {
         this.seenGraphVersion = PlannerState.graphVersion();
-        this.seenFoldVersion = TreeCollapse.version();
         this.seenAvailabilityVersion = PlannerState.availabilityVersion();
         if (this.minecraft.level == null) {
             // The world went away: nothing to decide in, so close. An empty branch
@@ -143,7 +156,6 @@ public final class BatchPickerScreen extends Screen {
             this.minecraft.setScreen(this.returnTo);
             return;
         }
-        this.plan = PlanRows.rows();
         relayout();
         this.panelWidth = measure();
         this.scroll = Math.min(this.scroll, maxScroll());
@@ -158,64 +170,71 @@ public final class BatchPickerScreen extends Screen {
 
     @Override
     public void tick() {
-        // A fold made here is a fold of the plan, so it lands through the same
-        // version the overlay watches: without this the window would keep drawing
-        // a branch the overlay has already closed.
-        if (PlannerState.graphVersion() != this.seenGraphVersion
-                || TreeCollapse.version() != this.seenFoldVersion) {
+        if (PlannerState.graphVersion() != this.seenGraphVersion) {
             init();
         } else if (PlannerState.availabilityVersion() != this.seenAvailabilityVersion) {
             // The player moved materials around while deciding. The rows carry the
-            // inventory's verdict on what they name, so they are re-read — but the
-            // panel is not laid out again: nothing about the plan changed, and a
-            // relayout would slide the list under the cursor once a second.
+            // inventory's verdict on what they name, so they are flattened again —
+            // the same branches in the same places, only recoloured, so neither the
+            // panel nor the scroll moves.
             this.seenAvailabilityVersion = PlannerState.availabilityVersion();
-            this.plan = PlanRows.rows();
+            relayout();
         }
     }
 
     /**
-     * Lays the decisions out as branches: the item's own plan row, then every row
-     * the plan has below it, which is its subtree by construction of a depth-first
-     * flattening.
+     * Lays the decisions out as branches: each decision's own row, then its subtree
+     * under this window's folds.
      *
-     * <p>A row already printed inside an earlier branch is never printed twice —
-     * two decisions can sit inside one another, and the inner one is on screen as
-     * part of the outer branch. But a decision is never <em>lost</em> that way:
-     * if its first appearance in the plan is already inside another branch, it
-     * takes the next one that is not, and if there is none it is simply already
-     * visible where it is. Every row that names a switchable item stays clickable
-     * either way, so an inner decision is one click from where it is drawn.</p>
+     * <p>The decisions are found in the <em>whole</em> plan, not in the rows the plan
+     * window shows: a decision inside a branch folded there is still a decision.
+     * A row already printed inside an earlier branch is never printed twice — two
+     * decisions can sit inside one another, and the inner one is on screen as part
+     * of the outer branch. But a decision is never <em>lost</em> that way: if its
+     * first appearance is already inside another branch, it takes the next one that
+     * is not, and if there is none it is simply already part of a branch. Every row
+     * that names a switchable item stays clickable either way.</p>
      */
     private void relayout() {
+        TreeSource<RecipeNode> source = PlanRows.planSource();
+        List<TreeRow<RecipeNode>> whole = TreeFlatten.flatten(PlannerState.graph().roots(), source,
+                path -> false);
+        List<List<TreeRow<RecipeNode>>> builtBranches = new ArrayList<>();
         List<Line> built = new ArrayList<>();
         Set<Integer> shown = new HashSet<>();
         this.ambiguous = new HashSet<>();
         for (RecipeNode node : ambiguousNodes()) {
             this.ambiguous.add(node.item());
-            int at = firstUncovered(node.item(), shown);
+            int at = firstUncovered(whole, node.item(), shown);
             if (at < 0) {
                 continue;
             }
-            int headLine = built.size();
-            built.add(new Line(at, true, headLine));
-            int end = TreeFlatten.subtreeEnd(this.plan, at);
+            int end = TreeFlatten.subtreeEnd(whole, at);
             for (int r = at + 1; r <= end; r++) {
                 shown.add(r);
-                built.add(new Line(r, false, headLine));
+            }
+            List<TreeRow<RecipeNode>> branch = TreeFlatten.flatten(List.of(whole.get(at).node()), source,
+                    path -> !this.opened.contains(path));
+            int index = builtBranches.size();
+            builtBranches.add(branch);
+            int headLine = built.size();
+            for (int r = 0; r < branch.size(); r++) {
+                built.add(new Line(index, r, headLine));
             }
         }
+        this.branches = builtBranches;
         this.lines = built;
     }
 
     /**
-     * The plan's first row for an item that no earlier branch has printed yet, or
- * {@code -1} when the plan does not carry it or every row of it is already shown.
+     * The first row of the whole plan for an item that no earlier branch has printed
+     * yet, or {@code -1} when the plan does not carry it or every row of it is
+     * already shown.
      */
-    private int firstUncovered(ItemKey item, Set<Integer> shown) {
-        for (int r = 0; r < this.plan.size(); r++) {
-            if (!this.plan.get(r).node().isFluidRequirement()
-                    && this.plan.get(r).node().item().equals(item) && !shown.contains(r)) {
+    private int firstUncovered(List<TreeRow<RecipeNode>> whole, ItemKey item, Set<Integer> shown) {
+        for (int r = 0; r < whole.size(); r++) {
+            if (!whole.get(r).node().isFluidRequirement()
+                    && whole.get(r).node().item().equals(item) && !shown.contains(r)) {
                 return r;
             }
         }
@@ -223,20 +242,11 @@ public final class BatchPickerScreen extends Screen {
     }
 
     /**
-     * How deep a line is drawn.
-     *
-     * <p>The heading is the column the plan gave it and everything below hangs off
-     * that, one step in: the depth the plan assigned is measured from the goal at
-     * the top, and the goal is not part of this window, so keeping the plan's own
-     * numbers would leave the first branch indented by however deep it happens to
-     * sit in the plan.</p>
+     * How deep a line is drawn: each branch is flattened from its decision, so the
+     * heading is at 0 and its rows step in from there.
      */
     private int depthOf(Line line) {
-        if (line.head()) {
-            return 0;
-        }
-        int headDepth = this.plan.get(this.lines.get(line.headLine()).planRow()).depth();
-        return Math.max(1, this.plan.get(line.planRow()).depth() - headDepth);
+        return rowOf(line).depth();
     }
 
     /**
@@ -251,7 +261,7 @@ public final class BatchPickerScreen extends Screen {
         // Every row can carry a counter now; only a heading adds the recipe button.
         int counterW = TEXT_GAP + this.font.width("99/99");
         for (Line line : this.lines) {
-            TreeRow<RecipeNode> row = this.plan.get(line.planRow());
+            TreeRow<RecipeNode> row = rowOf(line);
             widest = Math.max(widest, TreeMetrics.labelX(depthOf(line))
                     + this.font.width(row.name())
                     + TEXT_GAP + amountW
@@ -346,10 +356,12 @@ public final class BatchPickerScreen extends Screen {
         int index = hitLine(mx, my);
         if (index >= 0 && index < this.lines.size()) {
             Line line = this.lines.get(index);
-            TreeRow<RecipeNode> row = this.plan.get(line.planRow());
+            TreeRow<RecipeNode> row = rowOf(line);
             if (row.foldable() && overToggle(mx, my, index)) {
-                TreeCollapse.toggle(row.path());
-                refreshKeeping(index);
+                if (!this.opened.remove(row.path())) {
+                    this.opened.add(row.path());
+                }
+                refreshKeeping();
                 return true;
             }
             // Any row naming a switchable item opens its picker, not only the
@@ -364,20 +376,16 @@ public final class BatchPickerScreen extends Screen {
     }
 
     /**
-     * Re-reads the plan after a fold, keeping the folded line where it was.
+     * Lays the window out again after a fold, leaving the scroll where it was.
      *
-     * <p>Closing a branch removes the rows under it and pulls everything below up
-     * by however many there were, so leaving the scroll alone would slide the whole
-     * list under the cursor for a click that only meant to close one branch.</p>
+     * <p>A fold only adds or removes rows <em>below</em> the line that was clicked,
+     * so an unchanged scroll is exactly what keeps that line under the cursor; the
+     * old version scrolled the line to the top of the band instead.</p>
      */
-    private void refreshKeeping(int anchorLine) {
-        this.seenGraphVersion = PlannerState.graphVersion();
-        this.seenFoldVersion = TreeCollapse.version();
-        this.seenAvailabilityVersion = PlannerState.availabilityVersion();
-        this.plan = PlanRows.rows();
+    private void refreshKeeping() {
         relayout();
         this.panelWidth = measure();
-        this.scroll = Math.max(0, Math.min(anchorLine, maxScroll()));
+        this.scroll = Math.min(this.scroll, maxScroll());
     }
 
     @Override
@@ -532,12 +540,13 @@ public final class BatchPickerScreen extends Screen {
         int bandBottom = bandTop() + shown * ROW_H;
         for (int i = 0; i < this.lines.size(); i++) {
             Line line = this.lines.get(i);
-            TreeRow<RecipeNode> parent = this.plan.get(line.planRow());
-            if (!parent.expands(line.planRow())) {
+            TreeRow<RecipeNode> parent = rowOf(line);
+            if (!parent.expands(line.row())) {
                 continue;
             }
-            int headPlanRow = this.lines.get(line.headLine()).planRow();
-            int childLine = line.headLine() + (parent.lastChildIndex() - headPlanRow);
+            // A branch is flattened on its own, so the row index of its last child is
+            // counted from the heading — the heading's band line is where it starts.
+            int childLine = line.headLine() + parent.lastChildIndex();
             if (childLine < first || i > last) {
                 continue;
             }
@@ -552,7 +561,7 @@ public final class BatchPickerScreen extends Screen {
         for (int i = first; i <= last; i++) {
             Line line = this.lines.get(i);
             drawBranchLine(graphics, line, i, i == hover,
-                    overToggle(mouseX, mouseY, i) && this.plan.get(line.planRow()).foldable(),
+                    overToggle(mouseX, mouseY, i) && rowOf(line).foldable(),
                     contentLeft, contentRight);
         }
         graphics.disableScissor();
@@ -561,7 +570,7 @@ public final class BatchPickerScreen extends Screen {
     /** Draws one line of a branch: fold button, icon, name, amount and counter. */
     private void drawBranchLine(GuiGraphics graphics, Line line, int index, boolean hovered,
             boolean aimed, int contentLeft, int contentRight) {
-        TreeRow<RecipeNode> row = this.plan.get(line.planRow());
+        TreeRow<RecipeNode> row = rowOf(line);
         RecipeNode node = row.node();
         int depth = depthOf(line);
         int y = lineTop(index);
@@ -622,11 +631,13 @@ public final class BatchPickerScreen extends Screen {
             return null;
         }
         Line line = this.lines.get(index);
-        TreeRow<RecipeNode> row = this.plan.get(line.planRow());
+        TreeRow<RecipeNode> row = rowOf(line);
         if (row.foldable() && overToggle(mx, my, index)) {
+            // The words of the tree window's own fold control: this plate folds one
+            // branch, not every branch like the buttons whose tooltips it used to borrow.
             return Component.translatable(row.folded()
-                    ? "screen.craftplanner.tree.expand.tooltip"
-                    : "screen.craftplanner.tree.collapse.tooltip");
+                    ? "overlay.craftplanner.fold.expand"
+                    : "overlay.craftplanner.fold.collapse");
         }
         if (this.ambiguous.contains(row.node().item())) {
             // Said with the words of the key that already exists for it: the counter

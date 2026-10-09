@@ -50,6 +50,17 @@ public final class PlanRows {
     }
 
     /**
+     * The adapter with the plan's current availability, for a window that flattens
+     * the plan its own way — with folds of its own — instead of reading
+     * {@link #rows()}. The rows it builds are coloured by the same inventory scan
+     * as the plan's.
+     */
+    public static TreeSource<RecipeNode> planSource() {
+        ADAPTER.availability = PlannerState.availability();
+        return ADAPTER;
+    }
+
+    /**
      * The flattened plan, plus the three things it was derived from. The overlay
      * draws sixty times a second and the graph only moves when the plan changes,
      * so the rows are rebuilt on a change instead of per frame. A fold is the

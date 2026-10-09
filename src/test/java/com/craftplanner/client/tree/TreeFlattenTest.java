@@ -136,4 +136,23 @@ class TreeFlattenTest {
     void anEmptyPlanFlattensToNoRows() {
         assertTrue(TreeFlatten.flatten(List.of(), new FakeSource(), Set.of()).isEmpty());
     }
+
+    @Test
+    void everyBranchFoldedShowsOnlyTheGoals() {
+        List<TreeRow<Node>> rows = TreeFlatten.flatten(roots(), new FakeSource(), path -> true);
+        assertEquals(List.of("A", "F"), rows.stream().map(TreeRow::name).toList());
+        assertEquals(4, rows.get(0).hiddenRows(), "A hides B, D, E and C");
+    }
+
+    @Test
+    void onlyTheOpenedBranchesUnfold() {
+        // A window that starts folded keeps the set of paths the player opened
+        // and folds the rest, so a branch nobody has looked at stays closed.
+        Set<String> opened = Set.of("A");
+        List<TreeRow<Node>> rows = TreeFlatten.flatten(roots(), new FakeSource(),
+                path -> !opened.contains(path));
+        assertEquals(List.of("A", "B", "C", "F"), rows.stream().map(TreeRow::name).toList());
+        assertTrue(rows.get(1).folded(), "B was never opened");
+        assertEquals(2, rows.get(1).hiddenRows(), "B hides D and E");
+    }
 }
