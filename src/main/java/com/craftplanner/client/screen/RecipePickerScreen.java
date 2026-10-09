@@ -283,14 +283,16 @@ public final class RecipePickerScreen extends Screen {
     }
 
     /**
-     * {@code " → ×2"} when one run of the recipe makes more than one of the item
-     * this window is about, empty otherwise. Two recipes can ask for the same
+     * {@code " → ×2"} for how many one run makes of the item this window is about,
+     * empty otherwise. Two recipes can ask for the same
      * thing and differ only in how much they give back, and the row is where the
      * options are compared.
      */
     private String yieldOf(RecipeHolder<?> option, HolderLookup.Provider registries) {
         ItemStack result = option.value().getResultItem(registries);
-        if (result.isEmpty() || result.getCount() <= 1 || !ItemKey.of(result).equals(this.item)) {
+        // The yield is shown even when it is one: a row without it read as a row
+        // with something missing next to rows that had it.
+        if (result.isEmpty() || !ItemKey.of(result).equals(this.item)) {
             return "";
         }
         return " " + Component.translatable("gui.craftplanner.picker.yield", result.getCount()).getString();
