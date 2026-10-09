@@ -27,8 +27,10 @@ import net.minecraft.world.level.material.Fluid;
  * <p>Every mutation rebuilds the trees through
  * {@link CraftTreeBuilder}, so the graph is always in a consistent state for
  * the overlay (Stage 8) and the list screen (Stage 7). The same rebuild
- * re-scans the inventory and stores the per-material {@link Availability}
- * used for the green/red colouring and the "still needed" totals (Stage 9).</p>
+ * re-scans the inventory — and the inventory is spent on assemblies and goals
+ * before their ingredients are planned — and stores the per-material
+ * {@link Availability} used for the green/red colouring and the "still needed"
+ * totals (Stage 9).</p>
  */
 public final class PlannerState {
 
@@ -397,6 +399,9 @@ public final class PlannerState {
      * Re-scans the inventory (Stage 9). Called after every rebuild and once
      * per second from the client tick handler, so the colours stay fresh
      * while the player moves items around.
+     *
+     * <p>When the inventory itself changed, the tree is expanded again first:
+     * assemblies and goals are taken from it.</p>
      */
     public static void refreshAvailability() {
         LOCK.lock();
@@ -408,8 +413,16 @@ public final class PlannerState {
                 replaceAvailability(Collections.emptyMap(), false);
                 return;
             }
-            replaceAvailability(ResourceCheck.evaluate(
-                    GRAPH.aggregateRequirements(), InventorySnapshot.of(player)), true);
+            InventorySnapshot snapshot = InventorySnapshot.of(player);
+            if (mc.level != null && !snapshot.sameCounts(stockOfLastRebuild)) {
+                // The bag changed since the tree was expanded, and the tree takes
+                // assemblies from it: re-expand. rebuild() scans again and comes back
+                // here with an identical snapshot, so this does not recurse twice.
+                rebuild();
+                return;
+            }
+            replaceAvailability(ResourceCheck.evaluate(GRAPH.aggregateRequirements(), snapshot,
+                    GRAPH.takenByAssemblies()), true);
         } finally {
             LOCK.unlock();
         }
