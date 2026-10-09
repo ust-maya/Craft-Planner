@@ -279,6 +279,7 @@ public final class PlannerState {
         try {
             ensureChoicesLoaded();
             sources = next == null ? SourceFilter.NONE : next;
+            writeSources();
             pendingRebuildAt = System.currentTimeMillis() + REBUILD_DEBOUNCE_MS;
         } finally {
             LOCK.unlock();
@@ -380,8 +381,8 @@ public final class PlannerState {
     }
 
     /**
-     * Loads the saved roots, recipe choices and tree cuts once, before a tree
-     * is ever expanded against them.
+     * Loads the saved roots, recipe choices, tree cuts and recipe sources once,
+     * before a tree is ever expanded against them.
      *
      * <p>Waits for a world: a config event can reach {@link #rebuild()} while the
      * game still sits on the title screen, and at that point the item registries
@@ -399,6 +400,7 @@ public final class PlannerState {
         }
         PREFERENCES.putAll(RecipeChoices.read());
         CUTS.addAll(RecipeCuts.read());
+        sources = RecipeSources.read();
     }
 
     /**
@@ -418,6 +420,12 @@ public final class PlannerState {
     private static void writeCuts() {
         if (choicesLoaded) {
             RecipeCuts.write(CUTS);
+        }
+    }
+
+    private static void writeSources() {
+        if (choicesLoaded) {
+            RecipeSources.write(sources);
         }
     }
 
