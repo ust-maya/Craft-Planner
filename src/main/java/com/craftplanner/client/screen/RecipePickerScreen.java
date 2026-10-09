@@ -612,12 +612,12 @@ public final class RecipePickerScreen extends Screen {
         if (!this.expanded.remove(id)) {
             this.expanded.add(id);
         }
-        // The line under the cursor should stay under the cursor: opening a tree
-        // pushes everything below it down, so the option's own line is the anchor.
-        int anchor = lineOf(option);
+        // Opening or closing a tree only changes the lines below the option, so the
+        // scroll is left alone and the option stays under the cursor — as in every
+        // other tree. Scrolling to it moved the clicked line to the top of the band.
         relayout();
         this.panelWidth = measure();
-        this.scroll = Math.max(0, Math.min(anchor, maxScroll()));
+        this.scroll = Math.min(this.scroll, maxScroll());
     }
 
     @Override
