@@ -1,24 +1,24 @@
-# Изменения
+# Changelog
 
-Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по
-[Semantic Versioning](https://semver.org/lang/ru/).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
+versions follow [Semantic Versioning](https://semver.org/).
 
 ## 1.0.0 — 2026-10-09
 
-Первый выпуск для Minecraft 1.21.1 и NeoForge 21.1.248+.
+First release, for Minecraft 1.21.1 and NeoForge 21.1.248+.
 
-### Добавлено
+### Added
 
-- План сборки: предмет под курсором в EMI, JEI или инвентаре добавляется в план клавишей `N`,
-  количество задаётся в отдельном окне, список целей открывается клавишей `K`.
-- Дерево крафта до заданной глубины: число крафтов, жидкости, рецепты кузнечного стола
-  и рецепты машин из модов.
-- Сравнение с инвентарём: каких материалов не хватает, сколько есть частично,
-  какие промежуточные предметы уже лежат в инвентаре.
-- Окно дерева (`G`) и дерево поверх экрана (`V`): сворачивание веток, кнопки уровней,
-  цветовая легенда.
-- Выбор варианта рецепта для предмета и срез дерева на любом предмете.
-- Окно источников рецептов: отключённые моды и машины не попадают в план.
-- Фильтр руд и редактор раскладки панели HUD (`O`): положение, размер, масштаб текста.
-- План, выбранные рецепты и срезы сохраняются между запусками игры.
-- Интерфейс на английском и русском.
+- Build plan: the item under the cursor in EMI, JEI or the inventory is added to the
+  plan with `N`, its amount is set in a separate window, and `K` opens the list of goals.
+- Craft tree down to the configured depth: the number of crafts, fluids, smithing
+  recipes and machine recipes from other mods.
+- Inventory check: which materials are missing, which are partly there, and which
+  intermediate items are already in the inventory.
+- Tree window (`G`) and the tree on top of the screen (`V`): folding branches, level
+  buttons, a colour key.
+- Choice of a recipe variant for an item, and a cut of the tree at any item.
+- Recipe sources window: switched-off mods and machines stay out of the plan.
+- Ore filter and the HUD panel layout editor (`O`): position, size, text scale.
+- The plan, recipe choices and cuts are kept between game sessions.
+- English and Russian interface.
