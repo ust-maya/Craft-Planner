@@ -4,7 +4,7 @@ import java.util.Optional;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * Façade over the recipe-viewer integrations (Stage 5).
+ * Façade over the recipe-viewer integrations.
  *
  * <p>Asks the viewers in priority order (EMI first — it exposes a proper
  * runtime API without a plugin) and falls back to "nothing" so the caller

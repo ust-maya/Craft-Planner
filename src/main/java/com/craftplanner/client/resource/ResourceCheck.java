@@ -8,7 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Matches the shopping list against the player's inventory (Stage 9).
+ * Matches the shopping list against the player's inventory.
  */
 public final class ResourceCheck {
 

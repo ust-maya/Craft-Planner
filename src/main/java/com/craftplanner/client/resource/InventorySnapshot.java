@@ -10,7 +10,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * What the player currently carries (Stage 9).
+ * What the player currently carries.
  *
  * <p>Two counts are kept: exact, per {@link ItemKey} (item plus its data
  * components) and coarse, per {@link Item} — so an enchanted pickaxe still

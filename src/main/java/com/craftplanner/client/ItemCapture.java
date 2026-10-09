@@ -12,11 +12,11 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * Grabs the {@link ItemStack} the player is pointing at (Stage 4).
+ * Grabs the {@link ItemStack} the player is pointing at.
  *
  * <p>Priority:
  * <ol>
- *   <li>item hovered inside EMI/JEI (Stage 5, soft dependency);</li>
+ *   <li>item hovered inside EMI/JEI (soft dependency);</li>
  *   <li>slot under the mouse inside an open container screen
  *       (inventory, chest, creative picker, any modded GUI);</li>
  *   <li>stack carried on the cursor, if no GUI is open.</li>

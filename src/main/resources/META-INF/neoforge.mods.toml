@@ -7,8 +7,10 @@ showAsResourcePack=false
 modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
-authors="Igor"
-description='''Craft Planner — визуализатор дерева крафта. Добавляйте рецепты из EMI/JEI или инвентаря горячей клавишей и смотрите дерево с подсветкой дефицита ресурсов.'''
+authors="Popov Igor"
+description='''Plans big builds: add any item from EMI, JEI or the inventory with a hotkey, and see its full crafting tree with the number of crafts and the materials you are still missing.
+
+Планирует большие сборки: добавьте предмет из EMI, JEI или инвентаря горячей клавишей и смотрите дерево крафта с числом крафтов и недостающими материалами.'''
 
 [[dependencies.${mod_id}]]
 modId="minecraft"
@@ -24,7 +26,7 @@ versionRange="[${neo_version},)"
 ordering="NONE"
 side="BOTH"
 
-# Soft, client-side integrations: the mod works without them (Stage 5).
+# Soft, client-side integrations: the mod works without them.
 # The version ranges pin the major each API was written against: EMI
 # (EmiApi.getHoveredStack) and JEI (IModPlugin) have changed signatures
 # across majors before, and an unbounded range would let a future

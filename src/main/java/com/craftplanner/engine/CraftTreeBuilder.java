@@ -27,7 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Recursive recipe-expansion engine (Stage 3).
+ * Recursive recipe-expansion engine.
  *
  * <p>Given the roots of a {@link CraftGraph}, it walks the recipe tree:
  * for every node it looks up the recipes producing that item, picks the
@@ -90,7 +90,7 @@ public final class CraftTreeBuilder {
      * expanding into their ingredients.
      */
     private final Set<ItemKey> cuts;
-    /** Drops ore-like resources from the tree (Stage 11). */
+    /** Drops ore-like resources from the tree. */
     private final ResourceFilter filter;
     /** What the player carries, spent as the tree is expanded; see {@link Stock}. */
     private final Stock<ItemKey> stock;

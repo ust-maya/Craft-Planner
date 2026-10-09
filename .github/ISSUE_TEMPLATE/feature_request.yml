@@ -1,0 +1,17 @@
+name: Feature request / Предложение
+description: An idea for the planner. / Идея для планировщика.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do / Какую задачу решаете
+      description: The build or situation where the planner falls short. / Сборка или ситуация, где планировщика не хватает.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help / Что бы помогло
+    validations:
+      required: true

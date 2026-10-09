@@ -1,0 +1,11 @@
+# Keeps the actions in .github/workflows current. Gradle dependencies are left
+# out on purpose: NeoForge, JEI and the Minecraft version are bumped by hand,
+# together with a check in the game.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci

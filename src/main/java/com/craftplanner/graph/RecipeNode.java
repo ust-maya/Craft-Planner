@@ -13,7 +13,7 @@ import net.minecraft.world.item.crafting.RecipeHolder;
  * A node of the craft tree: one item with the amount required to satisfy its
  * parent, plus the recipe chosen to produce it and the resulting children.
  *
- * <p>Nodes are mutable while the engine expands the tree (Stage 3) and are
+ * <p>Nodes are mutable while the engine expands the tree and are
  * treated as read-only afterwards by the overlay and the shopping list.</p>
  */
 public final class RecipeNode {
