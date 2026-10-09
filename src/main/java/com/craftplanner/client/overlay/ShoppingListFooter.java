@@ -96,10 +96,16 @@ final class ShoppingListFooter {
         }
     }
 
-    /** One drawn shopping-list icon: what it stands for and where it was put. */
-    record FooterMaterial(ItemKey item, Fluid fluid, long required, Availability availability) {
+    /**
+     * One shopping-list entry.
+     *
+     * @param amount what the entry's number says: the shortfall of an item — the
+     *               footer answers "what do I still have to gather" — or the volume
+     *               of a fluid
+     */
+    record FooterMaterial(ItemKey item, Fluid fluid, long amount, Availability availability) {
         static FooterMaterial item(ItemKey key, Availability value) {
-            return new FooterMaterial(key, null, value.required(), value);
+            return new FooterMaterial(key, null, value.missing(), value);
         }
 
         static FooterMaterial fluid(Fluid fluid, long amount) {
@@ -123,7 +129,7 @@ final class ShoppingListFooter {
         }
 
         String amountLabel() {
-            return isFluid() ? AmountLabel.millibuckets(required) : AmountLabel.bare(required);
+            return isFluid() ? AmountLabel.millibuckets(amount) : AmountLabel.bare(amount);
         }
 
         int color() {
@@ -206,7 +212,13 @@ final class ShoppingListFooter {
     private static List<FooterMaterial> shoppingList(Map<ItemKey, Availability> availability,
             Map<Fluid, Long> fluids) {
         List<FooterMaterial> entries = new ArrayList<>();
-        availability.forEach((key, value) -> entries.add(FooterMaterial.item(key, value)));
+        // Only what is still missing: a covered material has nothing left to gather,
+        // and with it gone the footer's numbers add up to the tree window's total.
+        availability.forEach((key, value) -> {
+            if (!value.satisfied()) {
+                entries.add(FooterMaterial.item(key, value));
+            }
+        });
         fluids.forEach((fluid, amount) -> entries.add(FooterMaterial.fluid(fluid, amount)));
         entries.sort((a, b) -> {
             long missingA = a.availability() == null ? 0 : a.availability().missing();
@@ -214,7 +226,7 @@ final class ShoppingListFooter {
             int byShortage = Long.compare(missingB, missingA);
             return byShortage != 0
                     ? byShortage
-                    : Long.compare(b.required(), a.required());
+                    : Long.compare(b.amount(), a.amount());
         });
         return entries;
     }
@@ -281,8 +293,8 @@ final class ShoppingListFooter {
     }
 
     /**
-     * One line of the shopping list: icon, total amount, colour by availability —
-     * no names, so nothing has to be trimmed.
+     * One line of the shopping list: icon, the amount still missing (a fluid: its
+     * volume), colour by availability — no names, so nothing has to be trimmed.
      *
      * @return the layout-x where the {@code +N} marker was drawn, {@code -1} when
      *         the line has no marker (used to hover-test the tail tooltip)
@@ -334,7 +346,7 @@ final class ShoppingListFooter {
         List<Component> lines = new ArrayList<>();
         for (FooterMaterial entry : footer.hiddenEntries) {
                 lines.add(entry.name().copy().append(Component.literal(" "
-                    + (entry.isFluid() ? entry.amountLabel() : AmountLabel.times(entry.required())))));
+                    + (entry.isFluid() ? entry.amountLabel() : AmountLabel.times(entry.amount())))));
         }
         showTooltip(graphics, font, mc, lines);
         return true;
@@ -342,7 +354,7 @@ final class ShoppingListFooter {
 
     /**
      * Hover feedback for a shopping-list icon: the footer shows one number per
-     * material — how much the whole plan asks for — which says nothing about
+     * material — how much is still missing — which says nothing about
      * <em>which</em> item it is or how much of it the player already carries. So
      * pointing at an icon names it and splits the amount into needed, on hand and
      * still missing.
@@ -381,8 +393,11 @@ final class ShoppingListFooter {
 
     /** The material's own tooltip lines, said the way every surface says them. */
     private static List<Component> materialLines(FooterMaterial material) {
-        return MaterialTooltip.lines(material.name(), material.amountLabel(),
-                material.availability());
+        // The footer's number is the shortfall; the tooltip still states the whole
+        // demand, then what is on hand and what is missing.
+        String demand = material.isFluid() ? material.amountLabel()
+                : AmountLabel.bare(material.availability().required());
+        return MaterialTooltip.lines(material.name(), demand, material.availability());
     }
 
     /**
