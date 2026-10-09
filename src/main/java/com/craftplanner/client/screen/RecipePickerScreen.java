@@ -3,6 +3,7 @@ package com.craftplanner.client.screen;
 import com.craftplanner.Config;
 import com.craftplanner.client.MachineNames;
 import com.craftplanner.client.AmountLabel;
+import com.craftplanner.client.PlanRows;
 import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
 import com.craftplanner.client.RecipePreview;
@@ -13,13 +14,16 @@ import com.craftplanner.client.overlay.NodeColors;
 import com.craftplanner.client.resource.Availability;
 import com.craftplanner.client.resource.InventorySnapshot;
 import com.craftplanner.client.resource.ResourceCheck;
+import com.craftplanner.client.tree.TreeFlatten;
 import com.craftplanner.client.tree.TreeMetrics;
 import com.craftplanner.client.tree.TreeRow;
 import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.RecipeNode;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -132,6 +136,8 @@ public final class RecipePickerScreen extends Screen {
     private List<Option> rows = List.of();
     /** Everything the band shows, options and the trees opened under them. */
     private List<Line> lines = List.of();
+    /** The flattened tree of every opened option, rebuilt by {@link #relayout()}. */
+    private final Map<Integer, List<TreeRow<RecipeNode>>> trees = new HashMap<>();
     /** Which options are opened, by recipe id so a re-sort does not close them. */
     private final Set<ResourceLocation> expanded = new LinkedHashSet<>();
     private int selected = -1;
@@ -254,27 +260,39 @@ public final class RecipePickerScreen extends Screen {
 
     /** Rebuilds the band: every option, and under each opened one its dependency tree. */
     private void relayout() {
+        this.trees.clear();
         List<Line> built = new ArrayList<>(this.rows.size());
         for (int i = 0; i < this.rows.size(); i++) {
             built.add(new OptionLine(i));
-            List<TreeRow<RecipeNode>> preview = previewOf(i);
-            if (preview != null) {
-                for (int r = 0; r < preview.size(); r++) {
-                    built.add(new TreeLine(i, r));
-                }
+            if (!this.expanded.contains(this.options.get(i).id())) {
+                continue;
+            }
+            List<TreeRow<RecipeNode>> tree = TreeFlatten.flatten(treeRootsOf(i), PlanRows.planSource(),
+                    Set.of());
+            this.trees.put(i, tree);
+            for (int r = 0; r < tree.size(); r++) {
+                built.add(new TreeLine(i, r));
             }
         }
         this.lines = built;
     }
 
-    /** The option's dependency tree, or {@code null} while it is closed. */
+    /**
+     * Where an option's tree starts: the ingredients of its preview root. The root
+     * itself is the item the option row already names, so its children hang off
+     * the option instead of off a name that is not on screen.
+     */
+    private List<RecipeNode> treeRootsOf(int option) {
+        RecipeNode root = RecipePreview.rootOf(this.item, this.options.get(option));
+        return root == null ? List.of() : PlanRows.planSource().childrenOf(root);
+    }
+
+    /**
+     * The option's dependency tree as laid out by the last {@link #relayout()},
+     * or {@code null} while it is closed.
+     */
     private List<TreeRow<RecipeNode>> previewOf(int option) {
-        if (option < 0 || option >= this.options.size()) {
-            return null;
-        }
-        return this.expanded.contains(this.options.get(option).id())
-                ? RecipePreview.of(this.item, this.options.get(option))
-                : null;
+        return this.trees.get(option);
     }
 
     /** Where an option's own line sits in {@link #lines}, so its tree can be found. */
@@ -420,14 +438,11 @@ public final class RecipePickerScreen extends Screen {
     }
 
     /**
-     * How deep a preview row is drawn.
-     *
-     * <p>The root of a preview is the item the option row already shows, and it is
-     * dropped, so its children keep their meaning but start one step further in:
-     * they hang off the option, not off a name that is not on screen.</p>
+     * How deep a tree row is drawn: the tree starts from the recipe's ingredients,
+     * so a row's own depth is its column.
      */
     private static int depthOf(TreeRow<RecipeNode> row) {
-        return Math.max(0, row.depth() - 1);
+        return row.depth();
     }
 
     private static String cutLabel(boolean cut) {

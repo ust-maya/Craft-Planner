@@ -4,11 +4,8 @@ import com.craftplanner.engine.CraftTreeBuilder;
 import com.craftplanner.graph.CraftGraph;
 import com.craftplanner.graph.ItemKey;
 import com.craftplanner.graph.RecipeNode;
-import com.craftplanner.client.tree.TreeFlatten;
-import com.craftplanner.client.tree.TreeRow;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
@@ -54,7 +51,7 @@ public final class RecipePreview {
      * ingot and a gas — and the tree below it is expanded for the item that was
      * asked for, not for whatever the recipe lists first.</p>
      */
-    private static final Map<PreviewKey, List<TreeRow<RecipeNode>>> CACHE = new HashMap<>();
+    private static final Map<PreviewKey, RecipeNode> CACHE = new HashMap<>();
     private static long cachedVersion = -1;
 
     /** A preview depends on both the recipe and the item it is asked to make. */
@@ -62,13 +59,12 @@ public final class RecipePreview {
     }
 
     /**
-     * The dependencies of one option, as rows the tree layout can draw.
-     *
-     * <p>The root row is dropped: it is the item the option row above already
-     * shows, and repeating it would make the player read the same name twice to
-     * reach the part they came for.</p>
+     * The root of one option's throwaway tree: the item, made by {@code recipe},
+     * with everything below it expanded as the plan would expand it. The caller
+     * draws its children — the root is the item the option row already shows —
+     * and folds them its own way.
      */
-    public static List<TreeRow<RecipeNode>> of(ItemKey item, RecipeHolder<?> recipe) {
+    public static RecipeNode rootOf(ItemKey item, RecipeHolder<?> recipe) {
         long version = PlannerState.graphVersion();
         if (version != cachedVersion) {
             CACHE.clear();
@@ -77,10 +73,10 @@ public final class RecipePreview {
         return CACHE.computeIfAbsent(new PreviewKey(recipe.id(), item), key -> build(item, recipe));
     }
 
-    private static List<TreeRow<RecipeNode>> build(ItemKey item, RecipeHolder<?> recipe) {
+    private static RecipeNode build(ItemKey item, RecipeHolder<?> recipe) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) {
-            return List.of();
+            return null;
         }
         Map<ItemKey, ResourceLocation> preferences = new HashMap<>(PlannerState.preferences());
         // Only this item's choice moves: everything below it stays on whatever the
@@ -100,8 +96,6 @@ public final class RecipePreview {
         CraftTreeBuilder.rebuild(preview, mc.level, preferences, PlannerState.hideOres(),
                 cuts, null);
 
-        List<TreeRow<RecipeNode>> rows =
-                TreeFlatten.flatten(preview.roots(), PlanRows.source(), Set.of());
-        return rows.size() <= 1 ? List.of() : List.copyOf(rows.subList(1, rows.size()));
+        return preview.roots().isEmpty() ? null : preview.roots().get(0);
     }
 }
