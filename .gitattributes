@@ -1,0 +1,10 @@
+# Text files are stored with LF; each checkout uses the line endings of its OS.
+* text=auto
+
+# The shell wrapper must keep LF to run on Linux and macOS, the batch wrapper
+# CRLF to run on Windows, whatever the checkout settings.
+/gradlew text eol=lf
+*.bat    text eol=crlf
+
+*.jar binary
+*.png binary
