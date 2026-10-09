@@ -3,6 +3,7 @@ package com.craftplanner.client.tree;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Flattens a craft tree into the rows a panel draws, honouring folded branches.
@@ -24,6 +25,16 @@ public final class TreeFlatten {
 
     /** Rows in draw order for every root, skipping the children of folded branches. */
     public static <N> List<TreeRow<N>> flatten(List<N> roots, TreeSource<N> source, Set<String> folded) {
+        return flatten(roots, source, folded::contains);
+    }
+
+    /**
+     * Same, with the fold decided per path. A window whose branches start folded
+     * keeps the paths the player <em>opened</em> and folds everything else —
+     * {@code path -> !opened.contains(path)} — which a set of folded paths cannot
+     * say about a branch nobody has looked at yet.
+     */
+    public static <N> List<TreeRow<N>> flatten(List<N> roots, TreeSource<N> source, Predicate<String> folded) {
         List<TreeRow<N>> rows = new ArrayList<>();
         for (int branch = 0; branch < roots.size(); branch++) {
             place(roots.get(branch), 0, null, branch, source, folded, rows);
@@ -36,7 +47,7 @@ public final class TreeFlatten {
      *         last row of its children for the vertical guide
      */
     private static <N> int place(N node, int depth, String parentPath, int branch,
-            TreeSource<N> source, Set<String> folded, List<TreeRow<N>> out) {
+            TreeSource<N> source, Predicate<String> folded, List<TreeRow<N>> out) {
         int index = out.size();
         List<N> children = source.childrenOf(node);
         // Only a row with children can fold, so the key is built for exactly
@@ -45,7 +56,7 @@ public final class TreeFlatten {
         TreeRow<N> row = source.rowFor(node, depth, branch, path, !children.isEmpty());
         out.add(row);
 
-        if (path != null && folded.contains(path)) {
+        if (path != null && folded.test(path)) {
             row.setSpan(index, countRows(children, source));
             return index;
         }
