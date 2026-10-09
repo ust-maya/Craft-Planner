@@ -61,7 +61,7 @@
   "gui.craftplanner.picker.title": "Как создать: %1$s",
   "gui.craftplanner.picker.cut": "Обрезать дерево здесь",
   "gui.craftplanner.picker.uncut": "Снова раскрыть ветку",
-  "gui.craftplanner.picker.cut.tooltip": "Остановить ветку на этом предмете: он останется в плане как сырьё, а его составляющие планироваться не будут",
+  "gui.craftplanner.picker.cut.tooltip": "Остановить ветку на этом предмете: он останется в плане как сырьё, а его составляющие планироваться не будут. В дереве такая строка помечается ножницами",
   "gui.craftplanner.picker.cut.on.tooltip": "Ветка обрезана, предмет считается сырьём — нажмите, чтобы планировщик снова раскрыл его составляющие",
   "gui.craftplanner.picker.expand": "Показать зависимости этого рецепта — строк: %1$s",
   "gui.craftplanner.picker.collapse": "Свернуть дерево — строк зависимостей: %1$s",
