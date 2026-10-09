@@ -74,6 +74,13 @@ public final class TreeCollapse {
         publish();
     }
 
+    /** One step of the fold buttons: what to fold and what to open, under one version. */
+    public static void apply(Collection<String> fold, Collection<String> unfold) {
+        FOLDED.removeAll(unfold);
+        FOLDED.addAll(fold);
+        publish();
+    }
+
     /** Republishes the snapshot and moves the version the caches read. */
     private static void publish() {
         snapshot = Set.copyOf(FOLDED);
