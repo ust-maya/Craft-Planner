@@ -22,7 +22,7 @@ jobs:
       # Gradle re-downloads the decompiled Minecraft artifacts otherwise; the
       # wrapper distribution and the build cache make the second run fast.
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # `build` depends on `check`, which runs the unit tests.
       - name: Build and test
