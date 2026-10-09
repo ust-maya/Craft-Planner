@@ -59,6 +59,15 @@ public final class Config {
     private static final List<String> MODDED_PRIORITIES =
             Arrays.asList("after_vanilla", "before_smelting", "first");
 
+    /**
+     * The modes {@code overlay.mode} accepts; must match the overlay renderer's switch.
+     * A mutable list for the same reason as {@link #MODDED_PRIORITIES}: {@code List.of}
+     * throws NPE on {@code contains(null)}, which NeoForge calls while it writes a
+     * config file that does not exist yet.
+     */
+    private static final String OVERLAY_MODE_DEFAULT = "tree";
+    private static final List<String> OVERLAY_MODES = Arrays.asList("tree", "graph");
+
     private static final ModConfigSpec.IntValue MAX_DEPTH = BUILDER
             .comment("Maximum craft-tree depth. Deeper branches are cut off and their items are treated as raw materials.")
             .defineInRange("limits.maxDepth", CraftTreeBuilder.MAX_DEPTH, 1, 64);
@@ -74,7 +83,7 @@ public final class Config {
     private static final ModConfigSpec.ConfigValue<String> OVERLAY_MODE = BUILDER
             .comment("Overlay layout: 'tree' shows the plan as a nested list on the left (each item keeps its icon,",
                     "with ├──/└──/│ connector lines). 'graph' shows the classic node-link craft tree.")
-            .defineInList("overlay.mode", "tree", List.of("tree", "graph"));
+            .defineInList("overlay.mode", OVERLAY_MODE_DEFAULT, OVERLAY_MODES);
 
     private static final ModConfigSpec.DoubleValue OVERLAY_SCALE = BUILDER
             .comment("Density of the overlay: 1.0 keeps the full-size item icons and text, 0.85 is the",
