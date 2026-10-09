@@ -144,13 +144,14 @@ public final class CraftTreeBuilder {
         }
 
         RecipeHolder<?> chosen = chooseRecipe(options, preferences.get(node.item()), node.item(), path);
-        // A null pick means every recipe for this item merely takes a storage
-        // block apart (hay_block -> 9 wheat): the item is a base material and
-        // the branch ends here. A player cut is the same ending asked for by
-        // hand ("I will gather the leather myself, do not plan rabbit hide"), and
-        // it survives a pinned recipe — the player asked for it. The recipes are
-        // still recorded so the list screen can show which one applies and — when
-        // the item has several — let the player force one of them.
+        // A null pick means every recipe for this item takes apart something made
+        // out of it (hay_block -> 9 wheat, stone -> cobblestone): the item is a
+        // base material and the branch ends here. A player cut is the same ending
+        // asked for by hand ("I will gather the leather myself, do not plan
+        // rabbit hide"), and it survives a pinned recipe — the player asked for
+        // it. The recipes are still recorded so the list screen can show which
+        // one applies and — when the item has several — let the player force one
+        // of them.
         boolean cutHere = cuts.contains(node.item());
         boolean baseMaterial = chosen == null || cutHere;
         if (chosen == null) {
@@ -294,9 +295,12 @@ public final class CraftTreeBuilder {
      *   <li>a recipe that launders nothing and does not consume a path item;</li>
      *   <li>a recipe that does not reverse a pack/unpack pair and does not
      *       consume a path item;</li>
-     *   <li>a recipe that at least is not a bare "unpack" step;</li>
-     *   <li>{@code null} — every recipe only takes a storage block apart, so
-     *       the item has to be treated as a base material.</li>
+     *   <li>a recipe whose ingredients are not made out of {@code current} —
+     *       it may still consume a path item, which then ends as a loop marker;</li>
+     *   <li>{@code null} — every recipe takes apart something made out of the
+     *       item itself (a storage block, or cobblestone from stone while stone
+     *       is smelted from cobblestone), so the item is gathered: it is treated
+     *       as a base material.</li>
      * </ol>
      *
      * <p>Steps 2–5 all keep the path test: a recipe whose ingredient is an
@@ -308,7 +312,9 @@ public final class CraftTreeBuilder {
      * <p>Without steps 2–6 a storage block pair ({@code redstone_block <->
      * redstone}, {@code hay_block <-> wheat}) is expanded in both directions at
      * once, and the matching pack recipe walks straight back to the item it
-     * started from.</p>
+     * started from. The same holds for a two-way conversion that is not a storage
+     * block at all: MI's macerator turns stone into cobblestone, the furnace turns
+     * it back.</p>
      *
      * <p>Visibility is deliberately <em>not</em> part of this ladder. An older
      * revision preferred recipes with at least one unhidden ingredient, and
@@ -348,8 +354,14 @@ public final class CraftTreeBuilder {
                 return option;
             }
         }
+        // The last resort may still take a recipe that consumes an ancestor —
+        // that ends one level down as a visible loop marker — but never one whose
+        // ingredient is itself made out of this item: cobblestone from stone, when
+        // stone is smelted from cobblestone, can only lead back to where it began.
+        // Such an item is gathered, not crafted, so the branch ends here; the
+        // recipes stay recorded and the player can still pin one by hand.
         for (RecipeHolder<?> option : options) {
-            if (!isStorageUnpack(option, current)) {
+            if (!reversesPackPair(option, current)) {
                 return option;
             }
         }
@@ -456,35 +468,6 @@ public final class CraftTreeBuilder {
             }
         }
         return false;
-    }
-
-    /**
-     * True for a bare "unpack" step: one unit of a storage block turned into
-     * several loose items ({@code hay_block -> 9 wheat}, {@code redstone_block
-     * -> 9 redstone}). Together with {@link #reversesPackPair} this pins down
-     * the direction that must not be used to explain where an item comes from —
-     * the block being taken apart is crafted out of that very item.
-     */
-    private boolean isStorageUnpack(RecipeHolder<?> recipe, ItemKey current) {
-        if (!reversesPackPair(recipe, current)) {
-            return false;
-        }
-        ItemStack result = recipe.value().getResultItem(index.registries());
-        if (result.isEmpty() || result.getCount() <= 1) {
-            return false;
-        }
-        int inputs = 0;
-        for (Ingredient ingredient : index.inputsOf(recipe)) {
-            if (IngredientUtil.isEmpty(ingredient)) {
-                continue;
-            }
-            inputs++;
-            ItemStack representative = IngredientUtil.representative(ingredient);
-            if (representative == null || representative.getCount() > 1) {
-                return false;
-            }
-        }
-        return inputs == 1;
     }
 
     /**
