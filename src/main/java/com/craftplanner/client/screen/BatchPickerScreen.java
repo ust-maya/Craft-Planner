@@ -578,7 +578,7 @@ public final class BatchPickerScreen extends Screen {
 
         // A heading reserves room for the recipe button that ends it.
         int buttonW = line.head() ? RECIPE_BTN : 0;
-        String amount = TreeMetrics.markedAmount(row.status(), AmountLabel.of(node))
+        String amount = AmountLabel.marked(row)
                 + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
         // Every row naming a switchable item says so and which recipe is in use: a
         // decision nested in another branch gets no heading of its own, and without

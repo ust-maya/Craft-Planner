@@ -3,7 +3,6 @@ package com.craftplanner.client.overlay;
 import com.craftplanner.Config;
 import com.craftplanner.Constants;
 import com.craftplanner.client.Keybinds;
-import com.craftplanner.client.UiLegend;
 import com.craftplanner.client.OverlayState;
 import com.craftplanner.client.AmountLabel;
 import com.craftplanner.client.PlanRows;
@@ -246,7 +245,7 @@ public final class TreeOverlayRenderer {
 
     /** The label of a row: what it is, how much of it, and what a fold is hiding. */
     private static String rowLabel(TreeRow<RecipeNode> row) {
-        return row.name() + " " + TreeMetrics.markedAmount(row.status(), AmountLabel.of(row.node()))
+        return row.name() + " " + AmountLabel.marked(row)
                 + (row.hiddenRows() > 0 ? " (+" + row.hiddenRows() + ")" : "");
     }
 
@@ -340,7 +339,6 @@ public final class TreeOverlayRenderer {
         pose.scale((float) scale, (float) scale, 1f);
         graphics.drawString(font, Component.translatable("overlay.craftplanner.title"), 0, 0,
                 NodeColors.TEXT, false);
-        drawTreeLegend(graphics, font, contentW);
         pose.popPose();
 
         graphics.enableScissor(left + 1, contentTop, left + panel.panelW() - 1, contentBottom);
@@ -503,24 +501,6 @@ public final class TreeOverlayRenderer {
         HudHitMap.setTrack(new HudHitMap.ScrollTrack(barX - Scrollbar.HIT, trackTop,
                 Scrollbar.WIDTH + 2 * Scrollbar.HIT, trackH, bar.thumbHeight(), bar.thumbTop(),
                 panel.maxScroll()));
-    }
-
-    /**
-     * Colour legend of the tree rows, right-aligned on the title line, drawn in
-     * the title's scaled pose. Dropped entirely when it would collide with the
-     * title — a missing legend is better than an unreadable one, and the window
-     * carries the authoritative copy of it.
-     */
-
-
-
-    private static void drawTreeLegend(GuiGraphics graphics, Font font, int contentW) {
-        int total = UiLegend.totalWidth(font);
-        int titleW = font.width(Component.translatable("overlay.craftplanner.title"));
-        if (titleW + UiLegend.ENTRY_GAP + total > contentW) {
-            return;
-        }
-        UiLegend.drawRow(graphics, font, 0, UiLegend.entries(font).size(), contentW, 0, false);
     }
 
     /**
