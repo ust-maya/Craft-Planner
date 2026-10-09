@@ -18,12 +18,21 @@ public final class ResourceCheck {
     /** Availability for every requested raw material, in requirement order. */
     public static Map<ItemKey, Availability> evaluate(
             Map<ItemKey, Long> requirements, InventorySnapshot snapshot) {
+        return evaluate(requirements, snapshot, Map.of());
+    }
+
+    /**
+     * Availability for every requested material against what the inventory still
+     * holds once {@code reserved} — what the tree's assemblies took — is set aside.
+     */
+    public static Map<ItemKey, Availability> evaluate(Map<ItemKey, Long> requirements,
+            InventorySnapshot snapshot, Map<ItemKey, Long> reserved) {
         if (requirements.isEmpty()) {
             return Collections.emptyMap();
         }
         Map<ItemKey, Availability> result = new LinkedHashMap<>();
-        requirements.forEach((key, required) ->
-                result.put(key, new Availability(required, snapshot.available(key))));
+        requirements.forEach((key, required) -> result.put(key, new Availability(required,
+                Math.max(0, snapshot.available(key) - reserved.getOrDefault(key, 0L)))));
         return result;
     }
 

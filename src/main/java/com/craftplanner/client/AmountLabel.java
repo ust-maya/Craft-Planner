@@ -42,6 +42,13 @@ public final class AmountLabel {
      */
     public static String marked(TreeRow<RecipeNode> row) {
         if (row.status() == TreeRow.Status.PARTIAL) {
+            RecipeNode node = row.node();
+            if (!node.isLeaf() && node.fromInventory() > 0) {
+                // An assembly is judged by its own row, not by the item's total: it took
+                // what it could from the bag and the rest is crafted below it.
+                return TreeMetrics.markedAmount(row.status(),
+                        TreeMetrics.partialAmount(node.fromInventory(), node.required()));
+            }
             Availability state = PlannerState.availability().get(row.node().item());
             if (state != null) {
                 return TreeMetrics.markedAmount(row.status(),

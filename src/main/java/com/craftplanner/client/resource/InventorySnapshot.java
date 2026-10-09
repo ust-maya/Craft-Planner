@@ -65,4 +65,14 @@ public final class InventorySnapshot {
     static long available(boolean componentSpecific, long exactAmount, long itemAmount) {
         return componentSpecific ? exactAmount : itemAmount;
     }
+
+    /**
+     * Whether {@code other} holds exactly the same stacks. The tree is expanded
+     * against the inventory, so it is expanded again only when this says no —
+     * a once-a-second rescan that finds the same bag costs a map comparison, not
+     * a rebuild.
+     */
+    public boolean sameCounts(InventorySnapshot other) {
+        return other != null && exact.equals(other.exact);
+    }
 }

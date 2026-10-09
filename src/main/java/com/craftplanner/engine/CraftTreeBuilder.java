@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import net.minecraft.core.NonNullList;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -58,6 +59,10 @@ import org.slf4j.LoggerFactory;
  *       leather stays "2 leather to gather" instead of walking on to rabbit
  *       hide. This is the player's own answer, so it also wins over a pinned
  *       recipe.</li>
+ *   <li>an item the player already carries is taken from the inventory
+ *       before it is planned to be made ({@link Stock}): only what is left
+ *       is expanded, and a fully covered item ends the branch while keeping
+ *       its recipe.</li>
  * </ul>
  */
 public final class CraftTreeBuilder {
@@ -82,13 +87,16 @@ public final class CraftTreeBuilder {
     private final Set<ItemKey> cuts;
     /** Drops ore-like resources from the tree (Stage 11). */
     private final ResourceFilter filter;
+    /** What the player carries, spent as the tree is expanded; see {@link Stock}. */
+    private final Stock<ItemKey> stock;
     private int nodeCount;
 
     public CraftTreeBuilder(RecipeIndex index, Map<ItemKey, ResourceLocation> preferences, ResourceFilter filter,
-            Set<ItemKey> cuts) {
+            Set<ItemKey> cuts, Stock<ItemKey> stock) {
         this.index = index;
         this.filter = filter == null ? ResourceFilter.NONE : filter;
         this.cuts = cuts == null ? Set.of() : cuts;
+        this.stock = stock == null ? Stock.empty() : stock;
         if (preferences != null) {
             this.preferences.putAll(preferences);
         }
@@ -96,10 +104,12 @@ public final class CraftTreeBuilder {
 
     /**
      * Same as above, with the items the player cut the tree at (the "cut here"
-     * row of the recipe picker).
+     * row of the recipe picker) and what the player carries: {@code inventory}
+     * answers how many of an item there are, {@code null} plans as if the bag
+     * were empty — the recipe picker's previews ask for exactly that.
      */
     public static void rebuild(CraftGraph graph, Level level, Map<ItemKey, ResourceLocation> preferences,
-            boolean hideOreLike, Set<ItemKey> cuts) {
+            boolean hideOreLike, Set<ItemKey> cuts, Function<ItemKey, Long> inventory) {
         if (level == null) {
             return;
         }
@@ -107,7 +117,8 @@ public final class CraftTreeBuilder {
         // preference change or the ore switch re-expands the tree over the
         // existing index instead of re-walking every recipe in the game.
         RecipeIndex index = RecipeIndex.cachedFor(level.getRecipeManager(), level.registryAccess());
-        new CraftTreeBuilder(index, preferences, ResourceFilter.of(hideOreLike), cuts).rebuild(graph);
+        new CraftTreeBuilder(index, preferences, ResourceFilter.of(hideOreLike), cuts,
+                inventory == null ? Stock.empty() : new Stock<>(inventory)).rebuild(graph);
     }
 
     /** Expands every root of the graph in place. */
@@ -120,6 +131,9 @@ public final class CraftTreeBuilder {
     }
 
     private void expand(RecipeNode node, Set<ItemKey> path) {
+        // The graph keeps its roots across rebuilds; what they took last time is
+        // forgotten until this rebuild decides again.
+        node.setFromInventory(0);
         if (node.depth() >= Config.maxDepth() || nodeCount >= Config.maxNodes()) {
             markTerminal(node, NodeKind.RAW);
             return;
@@ -197,6 +211,22 @@ public final class CraftTreeBuilder {
         if (baseMaterial) {
             markTerminal(node, NodeKind.RAW);
             return;
+        }
+
+        // What the player already carries is used before anything is crafted:
+        // ten books in the bag mean no leather and no paper for three of them.
+        // Taken after the recipe is recorded, so a covered row still offers its
+        // recipe choice. Goals take from the bag as well — the plan then shows
+        // what is left to make on top of what is already there. Raw materials
+        // do not take here: they are compared with the inventory afterwards,
+        // minus what the assemblies have taken (PlannerState).
+        node.setFromInventory(stock.take(node.item(), node.required()));
+        if (node.toMake() == 0) {
+            if (Config.traceChoices()) {
+                LOGGER.debug("   {} x{} is covered by the inventory — not expanded",
+                        node.item(), node.required());
+            }
+            return; // children were cleared above; the row keeps its recipe
         }
 
         long crafts = node.crafts();

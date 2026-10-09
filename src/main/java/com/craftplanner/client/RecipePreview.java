@@ -95,8 +95,10 @@ public final class RecipePreview {
         // Cuts further down still apply, so the branch matches the plan below it.
         Set<ItemKey> cuts = new HashSet<>(PlannerState.cuts());
         cuts.remove(item);
+        // No inventory: the preview shows what the recipe costs, not what is left
+        // to gather after the bag is used.
         CraftTreeBuilder.rebuild(preview, mc.level, preferences, PlannerState.hideOres(),
-                cuts);
+                cuts, null);
 
         List<TreeRow<RecipeNode>> rows =
                 TreeFlatten.flatten(preview.roots(), PlanRows.source(), Set.of());

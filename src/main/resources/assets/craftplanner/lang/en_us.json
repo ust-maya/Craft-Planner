@@ -57,6 +57,7 @@
   "screen.craftplanner.tree.close": "Close",
   "screen.craftplanner.tree.hint": "↑↓ — row · ←→ — fold/unfold · Enter — recipe · Wheel — scroll · %1$s — add · %2$s — list · %3$s — overlay",
   "screen.craftplanner.tree.hidden.rows": "Rows hidden by this fold: %1$s",
+  "screen.craftplanner.tree.from.inventory": "From the inventory: %1$s, to make: %2$s",
   "gui.craftplanner.picker.title": "How to craft %1$s",
   "gui.craftplanner.picker.cut": "Cut the tree here",
   "gui.craftplanner.picker.uncut": "Expand the branch again",

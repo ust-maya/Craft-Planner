@@ -57,6 +57,7 @@
   "screen.craftplanner.tree.close": "Закрыть",
   "screen.craftplanner.tree.hint": "↑↓ — строка · ←→ — свернуть/раскрыть · Enter — рецепт · Колесо — прокрутка · %1$s — добавить · %2$s — список · %3$s — оверлей",
   "screen.craftplanner.tree.hidden.rows": "Свёрнуто строк: %1$s",
+  "screen.craftplanner.tree.from.inventory": "Из инвентаря: %1$s, сделать: %2$s",
   "gui.craftplanner.picker.title": "Как создать: %1$s",
   "gui.craftplanner.picker.cut": "Обрезать дерево здесь",
   "gui.craftplanner.picker.uncut": "Снова раскрыть ветку",

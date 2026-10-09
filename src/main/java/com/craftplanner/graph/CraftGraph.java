@@ -117,6 +117,22 @@ public final class CraftGraph {
         return totals;
     }
 
+    /**
+     * What the nodes that are still being crafted took from the inventory, per item.
+     * A raw material is compared with the bag only after this is set aside: three
+     * of ten books already went into the partly covered row above, so the leaf
+     * further down sees seven.
+     */
+    public Map<ItemKey, Long> takenByAssemblies() {
+        Map<ItemKey, Long> totals = new LinkedHashMap<>();
+        forEachNode(node -> {
+            if (!node.isFluidRequirement() && !node.isLeaf() && node.fromInventory() > 0) {
+                totals.merge(node.item(), node.fromInventory(), CraftMath::saturatingAdd);
+            }
+        });
+        return totals;
+    }
+
     /** Total required amount of each fluid, in millibuckets. */
     public Map<Fluid, Long> aggregateFluidRequirements() {
         Map<Fluid, Long> totals = new LinkedHashMap<>();
