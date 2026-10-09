@@ -2,6 +2,7 @@ package com.craftplanner.client.resource;
 
 import com.craftplanner.graph.CraftMath;
 import com.craftplanner.graph.ItemKey;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -24,6 +25,24 @@ public final class ResourceCheck {
         requirements.forEach((key, required) ->
                 result.put(key, new Availability(required, snapshot.available(key))));
         return result;
+    }
+
+    /**
+     * One verdict for several materials: covered only when every one is, missing
+     * only when none of them is even partly there, partial otherwise. A recipe that
+     * consumes nothing is covered.
+     */
+    public static Availability.Status combined(Collection<Availability.Status> statuses) {
+        boolean anyShort = false;
+        boolean anyThere = false;
+        for (Availability.Status status : statuses) {
+            anyShort |= status != Availability.Status.OK;
+            anyThere |= status != Availability.Status.MISSING;
+        }
+        if (!anyShort) {
+            return Availability.Status.OK;
+        }
+        return anyThere ? Availability.Status.PARTIAL : Availability.Status.MISSING;
     }
 
     /** Sum of everything that is still missing. */
