@@ -26,6 +26,11 @@ public final class RecipeNode {
     private final List<ItemKey> candidates = new ArrayList<>();
 
     private long required;
+    /**
+     * How much of {@link #required()} the inventory already covers; the rest is
+     * made by the recipe. Zero for anything the engine does not plan to craft.
+     */
+    private long fromInventory;
     private long producedPerCraft = 1;
     private NodeKind kind;
     private RecipeHolder<?> recipe;
@@ -90,9 +95,26 @@ public final class RecipeNode {
         this.required = Math.max(1, required);
     }
 
-    /** Number of craft operations needed: {@code ceil(required / perCraft)}. */
+    /** Part of the demand the player already carries; see {@link #toMake()}. */
+    public long fromInventory() {
+        return fromInventory;
+    }
+
+    public void setFromInventory(long amount) {
+        this.fromInventory = Math.max(0, Math.min(amount, required));
+    }
+
+    /** What is left to craft once the inventory has been used: never negative. */
+    public long toMake() {
+        return Math.max(0, required - fromInventory);
+    }
+
+    /**
+     * Number of craft operations needed: {@code ceil(toMake / perCraft)} — what
+     * the inventory covers is not crafted.
+     */
     public long crafts() {
-        return CraftMath.craftsFor(required, producedPerCraft);
+        return CraftMath.craftsFor(toMake(), producedPerCraft);
     }
 
     public RecipeHolder<?> recipe() {
