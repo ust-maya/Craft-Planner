@@ -6,7 +6,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 
 /**
- * Craft Planner — визуализатор дерева крафта.
+ * Craft Planner — plans a build as a crafting tree and shows what is missing.
  *
  * <p>The mod itself has nothing to register on the game event bus: every feature
  * is client side and lives in its own {@code @EventBusSubscriber} class
