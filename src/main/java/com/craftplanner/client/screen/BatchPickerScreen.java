@@ -633,9 +633,11 @@ public final class BatchPickerScreen extends Screen {
         Line line = this.lines.get(index);
         TreeRow<RecipeNode> row = rowOf(line);
         if (row.foldable() && overToggle(mx, my, index)) {
+            // The words of the tree window's own fold control: this plate folds one
+            // branch, not every branch like the buttons whose tooltips it used to borrow.
             return Component.translatable(row.folded()
-                    ? "screen.craftplanner.tree.expand.tooltip"
-                    : "screen.craftplanner.tree.collapse.tooltip");
+                    ? "overlay.craftplanner.fold.expand"
+                    : "overlay.craftplanner.fold.collapse");
         }
         if (this.ambiguous.contains(row.node().item())) {
             // Said with the words of the key that already exists for it: the counter
