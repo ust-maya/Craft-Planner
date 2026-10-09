@@ -16,6 +16,7 @@ import com.craftplanner.client.overlay.NodeColors;
 import com.craftplanner.client.overlay.TreeCollapse;
 import com.craftplanner.client.resource.Availability;
 import com.craftplanner.client.resource.ResourceCheck;
+import com.craftplanner.client.tree.FoldSteps;
 import com.craftplanner.client.tree.TreeFlatten;
 import com.craftplanner.client.tree.TreeMetrics;
 import com.craftplanner.client.tree.TreePanel;
@@ -26,6 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
@@ -65,8 +67,6 @@ public final class CraftTreeScreen extends Screen {
 
     private static final String KEY_TITLE = "screen.craftplanner.tree.title";
     private static final String KEY_EMPTY = "screen.craftplanner.tree.empty";
-    private static final String KEY_COLLAPSE = "screen.craftplanner.tree.collapse.all";
-    private static final String KEY_EXPAND = "screen.craftplanner.tree.expand.all";
     private static final String KEY_LIST = "screen.craftplanner.tree.list";
     private static final String KEY_RECIPE = "screen.craftplanner.tree.recipe";
     private static final String KEY_CLOSE = "screen.craftplanner.tree.close";
@@ -206,13 +206,13 @@ public final class CraftTreeScreen extends Screen {
     }
 
     /**
-     * The footer buttons as {@link #buildWidgets()} places them: five labels, each
-     * at least its minimum width, with the gaps between them.
+     * The footer buttons as {@link #buildWidgets()} places them: the four fold
+     * buttons, then recipe, list and close, each at least its minimum width, with
+     * the gaps between them.
      */
     private int footerButtonsWidth() {
-        return buttonWidth(text(KEY_COLLAPSE), 60) + buttonWidth(text(KEY_EXPAND), 60)
-                + buttonWidth(text(KEY_RECIPE), 60) + buttonWidth(text(KEY_LIST), 60)
-                + buttonWidth(text(KEY_CLOSE), 48) + 4 * FOOTER_GAP;
+        return FoldButtons.width(this.font) + buttonWidth(text(KEY_RECIPE), 60)
+                + buttonWidth(text(KEY_LIST), 60) + buttonWidth(text(KEY_CLOSE), 48) + 3 * FOOTER_GAP;
     }
 
     /** One footer button: its label plus the padding it is measured with, over its floor. */
@@ -248,20 +248,35 @@ public final class CraftTreeScreen extends Screen {
         int rowLeft = this.panelLeft + PAD;
         int buttonsY = contentBottom() + footerH() - BUTTON_H - 4;
         int gap = FOOTER_GAP;
-        int collapseW = buttonWidth(text(KEY_COLLAPSE), 60);
-        int expandW = buttonWidth(text(KEY_EXPAND), 60);
         int recipeW = buttonWidth(text(KEY_RECIPE), 60);
         int listW = buttonWidth(text(KEY_LIST), 60);
         int closeW = buttonWidth(text(KEY_CLOSE), 48);
         int right = this.panelLeft + this.plan.panelW() - PAD;
 
         if (!this.rows.isEmpty()) {
-            addRenderableWidget(FitButton.create(rowLeft, buttonsY, collapseW, BUTTON_H,
-                    tr(KEY_COLLAPSE), button -> foldAll(true),
-                    Component.translatable("screen.craftplanner.tree.collapse.tooltip")));
-            addRenderableWidget(FitButton.create(rowLeft + collapseW + gap, buttonsY, expandW, BUTTON_H,
-                    tr(KEY_EXPAND), button -> foldAll(false),
-                    Component.translatable("screen.craftplanner.tree.expand.tooltip")));
+            List<Button> folds = FoldButtons.create(this.font, BUTTON_H, new FoldButtons.Actions() {
+                @Override
+                public void collapseAll() {
+                    foldAll(true);
+                }
+
+                @Override
+                public void expandAll() {
+                    foldAll(false);
+                }
+
+                @Override
+                public void collapseLevel() {
+                    stepLevel(false);
+                }
+
+                @Override
+                public void expandLevel() {
+                    stepLevel(true);
+                }
+            });
+            FoldButtons.place(folds, rowLeft, buttonsY);
+            folds.forEach(this::addRenderableWidget);
         }
         // "There is no button for choosing a recipe" is what a per-row badge costs
         // when the column only appears once a row happens to offer a choice: the
@@ -326,17 +341,33 @@ public final class CraftTreeScreen extends Screen {
 
     private void foldAll(boolean collapse) {
         if (collapse) {
-            List<String> paths = new ArrayList<>();
-            for (TreeRow<RecipeNode> row : this.rows) {
-                if (row.path() != null) {
-                    paths.add(row.path());
-                }
-            }
-            TreeCollapse.foldAll(paths);
+            // Every branch of the plan, the hidden ones too: folding only what was on
+            // screen left the branches inside a closed one open, and opening it later
+            // dropped their whole depth into view at once.
+            TreeCollapse.foldAll(FoldSteps.allPaths(wholePlan()));
         } else {
             TreeCollapse.unfoldAll();
         }
         rebuild();
+    }
+
+    /** One level more or less of the plan; see {@link FoldSteps}. */
+    private void stepLevel(boolean deeper) {
+        List<FoldSteps.Entry> whole = wholePlan();
+        FoldSteps.Change change = deeper
+                ? FoldSteps.expandLevel(whole, TreeCollapse::isFolded)
+                : FoldSteps.collapseLevel(whole, TreeCollapse::isFolded);
+        if (change.isEmpty()) {
+            return;
+        }
+        TreeCollapse.apply(change.fold(), change.unfold());
+        rebuild();
+    }
+
+    /** The plan with nothing folded: what the fold steps reason about. */
+    private static List<FoldSteps.Entry> wholePlan() {
+        return FoldSteps.entriesOf(TreeFlatten.flatten(PlannerState.graph().roots(), PlanRows.source(),
+                Set.of()));
     }
 
     // --- drawing ------------------------------------------------------------
