@@ -56,7 +56,10 @@ import org.lwjgl.glfw.GLFW;
  *
  * <p>The options are compared <em>by column</em>: what each one consumes, how much
  * one run gives back, and the machine that runs it, under headings that name the
- * three. Two recipes for the same item can cost the same raw materials and pull in
+ * three. Every ingredient in the first of them stands behind its own icon, so the
+ * inventory is matched by the picture the player sees in it rather than by a name
+ * read alone; the whole list stays in the option's tooltip.
+ * Two recipes for the same item can cost the same raw materials and pull in
  * entirely different things further down — a furnace route that needs a furnace, against one
  * that needs a blast furnace and eight slabs — and a totals line says nothing about
  * that; the columns keep the difference where the eye can line it up. Which mod
@@ -100,6 +103,10 @@ public final class RecipePickerScreen extends Screen {
      */
     private static final int MARK_W = 12;
     private static final int ICON_W = 16;
+    /** An ingredient's icon and the pixel of air before its name. */
+    private static final int INPUT_ICON_W = ICON_W + 1;
+    /** Air between one ingredient and the next icon; the icon itself separates them, no comma needed. */
+    private static final int INPUT_GAP = 5;
     private static final int GAP = 3;
     /** Air kept between the cost and the machine that runs it. */
     private static final int TEXT_GAP = 6;
@@ -198,9 +205,13 @@ public final class RecipePickerScreen extends Screen {
      * icon ({@link ItemStack#EMPTY} when no block claims the recipe type), plus the
      * full description for the tooltip — the mod's name lives there, not in every
      * row.
+     *
+     * <p>The inputs are entries with an icon each: {@link #inputIcons} holds the
+     * stack of {@link #inputs} at the same position, {@link ItemStack#EMPTY} where
+     * an entry has no item to show — the verdict's sign and a hammer's wear.</p>
      */
-    private record Option(String inputs, int inputsColor, String yield, String machine,
-            ItemStack icon, Component tooltip) {
+    private record Option(List<PickerInputs.Part> inputs, List<ItemStack> inputIcons, int inputsColor,
+            String yield, String machine, ItemStack icon, Component tooltip) {
     }
 
     public RecipePickerScreen(ItemKey item, Screen returnTo) {
@@ -236,9 +247,7 @@ public final class RecipePickerScreen extends Screen {
                 : InventorySnapshot.of(this.minecraft.player);
         this.seenAvailabilityVersion = PlannerState.availabilityVersion();
         for (RecipeHolder<?> option : this.options) {
-            String needs = RecipeLabel.needsText(option);
             Availability.Status status = statusOf(option, snapshot);
-            String inputs = needs.isEmpty() ? tr("gui.craftplanner.recipe.none") : needs;
             Component tooltip = join(RecipeLabel.describe(option, registries));
             if (status != null) {
                 // The row says the verdict in colour and a sign; the tooltip says it in words,
@@ -247,7 +256,23 @@ public final class RecipePickerScreen extends Screen {
                         .append(Component.translatable(statusKey(status)))
                         .withColor(colorOf(status) & 0xFFFFFF));
             }
-            built.add(new Option(status == null ? inputs : markOf(status) + " " + inputs, colorOf(status),
+            List<PickerInputs.Part> parts = new ArrayList<>();
+            List<ItemStack> icons = new ArrayList<>();
+            if (status != null) {
+                parts.add(new PickerInputs.Part(false, markOf(status)));
+                icons.add(ItemStack.EMPTY);
+            }
+            List<RecipeLabel.NeedsPart> needs = RecipeLabel.needsParts(option);
+            if (needs.isEmpty()) {
+                parts.add(new PickerInputs.Part(false, tr("gui.craftplanner.recipe.none")));
+                icons.add(ItemStack.EMPTY);
+            }
+            for (RecipeLabel.NeedsPart need : needs) {
+                ItemStack icon = need.item() == null ? ItemStack.EMPTY : need.item().toStack();
+                parts.add(new PickerInputs.Part(!icon.isEmpty(), need.text()));
+                icons.add(icon);
+            }
+            built.add(new Option(List.copyOf(parts), List.copyOf(icons), colorOf(status),
                     yieldOf(option, registries), RecipeLabel.machine(option), machineIcon(option), tooltip));
         }
         this.rows = built;
@@ -530,7 +555,8 @@ public final class RecipePickerScreen extends Screen {
         int yieldW = this.font.width(tr("gui.craftplanner.picker.col.yield"));
         int machineWant = this.font.width(tr("gui.craftplanner.picker.col.machine"));
         for (Option row : this.rows) {
-            inputsWant = Math.max(inputsWant, this.font.width(row.inputs()));
+            inputsWant = Math.max(inputsWant,
+                    PickerInputs.width(this.font::width, row.inputs(), INPUT_ICON_W, INPUT_GAP));
             yieldW = Math.max(yieldW, this.font.width(row.yield()));
             machineWant = Math.max(machineWant, this.font.width(row.machine()));
         }
@@ -980,8 +1006,15 @@ public final class RecipePickerScreen extends Screen {
             graphics.renderItem(row.icon(), bx + MARK_W, y + (ROW_H - ICON_W) / 2);
         }
         int x = left + PAD + optionGutterW();
-        graphics.drawString(this.font, RecipeListLayout.trimToWidth(this.font::width, row.inputs(),
-                this.columns.inputsW()), x, textY, row.inputsColor(), false);
+        for (PickerInputs.Placed placed : PickerInputs.layout(this.font::width, row.inputs(),
+                INPUT_ICON_W, INPUT_GAP, this.columns.inputsW())) {
+            ItemStack icon = placed.index() < 0 ? ItemStack.EMPTY : row.inputIcons().get(placed.index());
+            if (!icon.isEmpty()) {
+                graphics.renderItem(icon, x + placed.x(), y + (ROW_H - ICON_W) / 2);
+            }
+            graphics.drawString(this.font, placed.text(), x + placed.textX(), textY,
+                    row.inputsColor(), false);
+        }
         x += this.columns.inputsW() + COL_GAP;
         graphics.drawString(this.font, row.yield(),
                 x + this.columns.yieldW() - this.font.width(row.yield()), textY, TEXT, false);
