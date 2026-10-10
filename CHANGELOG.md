@@ -3,6 +3,19 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- Recipe sources window: each mod folds its machines under a plate, mods open folded, and
+  "Collapse all" / "Expand all" buttons; a folded mod shows how many of its machines are off.
+- Recipe window: the colour key under the buttons, the verdict of an option in its tooltip,
+  and an icon before every ingredient.
+
+### Changed
+
+- "Cut the tree here" is now "Use as material" in every text.
+
 ## 1.0.0 — 2026-10-09
 
 First release, for Minecraft 1.21.1 and NeoForge 21.1.248+.

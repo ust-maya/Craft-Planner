@@ -8,9 +8,10 @@ Hover over an item in any screen — EMI, JEI or the plain inventory — and add
 the plan. The mod expands the item into a craft tree down to the configured depth,
 counts how many crafts it takes and shows which materials are missing, taking into
 account what is already in your inventory. The tree is shown both in the HUD and in
-a separate window; you can fold it branch by branch, pick a recipe variant and cut a
-branch (a "cut" plans the item as a material to gather rather than something to
-craft). The plan, recipe choices and cuts are kept between game sessions.
+a separate window; you can fold it branch by branch, pick a recipe variant and use an
+item as material (the planner then plans it as a material to gather rather than
+something to craft). The plan, recipe choices and items used as material are kept
+between game sessions.
 
 The mod is client-only: nothing needs to be installed on the server, it writes
 nothing to the world and does not affect other players.
@@ -30,7 +31,7 @@ every row.
 ![Craft tree window](docs/images/tree-window.png)
 
 Recipe choice: every way to obtain an item, with its ingredients, output and machine.
-A branch can also be cut from here.
+An item can also be used as material from here.
 
 ![Recipe window for copper dust](docs/images/recipe-picker.png)
 
@@ -75,7 +76,7 @@ They live in `config/` of the game directory.
 | `craftplanner-client.toml` | settings: tree depth and size, colours and the "partly there" threshold, ore filter, panel position |
 | `craftplanner-plan.json` | the goals and their amounts |
 | `craftplanner-choices.json` | which recipe variant is chosen for an item |
-| `craftplanner-cuts.json` | tree cuts |
+| `craftplanner-cuts.json` | items used as material |
 | `craftplanner-sources.json` | mods and machines switched off in the recipe sources window |
 
 ## Dependencies
