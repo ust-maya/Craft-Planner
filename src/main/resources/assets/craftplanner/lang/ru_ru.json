@@ -116,6 +116,8 @@
   "screen.craftplanner.sources.type.tooltip": "Станок %1$s. Нажмите, чтобы включить или выключить",
   "screen.craftplanner.sources.fold.expand": "Показать станки мода: %1$s",
   "screen.craftplanner.sources.fold.collapse": "Скрыть станки мода",
+  "screen.craftplanner.sources.collapse.tooltip": "Свернуть все моды — останутся только их строки",
+  "screen.craftplanner.sources.expand.tooltip": "Показать станки всех модов",
   "screen.craftplanner.sources.reset": "Включить все",
   "screen.craftplanner.sources.reset.tooltip": "Снова использовать все моды и станки"
 }

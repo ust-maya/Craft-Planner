@@ -85,6 +85,8 @@ public final class RecipeSourcesScreen extends Screen {
     private int panelWidth;
     private int scroll;
     private Button resetButton;
+    private Button collapseButton;
+    private Button expandButton;
     private Button closeButton;
 
     /** A mod ({@code type == null}) or one of its machines, with what the row shows. */
@@ -111,6 +113,22 @@ public final class RecipeSourcesScreen extends Screen {
         this.resetButton = addRenderableWidget(FitButton.create(0, 0, buttonW(reset),
                 RecipeListLayout.BUTTON_H, reset, button -> PlannerState.setSources(SourceFilter.NONE),
                 Component.translatable("screen.craftplanner.sources.reset.tooltip")));
+        Component collapse = Component.translatable("screen.craftplanner.tree.collapse.all");
+        this.collapseButton = addRenderableWidget(FitButton.create(0, 0, buttonW(collapse),
+                RecipeListLayout.BUTTON_H, collapse, button -> {
+                    OPENED_MODS.clear();
+                    refold();
+                }, Component.translatable("screen.craftplanner.sources.collapse.tooltip")));
+        Component expand = Component.translatable("screen.craftplanner.tree.expand.all");
+        this.expandButton = addRenderableWidget(FitButton.create(0, 0, buttonW(expand),
+                RecipeListLayout.BUTTON_H, expand, button -> {
+                    for (Row row : this.rows) {
+                        if (row.isMod() && !row.machines().isEmpty()) {
+                            OPENED_MODS.add(row.mod());
+                        }
+                    }
+                    refold();
+                }, Component.translatable("screen.craftplanner.sources.expand.tooltip")));
         Component close = Component.translatable("screen.craftplanner.list.close");
         this.closeButton = addRenderableWidget(FitButton.create(0, 0, buttonW(close),
                 RecipeListLayout.BUTTON_H, close, button -> onClose(), null));
@@ -200,6 +218,8 @@ public final class RecipeSourcesScreen extends Screen {
                     + this.font.width(row.label()) + 2 * GAP + this.font.width(countOf(row)) + BAR_ROOM);
         }
         widest = Math.max(widest, buttonW(Component.translatable("screen.craftplanner.sources.reset"))
+                + GAP + buttonW(Component.translatable("screen.craftplanner.tree.collapse.all"))
+                + GAP + buttonW(Component.translatable("screen.craftplanner.tree.expand.all"))
                 + GAP + buttonW(Component.translatable("screen.craftplanner.list.close")));
         return Math.min(this.width - 2 * MARGIN, Math.max(220, widest + 2 * PAD));
     }
@@ -347,6 +367,10 @@ public final class RecipeSourcesScreen extends Screen {
         int controlY = bandTop() + lines * ROW_H + (ROW_H - RecipeListLayout.BUTTON_H) / 2;
         this.resetButton.setX(left + PAD);
         this.resetButton.setY(controlY);
+        this.collapseButton.setX(this.resetButton.getX() + this.resetButton.getWidth() + GAP);
+        this.collapseButton.setY(controlY);
+        this.expandButton.setX(this.collapseButton.getX() + this.collapseButton.getWidth() + GAP);
+        this.expandButton.setY(controlY);
         this.closeButton.setX(left + this.panelWidth - PAD - this.closeButton.getWidth());
         this.closeButton.setY(controlY);
 

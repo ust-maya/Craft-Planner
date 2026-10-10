@@ -116,6 +116,8 @@
   "screen.craftplanner.sources.type.tooltip": "Machine %1$s. Click to switch it on or off",
   "screen.craftplanner.sources.fold.expand": "Show the mod's machines: %1$s",
   "screen.craftplanner.sources.fold.collapse": "Hide the mod's machines",
+  "screen.craftplanner.sources.collapse.tooltip": "Fold every mod — only the mod rows stay",
+  "screen.craftplanner.sources.expand.tooltip": "Show the machines of every mod",
   "screen.craftplanner.sources.reset": "Use all",
   "screen.craftplanner.sources.reset.tooltip": "Use every mod and machine again"
 }
