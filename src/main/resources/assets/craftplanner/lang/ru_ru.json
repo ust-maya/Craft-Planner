@@ -111,6 +111,7 @@
   "screen.craftplanner.sources.title": "Источники рецептов",
   "screen.craftplanner.sources.header": "Снимите галочку, чтобы мод или станок не участвовал в плане",
   "screen.craftplanner.sources.count": "рецептов: %1$s",
+  "screen.craftplanner.sources.off": "выкл.: %1$s",
   "screen.craftplanner.sources.empty": "Рецептов нет — мир ещё не загружен",
   "screen.craftplanner.sources.mod.tooltip": "Мод %1$s: его станки и все рецепты, которые он добавил. Нажмите, чтобы включить или выключить",
   "screen.craftplanner.sources.type.tooltip": "Станок %1$s. Нажмите, чтобы включить или выключить",

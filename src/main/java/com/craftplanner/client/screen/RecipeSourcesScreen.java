@@ -424,6 +424,20 @@ public final class RecipeSourcesScreen extends Screen {
         x += ICON + GAP;
         int textY = y + (ROW_H - this.font.lineHeight) / 2;
         String count = countOf(row);
+        // A folded mod hides its machines, and with them the ones switched off: the
+        // count says so, or a mod that is only partly in use reads as fully on.
+        if (row.isMod() && on && !OPENED_MODS.contains(row.mod())) {
+            int off = 0;
+            for (String machine : row.machines()) {
+                if (filter.typeHidden(machine)) {
+                    off++;
+                }
+            }
+            if (off > 0) {
+                count = Component.translatable("screen.craftplanner.sources.off", off).getString()
+                        + " · " + count;
+            }
+        }
         int countX = right - BAR_ROOM - this.font.width(count);
         graphics.drawString(this.font, RecipeListLayout.trimToWidth(this.font::width, row.label(),
                 Math.max(0, countX - GAP - x)), x, textY, on && !dimmed ? UiPalette.TEXT : UiPalette.MUTED, false);
