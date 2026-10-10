@@ -239,9 +239,16 @@ public final class RecipePickerScreen extends Screen {
             String needs = RecipeLabel.needsText(option);
             Availability.Status status = statusOf(option, snapshot);
             String inputs = needs.isEmpty() ? tr("gui.craftplanner.recipe.none") : needs;
+            Component tooltip = join(RecipeLabel.describe(option, registries));
+            if (status != null) {
+                // The row says the verdict in colour and a sign; the tooltip says it in words,
+                // in that same colour, so the colour is learned where it is used.
+                tooltip = tooltip.copy().append("\n").append(Component.literal(markOf(status) + " ")
+                        .append(Component.translatable(statusKey(status)))
+                        .withColor(colorOf(status) & 0xFFFFFF));
+            }
             built.add(new Option(status == null ? inputs : markOf(status) + " " + inputs, colorOf(status),
-                    yieldOf(option, registries), RecipeLabel.machine(option), machineIcon(option),
-                    join(RecipeLabel.describe(option, registries))));
+                    yieldOf(option, registries), RecipeLabel.machine(option), machineIcon(option), tooltip));
         }
         this.rows = built;
         this.treeSizes = new int[this.options.size()];
@@ -461,6 +468,15 @@ public final class RecipePickerScreen extends Screen {
             case OK -> TreeRow.Status.COVERED.mark();
             case PARTIAL -> TreeRow.Status.PARTIAL.mark();
             case MISSING -> TreeRow.Status.MISSING.mark();
+        };
+    }
+
+    /** The words for an option's verdict, said in its tooltip next to the recipe's own lines. */
+    private static String statusKey(Availability.Status status) {
+        return switch (status) {
+            case OK -> "gui.craftplanner.picker.status.ok";
+            case PARTIAL -> "gui.craftplanner.picker.status.partial";
+            case MISSING -> "gui.craftplanner.picker.status.missing";
         };
     }
 
