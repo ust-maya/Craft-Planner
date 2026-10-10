@@ -8,6 +8,7 @@ import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
 import com.craftplanner.client.RecipePreview;
 import com.craftplanner.client.Scrollbar;
+import com.craftplanner.client.UiLegend;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.overlay.NodeColors;
@@ -55,7 +56,10 @@ import org.lwjgl.glfw.GLFW;
  *
  * <p>The options are compared <em>by column</em>: what each one consumes, how much
  * one run gives back, and the machine that runs it, under headings that name the
- * three. Two recipes for the same item can cost the same raw materials and pull in
+ * three. Every ingredient in the first of them stands behind its own icon, so the
+ * inventory is matched by the picture the player sees in it rather than by a name
+ * read alone; the whole list stays in the option's tooltip.
+ * Two recipes for the same item can cost the same raw materials and pull in
  * entirely different things further down — a furnace route that needs a furnace, against one
  * that needs a blast furnace and eight slabs — and a totals line says nothing about
  * that; the columns keep the difference where the eye can line it up. Which mod
@@ -99,6 +103,10 @@ public final class RecipePickerScreen extends Screen {
      */
     private static final int MARK_W = 12;
     private static final int ICON_W = 16;
+    /** An ingredient's icon and the pixel of air before its name. */
+    private static final int INPUT_ICON_W = ICON_W + 1;
+    /** Air between one ingredient and the next icon; the icon itself separates them, no comma needed. */
+    private static final int INPUT_GAP = 5;
     private static final int GAP = 3;
     /** Air kept between the cost and the machine that runs it. */
     private static final int TEXT_GAP = 6;
@@ -197,9 +205,13 @@ public final class RecipePickerScreen extends Screen {
      * icon ({@link ItemStack#EMPTY} when no block claims the recipe type), plus the
      * full description for the tooltip — the mod's name lives there, not in every
      * row.
+     *
+     * <p>The inputs are entries with an icon each: {@link #inputIcons} holds the
+     * stack of {@link #inputs} at the same position, {@link ItemStack#EMPTY} where
+     * an entry has no item to show — the verdict's sign and a hammer's wear.</p>
      */
-    private record Option(String inputs, int inputsColor, String yield, String machine,
-            ItemStack icon, Component tooltip) {
+    private record Option(List<PickerInputs.Part> inputs, List<ItemStack> inputIcons, int inputsColor,
+            String yield, String machine, ItemStack icon, Component tooltip) {
     }
 
     public RecipePickerScreen(ItemKey item, Screen returnTo) {
@@ -235,12 +247,33 @@ public final class RecipePickerScreen extends Screen {
                 : InventorySnapshot.of(this.minecraft.player);
         this.seenAvailabilityVersion = PlannerState.availabilityVersion();
         for (RecipeHolder<?> option : this.options) {
-            String needs = RecipeLabel.needsText(option);
             Availability.Status status = statusOf(option, snapshot);
-            String inputs = needs.isEmpty() ? tr("gui.craftplanner.recipe.none") : needs;
-            built.add(new Option(status == null ? inputs : markOf(status) + " " + inputs, colorOf(status),
-                    yieldOf(option, registries), RecipeLabel.machine(option), machineIcon(option),
-                    join(RecipeLabel.describe(option, registries))));
+            Component tooltip = join(RecipeLabel.describe(option, registries));
+            if (status != null) {
+                // The row says the verdict in colour and a sign; the tooltip says it in words,
+                // in that same colour, so the colour is learned where it is used.
+                tooltip = tooltip.copy().append("\n").append(Component.literal(markOf(status) + " ")
+                        .append(Component.translatable(statusKey(status)))
+                        .withColor(colorOf(status) & 0xFFFFFF));
+            }
+            List<PickerInputs.Part> parts = new ArrayList<>();
+            List<ItemStack> icons = new ArrayList<>();
+            if (status != null) {
+                parts.add(new PickerInputs.Part(false, markOf(status)));
+                icons.add(ItemStack.EMPTY);
+            }
+            List<RecipeLabel.NeedsPart> needs = RecipeLabel.needsParts(option);
+            if (needs.isEmpty()) {
+                parts.add(new PickerInputs.Part(false, tr("gui.craftplanner.recipe.none")));
+                icons.add(ItemStack.EMPTY);
+            }
+            for (RecipeLabel.NeedsPart need : needs) {
+                ItemStack icon = need.item() == null ? ItemStack.EMPTY : need.item().toStack();
+                parts.add(new PickerInputs.Part(!icon.isEmpty(), need.text()));
+                icons.add(icon);
+            }
+            built.add(new Option(List.copyOf(parts), List.copyOf(icons), colorOf(status),
+                    yieldOf(option, registries), RecipeLabel.machine(option), machineIcon(option), tooltip));
         }
         this.rows = built;
         this.treeSizes = new int[this.options.size()];
@@ -463,6 +496,15 @@ public final class RecipePickerScreen extends Screen {
         };
     }
 
+    /** The words for an option's verdict, said in its tooltip next to the recipe's own lines. */
+    private static String statusKey(Availability.Status status) {
+        return switch (status) {
+            case OK -> "gui.craftplanner.picker.status.ok";
+            case PARTIAL -> "gui.craftplanner.picker.status.partial";
+            case MISSING -> "gui.craftplanner.picker.status.missing";
+        };
+    }
+
     private static int colorOf(Availability.Status status) {
         if (status == null) {
             return TEXT;
@@ -513,7 +555,8 @@ public final class RecipePickerScreen extends Screen {
         int yieldW = this.font.width(tr("gui.craftplanner.picker.col.yield"));
         int machineWant = this.font.width(tr("gui.craftplanner.picker.col.machine"));
         for (Option row : this.rows) {
-            inputsWant = Math.max(inputsWant, this.font.width(row.inputs()));
+            inputsWant = Math.max(inputsWant,
+                    PickerInputs.width(this.font::width, row.inputs(), INPUT_ICON_W, INPUT_GAP));
             yieldW = Math.max(yieldW, this.font.width(row.yield()));
             machineWant = Math.max(machineWant, this.font.width(row.machine()));
         }
@@ -586,13 +629,25 @@ public final class RecipePickerScreen extends Screen {
 
     /**
      * Lines the screen can show at once. Everything else the panel carries is
-     * subtracted first — the title band, the button row under the list and the
-     * padding below it — so a window taller than the screen never happens above a certain
-     * height, and the last line never falls off the bottom.
+     * subtracted first — the title band, the button row under the list, the colour
+     * key under it and the padding below that — so a window taller than the screen
+     * never happens above a certain height, and the last line never falls off the
+     * bottom.
      */
     private int visibleLines() {
-        int available = this.height - 2 * MARGIN - HEADER_H - COLUMNS_H - CONTROL_ROWS * ROW_H - PAD;
+        int available = this.height - 2 * MARGIN - HEADER_H - COLUMNS_H - CONTROL_ROWS * ROW_H
+                - legendH() - PAD;
         return Math.max(1, Math.min(this.lines.size(), available / ROW_H));
+    }
+
+    /**
+     * Room the colour key takes under the buttons: three pixels for its divider and
+     * one or two lines. The rows here are coloured like the plan's own tree — the
+     * inputs by what the inventory holds, an opened tree by what each row is — and
+     * the key that names those colours was only ever in the tree window.
+     */
+    private int legendH() {
+        return 3 + UiLegend.lineCount(this.font, this.panelWidth - 2 * PAD) * (this.font.lineHeight + 2);
     }
 
     private int maxScroll() {
@@ -600,7 +655,7 @@ public final class RecipePickerScreen extends Screen {
     }
 
     private int panelHeight() {
-        return HEADER_H + COLUMNS_H + visibleLines() * ROW_H + CONTROL_ROWS * ROW_H + PAD;
+        return HEADER_H + COLUMNS_H + visibleLines() * ROW_H + CONTROL_ROWS * ROW_H + legendH() + PAD;
     }
 
     private int panelLeft() {
@@ -834,6 +889,11 @@ public final class RecipePickerScreen extends Screen {
         this.closeButton.setX(left + this.panelWidth - PAD - this.closeButton.getWidth());
         this.closeButton.setY(buttonY);
 
+        int legendTop = bandTop() + shown * ROW_H + CONTROL_ROWS * ROW_H;
+        UiShapes.divider(graphics, left + 2, left + this.panelWidth - 2, legendTop,
+                UiPalette.SECTION_DIVIDER);
+        UiLegend.draw(graphics, this.font, left + PAD, legendTop + 3, this.panelWidth - 2 * PAD);
+
         // A dozen machine alternatives scroll, and a wheel that finds nothing to show
         // for it reads as a broken list — so the band of lines carries the same
         // thumb the plan panel draws.
@@ -946,8 +1006,15 @@ public final class RecipePickerScreen extends Screen {
             graphics.renderItem(row.icon(), bx + MARK_W, y + (ROW_H - ICON_W) / 2);
         }
         int x = left + PAD + optionGutterW();
-        graphics.drawString(this.font, RecipeListLayout.trimToWidth(this.font::width, row.inputs(),
-                this.columns.inputsW()), x, textY, row.inputsColor(), false);
+        for (PickerInputs.Placed placed : PickerInputs.layout(this.font::width, row.inputs(),
+                INPUT_ICON_W, INPUT_GAP, this.columns.inputsW())) {
+            ItemStack icon = placed.index() < 0 ? ItemStack.EMPTY : row.inputIcons().get(placed.index());
+            if (!icon.isEmpty()) {
+                graphics.renderItem(icon, x + placed.x(), y + (ROW_H - ICON_W) / 2);
+            }
+            graphics.drawString(this.font, placed.text(), x + placed.textX(), textY,
+                    row.inputsColor(), false);
+        }
         x += this.columns.inputsW() + COL_GAP;
         graphics.drawString(this.font, row.yield(),
                 x + this.columns.yieldW() - this.font.width(row.yield()), textY, TEXT, false);

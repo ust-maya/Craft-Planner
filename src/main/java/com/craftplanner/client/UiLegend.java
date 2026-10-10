@@ -142,6 +142,29 @@ public final class UiLegend {
     }
 
     /**
+     * Lines {@link #draw} spends on a key {@code maxWidth} wide: one or two. It
+     * walks the entries by the same wrapping rule, the cut entry included, so a
+     * window can reserve exactly the room the key is going to take instead of always
+     * keeping two lines for it. Keep it in step with {@link #draw}.
+     */
+    public static int lineCount(Font font, int maxWidth) {
+        int line = 0;
+        int used = 0;
+        for (Entry entry : entries(font)) {
+            if (used + entry.width() > maxWidth && used > 0) {
+                line++;
+                used = 0;
+            }
+            used += entry.width();
+        }
+        int cutW = CUT_ICON + TEXT_GAP + font.width(Component.translatable(CUT_KEY)) + ENTRY_GAP;
+        if (used + cutW > maxWidth && used > 0) {
+            line++;
+        }
+        return Math.min(2, line + 1);
+    }
+
+    /**
      * Draws the key from {@code (x, y)} left to right onto at most two lines, and
      * gives up on the remainder when even those run out: half a key is worse than
      * none, because the player would read the missing colours as ones they

@@ -6,13 +6,16 @@ import com.craftplanner.client.Scrollbar;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.overlay.NodeColors;
+import com.craftplanner.client.tree.TreeMetrics;
 import com.craftplanner.engine.RecipeIndex;
 import com.craftplanner.engine.SourceFilter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -41,6 +44,11 @@ import org.lwjgl.glfw.GLFW;
  * machine switched off is no longer picked by the tree nor offered in the recipe
  * window, and an item whose every recipe is switched off becomes material to
  * gather.</p>
+ *
+ * <p>Mods open folded: only their own rows show, and a {@code +} plate next to a
+ * mod's name opens its machines underneath. Which mods the player opened is kept
+ * for the game session, so coming back to the window leaves the mod they were
+ * working in exactly as they left it.</p>
  */
 public final class RecipeSourcesScreen extends Screen {
 
@@ -57,16 +65,33 @@ public final class RecipeSourcesScreen extends Screen {
     private static final int INDENT = 14;
     /** Air left for the scrollbar at the right edge. */
     private static final int BAR_ROOM = 6;
+    /** The fold plate of a mod row, the tree's own size so both open the same way. */
+    private static final int TOGGLE_W = TreeMetrics.TOGGLE_W;
+    /** Column every row keeps for the plate, so the tick boxes line up under one another. */
+    private static final int FOLD_W = TOGGLE_W + GAP;
+
+    /**
+     * Mods whose machines the player opened, kept for the game session: the window
+     * is rebuilt every time it is opened, and a mod the player was working in should
+     * still be open when they come back from the list. Empty at start, so every mod
+     * opens folded — a modpack's hundreds of machines are one click away, not one
+     * long scroll.
+     */
+    private static final Set<String> OPENED_MODS = new HashSet<>();
 
     private final Screen returnTo;
     private List<Row> rows = List.of();
+    private List<Row> shown = List.of();
     private int panelWidth;
     private int scroll;
     private Button resetButton;
+    private Button collapseButton;
+    private Button expandButton;
     private Button closeButton;
 
     /** A mod ({@code type == null}) or one of its machines, with what the row shows. */
-    private record Row(String mod, String type, String label, ItemStack icon, int count) {
+    private record Row(String mod, String type, String label, ItemStack icon, int count,
+            List<String> machines) {
 
         boolean isMod() {
             return type == null;
@@ -82,12 +107,28 @@ public final class RecipeSourcesScreen extends Screen {
     protected void init() {
         this.rows = collectRows();
         this.panelWidth = measure();
-        this.scroll = Math.min(this.scroll, maxScroll());
+        refold();
         clearWidgets();
         Component reset = Component.translatable("screen.craftplanner.sources.reset");
         this.resetButton = addRenderableWidget(FitButton.create(0, 0, buttonW(reset),
                 RecipeListLayout.BUTTON_H, reset, button -> PlannerState.setSources(SourceFilter.NONE),
                 Component.translatable("screen.craftplanner.sources.reset.tooltip")));
+        Component collapse = Component.translatable("screen.craftplanner.tree.collapse.all");
+        this.collapseButton = addRenderableWidget(FitButton.create(0, 0, buttonW(collapse),
+                RecipeListLayout.BUTTON_H, collapse, button -> {
+                    OPENED_MODS.clear();
+                    refold();
+                }, Component.translatable("screen.craftplanner.sources.collapse.tooltip")));
+        Component expand = Component.translatable("screen.craftplanner.tree.expand.all");
+        this.expandButton = addRenderableWidget(FitButton.create(0, 0, buttonW(expand),
+                RecipeListLayout.BUTTON_H, expand, button -> {
+                    for (Row row : this.rows) {
+                        if (row.isMod() && !row.machines().isEmpty()) {
+                            OPENED_MODS.add(row.mod());
+                        }
+                    }
+                    refold();
+                }, Component.translatable("screen.craftplanner.sources.expand.tooltip")));
         Component close = Component.translatable("screen.craftplanner.list.close");
         this.closeButton = addRenderableWidget(FitButton.create(0, 0, buttonW(close),
                 RecipeListLayout.BUTTON_H, close, button -> onClose(), null));
@@ -121,7 +162,6 @@ public final class RecipeSourcesScreen extends Screen {
         mods.sort(Comparator.comparing(RecipeSourcesScreen::modName, String.CASE_INSENSITIVE_ORDER));
         List<Row> built = new ArrayList<>();
         for (String mod : mods) {
-            built.add(new Row(mod, null, modName(mod), ItemStack.EMPTY, byMod.get(mod)));
             List<ResourceLocation> types = new ArrayList<>();
             for (ResourceLocation type : byType.keySet()) {
                 if (type.getNamespace().equals(mod)) {
@@ -129,10 +169,17 @@ public final class RecipeSourcesScreen extends Screen {
                 }
             }
             types.sort(Comparator.comparing(RecipeSourcesScreen::typeName, String.CASE_INSENSITIVE_ORDER));
+            List<String> machineIds = new ArrayList<>(types.size());
+            for (ResourceLocation type : types) {
+                machineIds.add(type.toString());
+            }
+            built.add(new Row(mod, null, modName(mod), ItemStack.EMPTY, byMod.get(mod),
+                    List.copyOf(machineIds)));
             for (ResourceLocation type : types) {
                 Block block = MachineNames.blockOf(type);
                 built.add(new Row(mod, type.toString(), typeName(type),
-                        block == null ? ItemStack.EMPTY : new ItemStack(block.asItem()), byType.get(type)));
+                        block == null ? ItemStack.EMPTY : new ItemStack(block.asItem()), byType.get(type),
+                        List.of()));
             }
         }
         return built;
@@ -160,7 +207,7 @@ public final class RecipeSourcesScreen extends Screen {
     }
 
     private static int indentOf(Row row) {
-        return row.isMod() ? 0 : INDENT;
+        return row.isMod() ? FOLD_W : FOLD_W + INDENT;
     }
 
     private int measure() {
@@ -171,17 +218,30 @@ public final class RecipeSourcesScreen extends Screen {
                     + this.font.width(row.label()) + 2 * GAP + this.font.width(countOf(row)) + BAR_ROOM);
         }
         widest = Math.max(widest, buttonW(Component.translatable("screen.craftplanner.sources.reset"))
+                + GAP + buttonW(Component.translatable("screen.craftplanner.tree.collapse.all"))
+                + GAP + buttonW(Component.translatable("screen.craftplanner.tree.expand.all"))
                 + GAP + buttonW(Component.translatable("screen.craftplanner.list.close")));
         return Math.min(this.width - 2 * MARGIN, Math.max(220, widest + 2 * PAD));
     }
 
+    /** Recomputes the rows on screen after a fold, keeping the scroll inside the shorter list. */
+    private void refold() {
+        this.shown = SourceRows.visible(this.rows, Row::isMod, Row::mod, OPENED_MODS);
+        this.scroll = Math.max(0, Math.min(this.scroll, maxScroll()));
+    }
+
     private int visibleLines() {
+        return linesFor(this.shown.size());
+    }
+
+    /** Lines a list of {@code count} rows gets on this screen. */
+    private int linesFor(int count) {
         int available = this.height - 2 * MARGIN - HEADER_H - ROW_H - PAD;
-        return Math.max(1, Math.min(Math.max(1, this.rows.size()), available / ROW_H));
+        return Math.max(1, Math.min(Math.max(1, count), available / ROW_H));
     }
 
     private int maxScroll() {
-        return Math.max(0, this.rows.size() - visibleLines());
+        return Math.max(0, this.shown.size() - visibleLines());
     }
 
     private int panelHeight() {
@@ -193,7 +253,10 @@ public final class RecipeSourcesScreen extends Screen {
     }
 
     private int top() {
-        return Math.max(MARGIN, (this.height - panelHeight()) / 2);
+        // Placed for the list with every mod opened, so opening a mod grows the panel
+        // downward and the row just clicked stays under the cursor.
+        int full = HEADER_H + linesFor(this.rows.size()) * ROW_H + ROW_H + PAD;
+        return Math.max(MARGIN, (this.height - full) / 2);
     }
 
     private int bandTop() {
@@ -215,7 +278,20 @@ public final class RecipeSourcesScreen extends Screen {
             return -1;
         }
         int index = this.scroll + offset / ROW_H;
-        return index < this.rows.size() ? index : -1;
+        return index < this.shown.size() ? index : -1;
+    }
+
+    /** Whether a point is on the fold plate of a mod row; a mod without machines has none. */
+    private boolean overPlate(int mx, Row row) {
+        return row.isMod() && !row.machines().isEmpty()
+                && mx >= panelLeft() + PAD && mx < panelLeft() + PAD + TOGGLE_W + GAP / 2;
+    }
+
+    private void toggleFold(String mod) {
+        if (!OPENED_MODS.remove(mod)) {
+            OPENED_MODS.add(mod);
+        }
+        refold();
     }
 
     @Override
@@ -230,7 +306,12 @@ public final class RecipeSourcesScreen extends Screen {
         if (index < 0) {
             return false;
         }
-        Row row = this.rows.get(index);
+        Row row = this.shown.get(index);
+        // The plate folds the mod; the rest of the row still switches it, as before.
+        if (overPlate((int) mouseX, row)) {
+            toggleFold(row.mod());
+            return true;
+        }
         SourceFilter filter = PlannerState.sources();
         PlannerState.setSources(row.isMod()
                 ? filter.withMod(row.mod(), !filter.modHidden(row.mod()))
@@ -266,43 +347,56 @@ public final class RecipeSourcesScreen extends Screen {
                 Component.translatable("screen.craftplanner.sources.header").getString(),
                 this.panelWidth - 2 * PAD), left + PAD, top + 15, UiPalette.MUTED, false);
 
-        int shown = visibleLines();
+        int lines = visibleLines();
         int hover = hitLine(mouseX, mouseY);
         if (this.rows.isEmpty()) {
             graphics.drawString(this.font, Component.translatable("screen.craftplanner.sources.empty"),
                     left + PAD, bandTop() + (ROW_H - this.font.lineHeight) / 2, UiPalette.MUTED, false);
         }
         SourceFilter filter = PlannerState.sources();
-        for (int i = 0; i < shown; i++) {
+        for (int i = 0; i < lines; i++) {
             int index = this.scroll + i;
-            if (index >= this.rows.size()) {
+            if (index >= this.shown.size()) {
                 break;
             }
-            drawRow(graphics, this.rows.get(index), lineTop(index), index == hover, left, filter);
+            Row row = this.shown.get(index);
+            drawRow(graphics, row, lineTop(index), index == hover, left, filter,
+                    index == hover && overPlate(mouseX, row));
         }
 
-        int controlY = bandTop() + shown * ROW_H + (ROW_H - RecipeListLayout.BUTTON_H) / 2;
+        int controlY = bandTop() + lines * ROW_H + (ROW_H - RecipeListLayout.BUTTON_H) / 2;
         this.resetButton.setX(left + PAD);
         this.resetButton.setY(controlY);
+        this.collapseButton.setX(this.resetButton.getX() + this.resetButton.getWidth() + GAP);
+        this.collapseButton.setY(controlY);
+        this.expandButton.setX(this.collapseButton.getX() + this.collapseButton.getWidth() + GAP);
+        this.expandButton.setY(controlY);
         this.closeButton.setX(left + this.panelWidth - PAD - this.closeButton.getWidth());
         this.closeButton.setY(controlY);
 
         if (maxScroll() > 0) {
-            Scrollbar.draw(graphics, Scrollbar.of(left + this.panelWidth - 4, bandTop(), shown * ROW_H,
-                    shown, this.rows.size(), this.scroll, maxScroll(), 8));
+            Scrollbar.draw(graphics, Scrollbar.of(left + this.panelWidth - 4, bandTop(), lines * ROW_H,
+                    lines, this.shown.size(), this.scroll, maxScroll(), 8));
         }
         if (hover >= 0) {
-            Row row = this.rows.get(hover);
-            setTooltipForNextRenderPass(row.isMod()
-                    ? Component.translatable("screen.craftplanner.sources.mod.tooltip", row.label())
-                    : Component.translatable("screen.craftplanner.sources.type.tooltip", row.label()));
+            Row row = this.shown.get(hover);
+            if (overPlate(mouseX, row)) {
+                setTooltipForNextRenderPass(OPENED_MODS.contains(row.mod())
+                        ? Component.translatable("screen.craftplanner.sources.fold.collapse")
+                        : Component.translatable("screen.craftplanner.sources.fold.expand",
+                                row.machines().size()));
+            } else {
+                setTooltipForNextRenderPass(row.isMod()
+                        ? Component.translatable("screen.craftplanner.sources.mod.tooltip", row.label())
+                        : Component.translatable("screen.craftplanner.sources.type.tooltip", row.label()));
+            }
         }
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 
-    /** One row: tick box, icon, name and count; a machine of a switched-off mod is dimmed. */
+    /** One row: tick box, icon, name and count; a mod adds the plate that folds its machines. */
     private void drawRow(GuiGraphics graphics, Row row, int y, boolean hovered, int left,
-            SourceFilter filter) {
+            SourceFilter filter, boolean plateAimed) {
         boolean on = row.isMod() ? !filter.modHidden(row.mod()) : !filter.typeHidden(row.type());
         boolean dimmed = !row.isMod() && filter.modHidden(row.mod());
         int right = left + this.panelWidth - PAD;
@@ -311,6 +405,11 @@ public final class RecipeSourcesScreen extends Screen {
         }
         if (hovered) {
             graphics.fill(left + PAD, y, right, y + ROW_H, UiPalette.MODAL_ROW_HOVER);
+        }
+        if (row.isMod() && !row.machines().isEmpty()) {
+            int plateH = ROW_H - 4;
+            UiShapes.foldButton(graphics, left + PAD, y + (ROW_H - plateH) / 2, TOGGLE_W, plateH,
+                    !OPENED_MODS.contains(row.mod()), plateAimed);
         }
         int x = left + PAD + indentOf(row);
         int boxY = y + (ROW_H - BOX) / 2;
@@ -325,6 +424,20 @@ public final class RecipeSourcesScreen extends Screen {
         x += ICON + GAP;
         int textY = y + (ROW_H - this.font.lineHeight) / 2;
         String count = countOf(row);
+        // A folded mod hides its machines, and with them the ones switched off: the
+        // count says so, or a mod that is only partly in use reads as fully on.
+        if (row.isMod() && on && !OPENED_MODS.contains(row.mod())) {
+            int off = 0;
+            for (String machine : row.machines()) {
+                if (filter.typeHidden(machine)) {
+                    off++;
+                }
+            }
+            if (off > 0) {
+                count = Component.translatable("screen.craftplanner.sources.off", off).getString()
+                        + " · " + count;
+            }
+        }
         int countX = right - BAR_ROOM - this.font.width(count);
         graphics.drawString(this.font, RecipeListLayout.trimToWidth(this.font::width, row.label(),
                 Math.max(0, countX - GAP - x)), x, textY, on && !dimmed ? UiPalette.TEXT : UiPalette.MUTED, false);

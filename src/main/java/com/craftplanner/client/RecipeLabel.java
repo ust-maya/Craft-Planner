@@ -79,28 +79,46 @@ public final class RecipeLabel {
     }
 
     /**
-     * The inputs as one line — {@code "Медный слиток ×1, молот (−20 прочности)"} —
-     * without the "Needs:" prefix; empty when the recipe consumes nothing.
+     * One entry of a recipe's inputs as the player reads it: the item it names —
+     * {@code null} for the wear of a hammer, which is no item — and its words,
+     * {@code "Медный слиток ×1"}.
      */
-    public static String needsText(RecipeHolder<?> holder) {
-        StringBuilder needs = new StringBuilder();
+    public record NeedsPart(ItemKey item, String text) {
+    }
+
+    /**
+     * The inputs as separate entries, in the order {@link #needsText} joins them:
+     * one per item, then the hammer's wear when the recipe takes any. The recipe
+     * window draws an icon before each item, so it needs them apart.
+     */
+    public static List<NeedsPart> needsParts(RecipeHolder<?> holder) {
+        List<NeedsPart> parts = new ArrayList<>();
         for (Map.Entry<ItemKey, Long> entry : inputs(holder).entrySet()) {
-            if (needs.length() > 0) {
-                needs.append(", ");
-            }
-            needs.append(entry.getKey().name().getString())
-                    .append(" ×")
-                    .append(entry.getValue().longValue());
+            parts.add(new NeedsPart(entry.getKey(),
+                    entry.getKey().name().getString() + " ×" + entry.getValue().longValue()));
         }
         // A hammer recipe that wears the tool down is a different deal from the one
         // that does not, and it says so in the line the picker shows, not only in the
         // tooltip: the inputs alone can read the same.
         int damage = RecipeIngredients.hammerDamage(holder.value());
         if (damage > 0) {
+            parts.add(new NeedsPart(null,
+                    Component.translatable("gui.craftplanner.recipe.tool", damage).getString()));
+        }
+        return parts;
+    }
+
+    /**
+     * The inputs as one line — {@code "Медный слиток ×1, молот (−20 прочности)"} —
+     * without the "Needs:" prefix; empty when the recipe consumes nothing.
+     */
+    public static String needsText(RecipeHolder<?> holder) {
+        StringBuilder needs = new StringBuilder();
+        for (NeedsPart part : needsParts(holder)) {
             if (needs.length() > 0) {
                 needs.append(", ");
             }
-            needs.append(Component.translatable("gui.craftplanner.recipe.tool", damage).getString());
+            needs.append(part.text());
         }
         return needs.toString();
     }
