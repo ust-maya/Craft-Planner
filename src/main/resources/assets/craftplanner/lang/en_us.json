@@ -114,6 +114,8 @@
   "screen.craftplanner.sources.empty": "No recipes — the world is not loaded yet",
   "screen.craftplanner.sources.mod.tooltip": "Mod %1$s: its machines and every recipe it adds. Click to switch it on or off",
   "screen.craftplanner.sources.type.tooltip": "Machine %1$s. Click to switch it on or off",
+  "screen.craftplanner.sources.fold.expand": "Show the mod's machines: %1$s",
+  "screen.craftplanner.sources.fold.collapse": "Hide the mod's machines",
   "screen.craftplanner.sources.reset": "Use all",
   "screen.craftplanner.sources.reset.tooltip": "Use every mod and machine again"
 }
