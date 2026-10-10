@@ -8,6 +8,7 @@ import com.craftplanner.client.PlannerState;
 import com.craftplanner.client.RecipeLabel;
 import com.craftplanner.client.RecipePreview;
 import com.craftplanner.client.Scrollbar;
+import com.craftplanner.client.UiLegend;
 import com.craftplanner.client.UiPalette;
 import com.craftplanner.client.UiShapes;
 import com.craftplanner.client.overlay.NodeColors;
@@ -586,13 +587,25 @@ public final class RecipePickerScreen extends Screen {
 
     /**
      * Lines the screen can show at once. Everything else the panel carries is
-     * subtracted first — the title band, the button row under the list and the
-     * padding below it — so a window taller than the screen never happens above a certain
-     * height, and the last line never falls off the bottom.
+     * subtracted first — the title band, the button row under the list, the colour
+     * key under it and the padding below that — so a window taller than the screen
+     * never happens above a certain height, and the last line never falls off the
+     * bottom.
      */
     private int visibleLines() {
-        int available = this.height - 2 * MARGIN - HEADER_H - COLUMNS_H - CONTROL_ROWS * ROW_H - PAD;
+        int available = this.height - 2 * MARGIN - HEADER_H - COLUMNS_H - CONTROL_ROWS * ROW_H
+                - legendH() - PAD;
         return Math.max(1, Math.min(this.lines.size(), available / ROW_H));
+    }
+
+    /**
+     * Room the colour key takes under the buttons: three pixels for its divider and
+     * one or two lines. The rows here are coloured like the plan's own tree — the
+     * inputs by what the inventory holds, an opened tree by what each row is — and
+     * the key that names those colours was only ever in the tree window.
+     */
+    private int legendH() {
+        return 3 + UiLegend.lineCount(this.font, this.panelWidth - 2 * PAD) * (this.font.lineHeight + 2);
     }
 
     private int maxScroll() {
@@ -600,7 +613,7 @@ public final class RecipePickerScreen extends Screen {
     }
 
     private int panelHeight() {
-        return HEADER_H + COLUMNS_H + visibleLines() * ROW_H + CONTROL_ROWS * ROW_H + PAD;
+        return HEADER_H + COLUMNS_H + visibleLines() * ROW_H + CONTROL_ROWS * ROW_H + legendH() + PAD;
     }
 
     private int panelLeft() {
@@ -833,6 +846,11 @@ public final class RecipePickerScreen extends Screen {
         this.cutButton.setY(buttonY);
         this.closeButton.setX(left + this.panelWidth - PAD - this.closeButton.getWidth());
         this.closeButton.setY(buttonY);
+
+        int legendTop = bandTop() + shown * ROW_H + CONTROL_ROWS * ROW_H;
+        UiShapes.divider(graphics, left + 2, left + this.panelWidth - 2, legendTop,
+                UiPalette.SECTION_DIVIDER);
+        UiLegend.draw(graphics, this.font, left + PAD, legendTop + 3, this.panelWidth - 2 * PAD);
 
         // A dozen machine alternatives scroll, and a wheel that finds nothing to show
         // for it reads as a broken list — so the band of lines carries the same
