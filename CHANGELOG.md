@@ -8,13 +8,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Recipe sources window: each mod folds its machines under a plate, mods open folded, and
-  "Collapse all" / "Expand all" buttons; a folded mod shows how many of its machines are off.
+  "Collapse all" / "Expand all" buttons; a folded mod shows how many of its machines are
+  off, and the mods you open stay open for the session.
 - Recipe window: the colour key under the buttons, the verdict of an option in its tooltip,
   and an icon before every ingredient.
 
 ### Changed
 
-- "Cut the tree here" is now "Use as material" in every text.
+- "Cut the tree here" is now "Use as material" in every text; the button that undoes it
+  says "Craft it again".
 
 ## 1.0.0 — 2026-10-09
 
