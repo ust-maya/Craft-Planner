@@ -65,4 +65,37 @@ class CraftMathTest {
         assertEquals(0, CraftMath.craftsFor(10, 0));
         assertEquals(3, CraftMath.craftsFor(10, 4));
     }
+
+    @Test
+    void aNegativeRequestIsNotACraftRequest() {
+        assertEquals(0, CraftMath.craftsFor(-1, 4));
+        assertEquals(0, CraftMath.craftsFor(-10, 4));
+        assertEquals(0, CraftMath.craftsFor(Long.MIN_VALUE, 1));
+    }
+
+    @Test
+    void aNegativeStackIsNotARecipe() {
+        assertEquals(0, CraftMath.craftsFor(10, -1));
+        assertEquals(0, CraftMath.craftsFor(10, Long.MIN_VALUE));
+    }
+
+    @Test
+    void aStackLargerThanTheRequestStillTakesOneCraft() {
+        assertEquals(1, CraftMath.craftsFor(1, Long.MAX_VALUE));
+        assertEquals(1, CraftMath.craftsFor(Long.MAX_VALUE, Long.MAX_VALUE));
+        assertEquals(Long.MAX_VALUE, CraftMath.craftsFor(Long.MAX_VALUE, 1));
+    }
+
+    @Test
+    void multiplicationNearTheCeilingSaturatesInsteadOfTurningNegative() {
+        assertEquals(Long.MAX_VALUE, CraftMath.saturatingMul(Long.MAX_VALUE / 2 + 1, 2));
+        assertEquals(Long.MAX_VALUE, CraftMath.saturatingMul(2, Long.MAX_VALUE / 2 + 1));
+        assertEquals(0, CraftMath.saturatingMul(Long.MAX_VALUE, 0));
+    }
+
+    @Test
+    void addingNothingDoesNotChangeASaturatedAmount() {
+        assertEquals(Long.MAX_VALUE, CraftMath.saturatingAdd(Long.MAX_VALUE, 0));
+        assertEquals(Long.MAX_VALUE, CraftMath.saturatingAdd(0, Long.MAX_VALUE));
+    }
 }
