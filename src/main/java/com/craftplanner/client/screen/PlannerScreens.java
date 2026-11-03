@@ -15,10 +15,10 @@ public final class PlannerScreens {
     private PlannerScreens() {
     }
 
-    /** True for the list, the tree, the two pickers and the quantity popup. */
+    /** True for the list, the tree, the two pickers, the quantity popup and the clear confirmation. */
     public static boolean isModal(Screen screen) {
         return screen instanceof RecipeListScreen || screen instanceof CraftTreeScreen
                 || screen instanceof BatchPickerScreen || screen instanceof RecipePickerScreen
-                || screen instanceof QuantityPopupScreen;
+                || screen instanceof QuantityPopupScreen || screen instanceof ClearPlanScreen;
     }
 }

@@ -20,6 +20,7 @@ import org.lwjgl.glfw.GLFW;
  *   <li>{@code OPEN_RECIPES} (K) — open the recipes-list screen</li>
  *   <li>{@code OPEN_TREE} (G) — open the craft tree as a window</li>
  *   <li>{@code EDIT_LAYOUT} (O) — drag, resize and rescale the overlay panel</li>
+ *   <li>{@code CLEAR_PLAN} (Delete) — wipe the whole plan after a confirmation</li>
  * </ul>
  *
  * <p>The letters are free in vanilla 1.21.1 (which binds W A S D, Space, both
@@ -88,6 +89,19 @@ public class Keybinds {
             GLFW.GLFW_KEY_O,
             CATEGORY);
 
+    /**
+     * Wipes every goal, recipe choice and cut at once. It is destructive and
+     * cannot be undone, so the key only opens a confirmation; Delete itself is
+     * unbound in vanilla and does not clash with a container screen.
+     */
+    public static final KeyMapping CLEAR_PLAN = new KeyMapping(
+            "key.craftplanner.clear",
+            KeyConflictContext.UNIVERSAL,
+            KeyModifier.NONE,
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_DELETE,
+            CATEGORY);
+
     @SubscribeEvent
     public static void register(RegisterKeyMappingsEvent event) {
         event.register(ADD_RECIPE);
@@ -95,5 +109,6 @@ public class Keybinds {
         event.register(OPEN_RECIPES);
         event.register(OPEN_TREE);
         event.register(EDIT_LAYOUT);
+        event.register(CLEAR_PLAN);
     }
 }

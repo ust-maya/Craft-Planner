@@ -69,6 +69,7 @@ public final class CraftTreeScreen extends Screen {
     private static final String KEY_EMPTY = "screen.craftplanner.tree.empty";
     private static final String KEY_LIST = "screen.craftplanner.tree.list";
     private static final String KEY_RECIPE = "screen.craftplanner.tree.recipe";
+    private static final String KEY_CLEAR = "screen.craftplanner.tree.clear";
     private static final String KEY_CLOSE = "screen.craftplanner.tree.close";
     private static final String KEY_HINT = "screen.craftplanner.tree.hint";
     private static final String KEY_HIDDEN = "screen.craftplanner.tree.hidden.rows";
@@ -206,18 +207,36 @@ public final class CraftTreeScreen extends Screen {
     }
 
     /**
-     * The footer buttons as {@link #buildWidgets()} places them: the four fold
-     * buttons, then recipe, list and close, each at least its minimum width, with
-     * the gaps between them.
+     * The footer buttons as {@link #buildWidgets()} lays them out at their
+     * natural size: the clear button and the four fold buttons, then recipe,
+     * list and close, each at least its minimum width, with the gaps between
+     * them. The clear button and the folds only exist while the plan holds rows.
      */
     private int footerButtonsWidth() {
-        return FoldButtons.width(this.font) + buttonWidth(text(KEY_RECIPE), 60)
-                + buttonWidth(text(KEY_LIST), 60) + buttonWidth(text(KEY_CLOSE), 48) + 3 * FOOTER_GAP;
+        if (this.rows.isEmpty()) {
+            // The fold buttons are not drawn on an empty plan, but the panel keeps
+            // their room: that is the width the empty window had before the clear
+            // button existed, and nothing on screen needs the space back.
+            return FoldButtons.width(this.font) + FOOTER_GAP + rightButtonsWidth();
+        }
+        return buttonWidth(text(KEY_CLEAR), 48) + FoldButtons.width(this.font)
+                + 2 * FOOTER_GAP + rightButtonsWidth();
+    }
+
+    /** Recipe, recipe list and close — the right-hand buttons of the footer row. */
+    private int rightButtonsWidth() {
+        return buttonWidth(text(KEY_RECIPE), 60) + buttonWidth(text(KEY_LIST), 60)
+                + buttonWidth(text(KEY_CLOSE), 48) + 2 * FOOTER_GAP;
     }
 
     /** One footer button: its label plus the padding it is measured with, over its floor. */
     private int buttonWidth(String label, int minWidth) {
         return Math.max(minWidth, this.font.width(label) + PAD);
+    }
+
+    /** A natural width shrunk to fit a narrow panel, but never below its floor. */
+    private static int scaledWidth(int width, float scale, int floor) {
+        return Math.max(floor, Math.round(width * scale));
     }
 
     /** The "nothing planned yet" line: it is centred inside the panel, so the panel must hold it. */
@@ -248,10 +267,24 @@ public final class CraftTreeScreen extends Screen {
         int rowLeft = this.panelLeft + PAD;
         int buttonsY = contentBottom() + footerH() - BUTTON_H - 4;
         int gap = FOOTER_GAP;
-        int recipeW = buttonWidth(text(KEY_RECIPE), 60);
-        int listW = buttonWidth(text(KEY_LIST), 60);
-        int closeW = buttonWidth(text(KEY_CLOSE), 48);
         int right = this.panelLeft + this.plan.panelW() - PAD;
+        // A long translation — or a narrow window — can make the natural row wider
+        // than the panel's content area, where buttons pinned to the two edges
+        // would meet in the middle. Shrink the row instead, like the recipe list
+        // does: FitButton trims its own label, and every control stays reachable.
+        // The gaps are fixed, so they are taken out before the widths are scaled.
+        int natural = this.rows.isEmpty() ? rightButtonsWidth() : footerButtonsWidth();
+        int gaps = this.rows.isEmpty() ? 2 : 4;
+        int available = this.plan.panelW() - 2 * PAD;
+        float scale = 1.0f;
+        if (natural > available) {
+            int widthRoom = Math.max(1, available - gaps * gap);
+            scale = Math.max(0.5f, widthRoom / (float) (natural - gaps * gap));
+        }
+        int clearW = scaledWidth(buttonWidth(text(KEY_CLEAR), 48), scale, 24);
+        int recipeW = scaledWidth(buttonWidth(text(KEY_RECIPE), 60), scale, 30);
+        int listW = scaledWidth(buttonWidth(text(KEY_LIST), 60), scale, 30);
+        int closeW = scaledWidth(buttonWidth(text(KEY_CLOSE), 48), scale, 24);
 
         if (!this.rows.isEmpty()) {
             List<Button> folds = FoldButtons.create(this.font, BUTTON_H, new FoldButtons.Actions() {
@@ -275,7 +308,17 @@ public final class CraftTreeScreen extends Screen {
                     stepLevel(true);
                 }
             });
-            FoldButtons.place(folds, rowLeft, buttonsY);
+            for (int i = 0; i < folds.size(); i++) {
+                Button fold = folds.get(i);
+                fold.setWidth(scaledWidth(fold.getWidth(), scale, i < 2 ? 30 : 16));
+            }
+            // The one button that wipes the plan stands alone on the left, as it
+            // does in the recipe list; the folds follow it, away from the
+            // navigation buttons on the right.
+            addRenderableWidget(FitButton.create(rowLeft, buttonsY, clearW, BUTTON_H,
+                    tr(KEY_CLEAR), button -> openClearConfirm(),
+                    Component.translatable("screen.craftplanner.tree.clear.tooltip")));
+            FoldButtons.place(folds, rowLeft + clearW + gap, buttonsY);
             folds.forEach(this::addRenderableWidget);
         }
         // "There is no button for choosing a recipe" is what a per-row badge costs
@@ -337,6 +380,15 @@ public final class CraftTreeScreen extends Screen {
     /** The row the keyboard is on, or {@code null} when the plan is empty or nothing is picked. */
     private TreeRow<RecipeNode> focusedRow() {
         return this.focus >= 0 && this.focus < this.rows.size() ? this.rows.get(this.focus) : null;
+    }
+
+    /**
+     * Asks before wiping the plan: the tree is the plan's own window, so this is
+     * where the button and the clear key both lead. The confirmation comes back
+     * to this window, which rebuilds itself around the emptied plan.
+     */
+    private void openClearConfirm() {
+        this.minecraft.setScreen(new ClearPlanScreen(this));
     }
 
     private void foldAll(boolean collapse) {
@@ -924,6 +976,10 @@ public final class CraftTreeScreen extends Screen {
                 return true;
             default:
                 break;
+        }
+        if (Keybinds.CLEAR_PLAN.matches(keyCode, scanCode)) {
+            openClearConfirm();
+            return true;
         }
         if (Keybinds.OPEN_RECIPES.matches(keyCode, scanCode)) {
             this.minecraft.setScreen(new RecipeListScreen());
