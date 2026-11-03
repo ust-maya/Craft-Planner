@@ -213,16 +213,20 @@ public final class CraftTreeScreen extends Screen {
      * them. The clear button and the folds only exist while the plan holds rows.
      */
     private int footerButtonsWidth() {
-        int right = buttonWidth(text(KEY_RECIPE), 60) + buttonWidth(text(KEY_LIST), 60)
-                + buttonWidth(text(KEY_CLOSE), 48) + 2 * FOOTER_GAP;
         if (this.rows.isEmpty()) {
             // The fold buttons are not drawn on an empty plan, but the panel keeps
             // their room: that is the width the empty window had before the clear
             // button existed, and nothing on screen needs the space back.
-            return FoldButtons.width(this.font) + FOOTER_GAP + right;
+            return FoldButtons.width(this.font) + FOOTER_GAP + rightButtonsWidth();
         }
         return buttonWidth(text(KEY_CLEAR), 48) + FoldButtons.width(this.font)
-                + 2 * FOOTER_GAP + right;
+                + 2 * FOOTER_GAP + rightButtonsWidth();
+    }
+
+    /** Recipe, recipe list and close — the right-hand buttons of the footer row. */
+    private int rightButtonsWidth() {
+        return buttonWidth(text(KEY_RECIPE), 60) + buttonWidth(text(KEY_LIST), 60)
+                + buttonWidth(text(KEY_CLOSE), 48) + 2 * FOOTER_GAP;
     }
 
     /** One footer button: its label plus the padding it is measured with, over its floor. */
@@ -268,10 +272,15 @@ public final class CraftTreeScreen extends Screen {
         // than the panel's content area, where buttons pinned to the two edges
         // would meet in the middle. Shrink the row instead, like the recipe list
         // does: FitButton trims its own label, and every control stays reachable.
-        int natural = footerButtonsWidth();
+        // The gaps are fixed, so they are taken out before the widths are scaled.
+        int natural = this.rows.isEmpty() ? rightButtonsWidth() : footerButtonsWidth();
+        int gaps = this.rows.isEmpty() ? 2 : 4;
         int available = this.plan.panelW() - 2 * PAD;
-        float scale = natural <= available ? 1.0f
-                : Math.max(0.5f, available / (float) natural);
+        float scale = 1.0f;
+        if (natural > available) {
+            int widthRoom = Math.max(1, available - gaps * gap);
+            scale = Math.max(0.5f, widthRoom / (float) (natural - gaps * gap));
+        }
         int clearW = scaledWidth(buttonWidth(text(KEY_CLEAR), 48), scale, 24);
         int recipeW = scaledWidth(buttonWidth(text(KEY_RECIPE), 60), scale, 30);
         int listW = scaledWidth(buttonWidth(text(KEY_LIST), 60), scale, 30);
