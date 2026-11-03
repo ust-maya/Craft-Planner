@@ -1,6 +1,7 @@
 package com.craftplanner.client;
 
 import com.craftplanner.Constants;
+import com.craftplanner.client.screen.ClearPlanScreen;
 import com.craftplanner.client.screen.CraftTreeScreen;
 import com.craftplanner.client.screen.OverlayLayoutScreen;
 import com.craftplanner.client.screen.QuantityPopupScreen;
@@ -79,6 +80,12 @@ public class ClientEvents {
             mc.setScreen(new CraftTreeScreen());
         }
 
+        // Clearing the plan is destructive, so the key only opens the question;
+        // ClearPlanScreen calls PlannerState.clear() when its confirm button is pressed.
+        while (Keybinds.CLEAR_PLAN.consumeClick()) {
+            openClearPlan(mc, mc.screen);
+        }
+
         // The editor arranges the panel that is on screen, so the first press on
         // a hidden overlay only reveals it. It is a screen, and screens close
         // themselves: the key is answered again inside OverlayLayoutScreen.
@@ -144,7 +151,21 @@ public class ClientEvents {
             mc.setScreen(new RecipeListScreen());
         } else if (matches(Keybinds.OPEN_TREE, keyCode, scanCode)) {
             mc.setScreen(new CraftTreeScreen());
+        } else if (matches(Keybinds.CLEAR_PLAN, keyCode, scanCode)) {
+            openClearPlan(mc, screen);
         }
+    }
+
+    /**
+     * Opens the confirmation for the clear-plan action. Nothing is asked when
+     * there is no plan: an empty question would only teach the player that the
+     * key does nothing.
+     */
+    private static void openClearPlan(Minecraft mc, Screen returnTo) {
+        if (PlannerState.graph().isEmpty()) {
+            return;
+        }
+        mc.setScreen(new ClearPlanScreen(returnTo));
     }
 
     private static void openQuantityPopup(Minecraft mc) {

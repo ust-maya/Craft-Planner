@@ -7,6 +7,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Clear-plan action: `Delete` and a button in the tree window wipe the plan, both
+  after a confirmation.
 - Recipe sources window: each mod folds its machines under a plate, mods open folded, and
   "Collapse all" / "Expand all" buttons; a folded mod shows how many of its machines are off.
 - Recipe window: the colour key under the buttons, the verdict of an option in its tooltip,

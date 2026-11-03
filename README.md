@@ -64,6 +64,7 @@ All of them can be rebound in "Options → Controls → Craft Planner".
 | N | add the item under the cursor to the plan and open the quantity window |
 | K | list of planned goals: change the amount, remove a goal, toggle the ore filter, choose recipe sources |
 | G | craft tree window: fold branches, pick a recipe, see what is missing |
+| Delete | clear the plan: remove every goal after a confirmation |
 | V | show or hide the tree on top of the screen (HUD) |
 | O | panel layout editor: drag, resize and change the text scale |
 
