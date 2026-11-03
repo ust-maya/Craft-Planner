@@ -86,6 +86,21 @@ that version, and the loader will refuse older 21.1.x builds. EMI and JEI are
 optional: without them the mod still works, it just cannot pick up the hovered
 recipe from those screens or recognise their search fields.
 
+## Troubleshooting
+
+The usual build and run problems, with the longer explanations in
+[docs/troubleshooting.md](docs/troubleshooting.md):
+
+- **Wrong Java version** — the build needs a JDK 21 toolchain and Minecraft
+  1.21.1 runs on Java 21. See [the Java section](docs/troubleshooting.md#wrong-java-version).
+- **NeoForge version mismatch** — the mod needs NeoForge 21.1.248 or newer for
+  Minecraft 1.21.1 (see [Dependencies](#dependencies)).
+- **The mod is not in the mod list** — the jar goes directly into the instance's
+  `mods/` folder, and the game must be started with the NeoForge 1.21.1 profile
+  (see [Building](#building)).
+- **The plan does not persist between sessions** — every game directory keeps
+  its own plan in `config/craftplanner-plan.json` (see [Files](#files)).
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
